@@ -104,7 +104,8 @@ class CollabClient {
     _heartbeat () {
         if (this._closedByUser || !this.session) return;
         if (!this.ws || this.ws.readyState !== 1) return;
-        if (this._lastInbound && Date.now() - this._lastInbound > SILENCE_LIMIT_MS) {
+        const hidden = typeof document !== 'undefined' && document.hidden;
+        if (!hidden && this._lastInbound && Date.now() - this._lastInbound > SILENCE_LIMIT_MS) {
             this.connected = false;
             this._emit('disconnected', {});
             this._backoff = 1000;
@@ -118,6 +119,7 @@ class CollabClient {
 
     _open () {
         if (!this.session || this._closedByUser) return;
+        this._startHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();
 
@@ -158,7 +160,6 @@ class CollabClient {
             if (gen !== this._openGen) return;
             this._clearConnectTimer();
             this._lastInbound = Date.now();
-            this._backoff = 1000;
             // Persistent device identity: token issued by the server on first
             // join, kept in localStorage — name-only login stays that simple.
             let token;
@@ -181,6 +182,7 @@ class CollabClient {
             if (msg.type === 'pong') return; // liveness only — nobody subscribes
             if (msg.type === 'welcome') {
                 this.connected = true;
+                this._backoff = 1000;
                 this.me = {id: msg.id, color: msg.color};
                 if (msg.token) {
                     try {
@@ -206,10 +208,11 @@ class CollabClient {
     _scheduleReconnect () {
         if (this._closedByUser || !this.session) return;
         this._clearReconnect();
+        const delay = this._backoff * (0.75 + (Math.random() * 0.5));
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;
             if (!this._closedByUser && this.session) this._open();
-        }, this._backoff);
+        }, delay);
         this._backoff = Math.min(this._backoff * 1.6, 15000);
     }
 
@@ -240,6 +243,21 @@ class CollabClient {
     send (msg) {
         if (!msg || typeof msg !== 'object') return;
         const lossy = LOSSY.has(msg.type);
+        if (msg.type === 'snapshot' && this._queue.length) {
+            const kept = [];
+            for (let i = 0; i < this._queue.length; i++) {
+                if (this._queue[i].startsWith('{"type":"snapshot"')) {
+                    try {
+                        const old = JSON.parse(this._queue[i]);
+                        if (old.force) msg.force = true;
+                        if (old.reset) msg.reset = true;
+                    } catch (e) { /* unparseable — superseded either way */ }
+                } else {
+                    kept.push(this._queue[i]);
+                }
+            }
+            this._queue = kept;
+        }
         let data;
         try {
             data = JSON.stringify(msg);

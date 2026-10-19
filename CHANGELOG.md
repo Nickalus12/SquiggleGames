@@ -13,6 +13,28 @@ of work rather than just moving files.
 
 ### Fixed
 
+- **A page restored from the back-forward cache checks the connection is
+  alive again.** Leaving closed the socket and stopped the heartbeat, and
+  coming back reopened the socket but never restarted the heartbeat — so a
+  connection that died silently after a restore (wifi changed, laptop slept)
+  showed a green presence dot while every edit went nowhere. The heartbeat
+  now starts with every socket, not just the first. It also no longer tears
+  down a connection for silence while the tab is hidden, where timers are
+  throttled and silence means nothing.
+
+- **A server that accepts the socket and then refuses the join no longer
+  gets retried every second forever.** The reconnect backoff reset when the
+  socket opened, before the room had said yes, so an accept-then-close loop
+  pinned the retry at its minimum. The backoff resets on the welcome now,
+  and each retry is jittered so a room full of clients does not come back
+  in lockstep after an outage.
+
+- **Only the newest unsent snapshot is kept while offline.** Snapshots are
+  whole projects, and edits made across a long disconnection queued one
+  after another — megabytes of superseded project copies that all flushed,
+  oldest first, on reconnect. A newer snapshot now replaces any queued one,
+  carrying its force/reset flags with it.
+
 - **The "you are watching" banner no longer sits on top of the menu bar.** It
   was a fixed bar at the top of the window, and unlike a toast it never goes
   away — so for as long as you were a viewer it covered File, Edit, Addons, the
