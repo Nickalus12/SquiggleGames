@@ -110,6 +110,7 @@ import sharedMessages from '../../lib/shared-messages';
 import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
 import {APP_NAME} from '../../lib/brand.js';
+import collab from '../../lib/collab';
 
 const ariaMessages = defineMessages({
     tutorials: {
@@ -240,6 +241,10 @@ class MenuBar extends React.Component {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
     handleClickNew () {
+        if (!collab.mayReplaceProject()) {
+            this.props.onRequestCloseFile();
+            return;
+        }
         // if the project is dirty, and user owns the project, we will autosave.
         // but if they are not logged in and can't save, user should consider
         // downloading or logging in first.
