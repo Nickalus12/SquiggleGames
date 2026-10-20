@@ -202,7 +202,7 @@ class TogetherBlocks {
     }
 
     _onDisposed () {
-        this.dispose();
+        this._resetProject();
     }
 
     _onBridgeReady () {
@@ -248,11 +248,21 @@ class TogetherBlocks {
             this.runtime.off('BEFORE_EXECUTE', this._onStep);
             this.runtime.off('RUNTIME_DISPOSED', this._onDisposed);
         }
+        this._resetProject();
+    }
 
+    _resetProject () {
         // And the state goes with it. Shared variables belonged to the room
         // and the project that just closed; reading them out of the next one
         // is a stale answer wearing a current-looking block.
         this._shared = Object.create(null);
+        const net = getNet();
+        const vars = net && this._bound ? net.sharedVars : null;
+        if (vars) {
+            for (const key of Object.keys(vars)) {
+                this._shared[key] = vars[key];
+            }
+        }
         this._inbox = [];
         this._pendingMsgs.clear();
         this._pendingVars.clear();

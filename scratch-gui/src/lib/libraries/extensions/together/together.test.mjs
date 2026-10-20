@@ -347,20 +347,57 @@ console.log('\nplayers');
     ok('connected reflects the bridge', ext.connected() === true);
 }
 
-console.log('\ndisposal');
+console.log('\nproject reload');
 {
     const {runtime, net, ext, clock} = setup();
     ext.setSharedVariable({NAME: 'score', VALUE: 1});
     net.fire('game', {action: 'msg', name: 'x', value: '1'});
 
     const before = (runtime.listeners.get('BEFORE_EXECUTE') || []).length;
-    ext.dispose();
+    runtime.emit('RUNTIME_DISPOSED');
     const after = (runtime.listeners.get('BEFORE_EXECUTE') || []).length;
 
-    ok('the step listener is removed', after === before - 1, {before, after});
+    ok('a project reload keeps the step listener', after === before, {before, after});
     ok('shared variables do not survive into the next project',
         ext.getSharedVariable({NAME: 'score'}) === '');
     ok('queued messages are dropped', ext.gameMessageName() === '');
+
+    runtime.hats.length = 0;
+    step(runtime, clock);
+    ok('nothing from the old project starts a hat', runtime.hats.length === 0, runtime.hats);
+
+    net.fire('game', {action: 'msg', name: 'y', value: '2'});
+    step(runtime, clock);
+    ok('a message after the reload still reaches its hat', !!hatFor(runtime, 'y'), runtime.hats);
+
+    runtime.emit('RUNTIME_DISPOSED');
+    net.fire('game', {action: 'msg', name: 'z', value: '3'});
+    step(runtime, clock);
+    ok('and after a second reload too', !!hatFor(runtime, 'z'), runtime.hats);
+
+    ext.broadcastGameMessage({NAME: 'out', VALUE: '1'});
+    ok('broadcasts still go out after a reload',
+        net.sent.some(m => m.name === 'out'), net.sent);
+}
+
+console.log('\nproject reload: room variables');
+{
+    const {runtime, net, ext} = setup();
+    net.sharedVars = {level: 4};
+    runtime.emit('RUNTIME_DISPOSED');
+    ok('the room\'s shared variables are read back from the bridge',
+        ext.getSharedVariable({NAME: 'level'}) === 4, ext.getSharedVariable({NAME: 'level'}));
+}
+
+console.log('\ndisposal');
+{
+    const {runtime, net, ext, clock} = setup();
+    net.fire('game', {action: 'msg', name: 'x', value: '1'});
+
+    const before = (runtime.listeners.get('BEFORE_EXECUTE') || []).length;
+    ext.dispose();
+    const after = (runtime.listeners.get('BEFORE_EXECUTE') || []).length;
+    ok('a real teardown removes the step listener', after === before - 1, {before, after});
 
     runtime.hats.length = 0;
     step(runtime, clock);
