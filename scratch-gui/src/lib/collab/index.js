@@ -98,7 +98,7 @@ const state = {
     offlineEdits: false, // project edited while the socket was down
     skipNextSnapshot: false, // drop the stale room snapshot after an offline-edit rejoin
     roomVersion: 0, // last room snapshot version we've seen/produced (server-gated)
-    forceNextSnapshot: false, // deliberate override (offline-edit rejoin) bypasses the gate
+    forceNextSnapshot: false, // deliberate override bypasses the gate (the server honours it for the host only)
     recentPaint: new Map(), // "target|index|kind" -> {at, msg}; re-applied after snapshot loads
     // Per-costume paint bases: for svg the last export/apply text (stroke-diff
     // base), for bitmaps the freshest known full pixels (patch base + shadow).
@@ -826,7 +826,7 @@ const applySnapshot = async msg => {
     // it, so drop the stale room snapshot instead of reverting the user's work.
     if (state.skipNextSnapshot) {
         state.skipNextSnapshot = false;
-        return;
+        if (!msg._rescue) return;
     }
     // Reconnects re-deliver the room snapshot — if it's the state we already
     // have (usually our own), don't reload the project out from under us.
@@ -2145,7 +2145,7 @@ const installNetBridge = () => {
     window.SquiggleNet = {
         __st: true,
         send (msg) {
-            if (!state.active || !state.canEdit) return;
+            if (!state.active || state.ended) return;
             // Mirror outbound shared-var writes into the local cache immediately
             // so reporters work before the (non-echoed) round-trip.
             if (msg && msg.type === 'game' && msg.action === 'var') {
@@ -2182,7 +2182,7 @@ const installNetBridge = () => {
             return cachedPeerNamesStr;
         },
         get connected () {
-            return !!(state.active && state.canEdit && client.connected);
+            return !!(state.active && !state.ended && client.connected);
         },
         get room () {
             return (overlay.self && overlay.self.room) ||
@@ -2302,6 +2302,47 @@ const applyModerated = msg => {
     if (canWrite() && (!m || m.type === 'block-event' || m.type === 'vm-action')) scheduleSnapshot(true);
 };
 
+const CLOSE_TEXT = {
+    1008: 'Lots of changes at once, so the room asked for a short pause. Reconnecting…',
+    1009: 'That was too much to send in one go. Reconnecting…',
+    4008: 'The connection is running slow. Reconnecting…'
+};
+const GAME_REFUSED_TEXT = 'That game message has words that are not allowed here.';
+
+const applyRole = (role, canEditFlag) => {
+    if (typeof role !== 'string' || !role) return;
+    const canEditNow = typeof canEditFlag === 'boolean' ? canEditFlag : role === 'owner' || role === 'editor';
+    const couldEdit = state.canEdit;
+    const unsaved = couldEdit && !canEditNow && hasUnsavedEdits();
+    state.role = role;
+    state.canEdit = canEditNow;
+    if (overlay.self) {
+        overlay.setSelf(overlay.self.name, overlay.self.color, overlay.self.room,
+            Object.assign({}, overlay.self, {role, canEdit: canEditNow}));
+    }
+    applyEditability();
+    if (couldEdit === canEditNow) return;
+    if (canEditNow) {
+        overlay.toast('✏️ You can edit this project now!', '#2bb673');
+        return;
+    }
+    overlay.toast('👀 You are watching now — ask the owner for edit access', '#8a8fa3');
+    clearTimeout(state.snapshotTimer);
+    state.snapshotTimer = null;
+    state.unackedSnapshots = [];
+    state.offlineEdits = false;
+    if (!unsaved || !state.vm) {
+        requestResync('became a viewer');
+        return;
+    }
+    state.vm.saveProjectSb3('base64')
+        .then(offerRescueDownload, () => null)
+        .then(() => {
+            state.lastResyncAt = 0;
+            requestResync('became a viewer with unsaved edits');
+        });
+};
+
 const wireSocket = () => {
     client.unloadGuard = flushForLeave;
     client.on('welcome', msg => {
@@ -2352,10 +2393,12 @@ const wireSocket = () => {
         applyEditability();
         if (!state.canEdit) overlay.toast('👀 You are watching — ask the owner for edit access', '#8a8fa3');
         rebuildTargetIndex();
-        state.roomVersion = typeof msg.version === 'number' ? msg.version : 0;
+        if (client.holdingQueue) state.offlineEdits = true;
+        if (!(isReconnect && state.offlineEdits && state.canEdit)) {
+            state.roomVersion = typeof msg.version === 'number' ? msg.version : 0;
+        }
         state.unackedSnapshots = [];
         if (isReconnect) state.recentPaint.clear();
-        if (client.holdingQueue) state.offlineEdits = true;
         if (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit) {
             client.discardQueue();
         } else {
@@ -2369,7 +2412,6 @@ const wireSocket = () => {
             // the room — push our newer state instead of letting the server's
             // stale snapshot revert it. (With others online, theirs wins.)
             state.skipNextSnapshot = true;
-            state.forceNextSnapshot = true; // deliberate override of the version gate
             sendSnapshotNow();
         } else if (isReconnect && state.offlineEdits) {
             // Others were in the room while we were away, so their state wins
@@ -2387,6 +2429,9 @@ const wireSocket = () => {
     });
     client.on('disconnected', msg => {
         if (msg && msg.unconfirmed && state.canEdit) state.offlineEdits = true;
+        if (msg && CLOSE_TEXT[msg.code] && !state.ended && msg.reason !== 'session-replaced') {
+            overlay.toast(`🔌 ${CLOSE_TEXT[msg.code]}`, '#f0912b');
+        }
         overlay.setConnected(false);
         // Keep housekeeping running — reconnect is expected; stop only on solo exit.
         netEmit('disconnected', {});
@@ -2402,8 +2447,17 @@ const wireSocket = () => {
         // Don't wait for the debounce; the server is holding the door for this.
         sendSnapshotNow();
     });
+    client.on('role-changed', msg => {
+        if (msg) applyRole(msg.role, msg.canEdit);
+    });
+    client.on('game-refused', () => {
+        if (Date.now() - (state.lastGameRefusedAt || 0) < REFUSE_TOAST_MS) return;
+        state.lastGameRefusedAt = Date.now();
+        overlay.toast(`🙊 ${GAME_REFUSED_TEXT}`, '#8a8fa3');
+    });
     client.on('peer-updated', msg => {
-        overlay.updatePeerAppearance(msg.id, {color: msg.color, style: msg.cursor});
+        if (msg.id === state.selfId && typeof msg.role === 'string') applyRole(msg.role, msg.canEdit);
+        overlay.updatePeerAppearance(msg.id, {color: msg.color, style: msg.cursor, role: msg.role});
         if (msg.id === state.selfId && overlay.self) {
             overlay.setSelf(overlay.self.name, msg.color, overlay.self.room,
                 Object.assign({}, overlay.self, {cursor: msg.cursor}));

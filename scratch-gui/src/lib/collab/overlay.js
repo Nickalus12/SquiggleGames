@@ -216,11 +216,12 @@ class Overlay {
     }
 
     // Live colour/cursor change: drop the cached node so it rebuilds once.
-    updatePeerAppearance (id, {color, style}) {
+    updatePeerAppearance (id, {color, style, role}) {
         const p = this.peers.get(id);
         if (!p) return;
         if (color) p.color = color;
         if (style) p.style = style;
+        if (role) p.role = role;
         if (p._cursorEl) {
             p._cursorEl.remove();
             p._cursorEl = null;
