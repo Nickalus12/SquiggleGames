@@ -20,8 +20,13 @@ const MAX_BUFFERED = 2 * 1024 * 1024; // ~2MB socket buffer → start dropping l
  * application ping rather than a "no frames in 90s" rule — an idle-but-healthy
  * room sends no traffic for minutes and must not be torn down for it.
  */
-const HEARTBEAT_MS = 25000;
-const SILENCE_LIMIT_MS = 70000; // ~2 missed heartbeats
+const HEARTBEAT_MS = 2000;
+const PING_IDLE_MS = 4000;
+const PING_BUSY_MS = 1000;
+const SILENCE_LIMIT_MS = 10000;
+const SILENCE_MAX_MS = 60000;
+const SILENCE_RELAX_MS = 5 * 60 * 1000;
+const UNLOAD_GRACE_MS = 3000;
 // A socket can sit in CONNECTING indefinitely (this is what a sleeping laptop
 // wakes up to). resumeIfNeeded deliberately won't touch a handshake in flight,
 // so the handshake needs its own deadline or nothing ever replaces it.
@@ -53,6 +58,17 @@ class CollabClient {
         this._connectTimer = null;
         this._heartbeatTimer = null;
         this._lastInbound = 0;
+        this._lastProgress = 0;
+        this._lastBuffered = 0;
+        this._lastPingAt = 0;
+        this._pingCovers = [];
+        this._sentGen = 0;
+        this._confirmedGen = 0;
+        this._silenceLimit = SILENCE_LIMIT_MS;
+        this._lastSilenceAt = 0;
+        this._holding = false;
+        this._cancelUnload = null;
+        this.unloadGuard = null;
         // Set when the reliable queue had to drop something. Whoever is
         // listening owes the room a full resync — see 'queue-overflow'.
         this.droppedReliable = false;
@@ -115,17 +131,65 @@ class CollabClient {
     _heartbeat () {
         if (this._closedByUser || !this.session) return;
         if (!this.ws || this.ws.readyState !== 1) return;
+        const now = Date.now();
+        const buffered = this.ws.bufferedAmount || 0;
+        if (buffered && buffered < this._lastBuffered) this._lastProgress = now;
+        this._lastBuffered = buffered;
         const hidden = typeof document !== 'undefined' && document.hidden;
-        if (!hidden && this._lastInbound && Date.now() - this._lastInbound > SILENCE_LIMIT_MS) {
+        const heard = Math.max(this._lastInbound, this._lastProgress);
+        if (!hidden && heard && now - heard > this._silenceLimit) {
+            this._lastSilenceAt = now;
+            this._silenceLimit = Math.min(this._silenceLimit * 2, SILENCE_MAX_MS);
+            const wasConnected = this.connected;
             this.connected = false;
-            this._emit('disconnected', {});
+            if (wasConnected) this._emit('disconnected', {unconfirmed: this._takeUnconfirmed()});
             this._backoff = 1000;
             this._open();
             return;
         }
+        const busy = this._sentGen > this._confirmedGen;
+        if (now - this._lastPingAt < (busy ? PING_BUSY_MS : PING_IDLE_MS)) return;
+        this._lastPingAt = now;
+        this._pingCovers.push(this._sentGen);
+        if (this._pingCovers.length > 64) this._pingCovers.shift();
         try {
             this.ws.send(JSON.stringify({type: 'ping'}));
         } catch (e) { /* the close handler will pick this up */ }
+    }
+
+    _takeUnconfirmed () {
+        const unconfirmed = this._sentGen > this._confirmedGen;
+        this._confirmedGen = this._sentGen;
+        this._pingCovers = [];
+        return unconfirmed;
+    }
+
+    _onPong () {
+        const covered = this._pingCovers.shift();
+        if (typeof covered === 'number' && covered > this._confirmedGen) this._confirmedGen = covered;
+        if (this._silenceLimit !== SILENCE_LIMIT_MS && Date.now() - this._lastSilenceAt > SILENCE_RELAX_MS) {
+            this._silenceLimit = SILENCE_LIMIT_MS;
+        }
+    }
+
+    get generation () {
+        return this._openGen;
+    }
+
+    get holdingQueue () {
+        return this._holding;
+    }
+
+    releaseQueue () {
+        this._holding = false;
+        this._flushQueue();
+    }
+
+    discardQueue () {
+        this._holding = false;
+        const dropped = this._queue.length;
+        this._queue = [];
+        return dropped;
     }
 
     _open () {
@@ -157,6 +221,11 @@ class CollabClient {
         }
         this.ws = ws;
         this._lastInbound = Date.now();
+        this._lastProgress = 0;
+        this._lastBuffered = 0;
+        this._lastPingAt = Date.now();
+        this._pingCovers = [];
+        this._holding = false;
         this._connectTimer = setTimeout(() => {
             this._connectTimer = null;
             if (gen !== this._openGen || !this.ws || this.ws.readyState !== 0) return;
@@ -173,13 +242,15 @@ class CollabClient {
             this._lastInbound = Date.now();
             // Persistent device identity: token issued by the server on first
             // join, kept in localStorage — name-only login stays that simple.
-            let token;
+            let token = null;
             try {
-                token = ownsSocketUrl(url) ? (localStorage.getItem('st_token') || undefined) : undefined;
+                token = ownsSocketUrl(url) ? localStorage.getItem('st_token') : null;
             } catch (e) {
-                token = undefined;
+                token = null;
             }
-            ws.send(JSON.stringify({type: 'join', room, name, token}));
+            const join = {type: 'join', room, name};
+            if (token) join.token = token;
+            ws.send(JSON.stringify(join));
         };
         ws.onmessage = evt => {
             if (gen !== this._openGen) return;
@@ -190,7 +261,10 @@ class CollabClient {
             } catch (e) {
                 return;
             }
-            if (msg.type === 'pong') return; // liveness only — nobody subscribes
+            if (msg.type === 'pong') {
+                this._onPong();
+                return;
+            }
             if (msg.type === 'welcome') {
                 this.connected = true;
                 this._backoff = 1000;
@@ -200,7 +274,11 @@ class CollabClient {
                         localStorage.setItem('st_token', msg.token);
                     } catch (e) { /* private mode */ }
                 }
-                this._flushQueue();
+                this._confirmedGen = this._sentGen;
+                this._holding = this._queue.length > 0;
+                this._emit('welcome', msg);
+                if (this._holding) this.releaseQueue();
+                return;
             }
             this._emit(msg.type, msg);
         };
@@ -210,7 +288,8 @@ class CollabClient {
             const wasConnected = this.connected;
             this.connected = false;
             this.ws = null;
-            if (wasConnected) this._emit('disconnected', {});
+            this._holding = false;
+            if (wasConnected) this._emit('disconnected', {unconfirmed: this._takeUnconfirmed()});
             if (!this._closedByUser) this._scheduleReconnect();
         };
         ws.onerror = () => { /* onclose follows */ };
@@ -229,6 +308,7 @@ class CollabClient {
 
     // Reconnect immediately when the tab comes back (laptop sleep / ZeroTier blip).
     resumeIfNeeded () {
+        if (this._cancelUnload) this._cancelUnload();
         if (this._closedByUser || !this.session) return;
         // Don't kill a healthy open socket OR an in-flight CONNECTING handshake.
         if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
@@ -243,6 +323,7 @@ class CollabClient {
         for (let i = 0; i < pending.length; i++) {
             try {
                 this.ws.send(pending[i]);
+                this._sentGen++;
             } catch (e) {
                 // Re-queue the rest if the socket died mid-flush.
                 this._queue = pending.slice(i);
@@ -279,11 +360,12 @@ class CollabClient {
         // Only treat the socket as writable after welcome — frames sent between
         // onopen and welcome are dropped server-side (no room yet) and would
         // bypass the reliable queue.
-        if (this.connected && this.ws && this.ws.readyState === 1) {
+        if (this.connected && this.ws && this.ws.readyState === 1 && (lossy || !this._holding)) {
             // Under backpressure, drop lossy traffic so block edits keep flowing.
             if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return;
             try {
                 this.ws.send(data);
+                if (!lossy) this._sentGen++;
             } catch (e) {
                 if (!lossy) this._enqueue(data);
             }
@@ -322,6 +404,33 @@ class CollabClient {
      * can reconnect instead of coming back to a dead editor.
      */
     closeForUnload () {
+        let pending = null;
+        try {
+            pending = this.unloadGuard ? this.unloadGuard() : null;
+        } catch (e) {
+            pending = null;
+        }
+        if (pending && typeof pending.then === 'function' && this.connected) {
+            const gen = this._openGen;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                this._cancelUnload = null;
+                if (gen === this._openGen) this._closeNow();
+            };
+            this._cancelUnload = () => {
+                done = true;
+                this._cancelUnload = null;
+            };
+            pending.then(finish, finish);
+            setTimeout(finish, UNLOAD_GRACE_MS);
+            return;
+        }
+        this._closeNow();
+    }
+
+    _closeNow () {
         this._stopHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();

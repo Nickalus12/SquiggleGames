@@ -143,5 +143,96 @@ ws.open();
 ok('a look-alike host is another origin', joinOf(ws).token === undefined, joinOf(ws));
 client.disconnect();
 
+const fresh = () => {
+    client.disconnect();
+    client.connect({url: 'ws://test.invalid', room: 'r1', name: 'Tester'});
+    const sock = sockets[sockets.length - 1];
+    sock.open();
+    sock.message({type: 'welcome', id: 'u1', color: '#fff'});
+    return sock;
+};
+const sentTypes = sock => sock.sent.map(d => JSON.parse(d).type);
+
+ws = fresh();
+let downs = [];
+client.on('disconnected', m => downs.push(m));
+client._lastInbound = Date.now() - 11000;
+client._heartbeat();
+ok('ten seconds of silence marks the socket dead', client.connected === false && downs.length === 1, downs);
+ok('a dead socket with nothing sent reports nothing unconfirmed', downs[0] && downs[0].unconfirmed === false, downs);
+ok('the dead socket is replaced', client.ws !== ws && sockets[sockets.length - 1] === client.ws);
+ok('the silence limit backs off after a trip', client._silenceLimit === 20000, client._silenceLimit);
+
+ws = fresh();
+client._silenceLimit = 10000;
+downs = [];
+client.send({type: 'block-event', target: 'Sprite1', event: {type: 'create'}});
+client._lastInbound = Date.now() - 11000;
+client._heartbeat();
+ok('an edit written into a dead socket is reported unconfirmed', downs[0] && downs[0].unconfirmed === true, downs);
+
+ws = fresh();
+client.send({type: 'block-event', target: 'Sprite1', event: {type: 'create'}});
+client._lastPingAt = 0;
+client._heartbeat();
+ok('an unconfirmed edit pings promptly', sentTypes(ws).includes('ping'), sentTypes(ws));
+ws.message({type: 'pong'});
+downs = [];
+ws.close();
+ok('a pong after the edit confirms it', downs[0] && downs[0].unconfirmed === false, downs);
+
+ws = fresh();
+client._lastBuffered = 5000;
+ws.bufferedAmount = 3000;
+client._lastInbound = Date.now() - 11000;
+downs = [];
+client._heartbeat();
+ok('an upload still draining is not silence', client.connected === true && downs.length === 0, downs);
+ws.bufferedAmount = 0;
+
+client.disconnect();
+client.connect({url: 'ws://test.invalid', room: 'r1', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+client.send({type: 'block-event', target: 'Sprite1', event: {type: 'move'}});
+ws.open();
+let heldAtWelcome = null;
+const discardOnce = () => {
+    heldAtWelcome = client.holdingQueue;
+    client.discardQueue();
+};
+client.on('welcome', discardOnce);
+ws.message({type: 'welcome', id: 'u1', color: '#fff'});
+client.handlers.welcome.splice(client.handlers.welcome.indexOf(discardOnce), 1);
+ok('the queue is held while the welcome is decided', heldAtWelcome === true);
+ok('a discarded queue never reaches the room', !sentTypes(ws).includes('block-event'), sentTypes(ws));
+
+client.disconnect();
+client.connect({url: 'ws://test.invalid', room: 'r1', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+client.send({type: 'block-event', target: 'Sprite1', event: {type: 'move'}});
+ws.open();
+ws.message({type: 'welcome', id: 'u1', color: '#fff'});
+ok('an undecided queue still flushes after the welcome', sentTypes(ws).includes('block-event'), sentTypes(ws));
+
+ws = fresh();
+let release;
+client.unloadGuard = () => new Promise(r => {
+    release = r;
+});
+client.closeForUnload();
+ok('leaving with a save in flight keeps the socket open', client.ws === ws && ws.readyState === 1);
+release();
+await new Promise(r => setTimeout(r, 0));
+ok('the socket closes once the save is handed over', client.ws === null && ws.readyState === 3);
+
+ws = fresh();
+client.unloadGuard = () => new Promise(() => {});
+client.closeForUnload();
+client.resumeIfNeeded();
+await new Promise(r => setTimeout(r, 3100));
+ok('a bfcache restore cancels the pending close', client.ws === ws && ws.readyState === 1);
+client.unloadGuard = null;
+
+client.disconnect();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
