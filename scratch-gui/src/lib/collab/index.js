@@ -2207,9 +2207,14 @@ installNetBridge();
 // ------------------------------------------------------------- wiring up ---
 
 const onSnapshotRefused = msg => {
-    state.unackedSnapshots = [];
+    const refused = msg && Array.isArray(msg.refs) ? msg.refs.concat(msg.ref) : null;
+    state.unackedSnapshots = refused ?
+        state.unackedSnapshots.filter(entry => !refused.includes(entry.ref)) :
+        [];
     state.sentSnapshotB64 = null;
-    if (msg && typeof msg.message === 'string' && msg.message) overlay.toast(`🔒 ${msg.message}`, '#e8386d');
+    if (msg && msg.reason !== 'host-only' && typeof msg.message === 'string' && msg.message) {
+        overlay.toast(`🔒 ${msg.message}`, '#e8386d');
+    }
     if (!state.canEdit) return;
     state.resetNextSnapshot = false;
     state.forceNextSnapshot = false;
@@ -2299,7 +2304,8 @@ const applyModerated = msg => {
         const inverse = moderated.inverseBlockEvent(msg.event);
         if (inverse) applyBlockEvent({type: 'block-event', target: msg.target, event: inverse});
     }
-    if (canWrite() && (!m || m.type === 'block-event' || m.type === 'vm-action')) scheduleSnapshot(true);
+    const changedProject = m ? m.type === 'block-event' || m.type === 'vm-action' : !!msg.event;
+    if (canWrite() && changedProject) scheduleSnapshot(true);
 };
 
 const CLOSE_TEXT = {
