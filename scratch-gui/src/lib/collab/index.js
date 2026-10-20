@@ -786,14 +786,18 @@ const rescueLocalProject = async (why, incomingB64) => {
         return b64;
     }
     state.rescueTimes.push(now);
-    state.rescuedB64 = b64;
     const when = new Date().toLocaleString();
-    client.send({
+    const sent = client.send({
         type: 'save-project',
         name: `Rescued — ${state.appliedTitle || 'project'} — ${when}`,
         b64,
         quiet: true
     });
+    if (!sent) {
+        offerRescueDownload(b64);
+        return b64;
+    }
+    state.rescuedB64 = b64;
     overlay.toast(`💾 Your unsaved changes were saved to your library (${why})`, '#f0912b');
     return b64;
 };
@@ -2308,6 +2312,38 @@ const applyModerated = msg => {
     if (canWrite() && changedProject) scheduleSnapshot(true);
 };
 
+const TOO_BIG_TEXT = 'This project is too big to save. Delete a few costumes or sounds to fix it.';
+
+const retryAfterTooLarge = dropped => {
+    const type = dropped ? dropped.type : 'snapshot';
+    if (type === 'save-project') {
+        if (state.rescuedB64) offerRescueDownload(state.rescuedB64);
+        state.rescuedB64 = null;
+        return;
+    }
+    if (type === 'block-event' || type === 'vm-action') {
+        scheduleSnapshot(false);
+        return;
+    }
+    if (type !== 'snapshot') return;
+    const lost = state.unackedSnapshots.filter(entry => !dropped || entry.ref === dropped.ref);
+    if (!dropped && !lost.length) return;
+    state.unackedSnapshots = state.unackedSnapshots.filter(entry => !lost.includes(entry));
+    state.sentSnapshotB64 = null;
+    scheduleSnapshot(lost.length > 0 && lost.every(entry => entry.cacheOnly));
+};
+
+const onFrameRefused = msg => {
+    if (!msg || !msg.reliable) return;
+    if (msg.type === 'snapshot') {
+        state.unackedSnapshots = state.unackedSnapshots.filter(entry => entry.ref !== msg.ref);
+        if (state.canEdit) state.offlineEdits = true;
+        overlay.banner(TOO_BIG_TEXT, {kind: 'update'});
+    } else if ((msg.type === 'block-event' || msg.type === 'vm-action') && canWrite()) {
+        scheduleSnapshot(false);
+    }
+};
+
 const CLOSE_TEXT = {
     1008: 'Lots of changes at once, so the room asked for a short pause. Reconnecting…',
     1009: 'That was too much to send in one go. Reconnecting…',
@@ -2435,6 +2471,7 @@ const wireSocket = () => {
     });
     client.on('disconnected', msg => {
         if (msg && msg.unconfirmed && state.canEdit) state.offlineEdits = true;
+        if (msg && msg.code === 1009 && state.canEdit) retryAfterTooLarge(msg.dropped);
         if (msg && CLOSE_TEXT[msg.code] && !state.ended && msg.reason !== 'session-replaced') {
             overlay.toast(`🔌 ${CLOSE_TEXT[msg.code]}`, '#f0912b');
         }
@@ -2505,10 +2542,7 @@ const wireSocket = () => {
         } else if (msg.error === 'bad-snapshot') {
             // Almost always the size cap. Nothing this tab does will save
             // until the project gets smaller, so this stays on screen.
-            overlay.banner(
-                'This project is too big to save. Delete a few costumes or sounds to fix it.',
-                {kind: 'update'}
-            );
+            overlay.banner(TOO_BIG_TEXT, {kind: 'update'});
         } else if (msg.error === 'not-allowed-here' && (msg.masked || msg.event)) {
             applyModerated(msg);
         } else if (msg.message && typeof msg.message === 'string') {
@@ -2517,6 +2551,7 @@ const wireSocket = () => {
             overlay.toast(`⚠️ ${String(msg.error).replace(/-/g, ' ')}`, '#e8386d');
         }
     });
+    client.on('frame-refused', onFrameRefused);
     client.on('queue-overflow', () => {
         // Reliable messages had to be dropped while the socket was down, so
         // our copy and the room's have diverged in a way neither side can

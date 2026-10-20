@@ -6,6 +6,30 @@ const LOSSY = new Set(['cursor', 'presence', 'sprite-info']);
 // Reliable traffic is queued briefly across reconnects (block edits, snapshots…).
 const MAX_QUEUE = 80;
 const MAX_BUFFERED = 2 * 1024 * 1024; // ~2MB socket buffer → start dropping lossy
+const MAX_FRAME = 64 * 1024 * 1024;
+const FRAME_LIMITS = new Map([
+    ['snapshot', MAX_FRAME],
+    ['save-project', MAX_FRAME],
+    ['vm-action', 32 * 1024 * 1024],
+    ['block-event', 4 * 1024 * 1024],
+    ['play-sync', 512 * 1024],
+    ['game', 32 * 1024],
+    ['cursor', 4 * 1024],
+    ['presence', 4 * 1024]
+]);
+const DEFAULT_FRAME_LIMIT = 64 * 1024;
+
+const utf8Length = s => {
+    let n = s.length;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c >= 0x800 && (c < 0xd800 || c > 0xdfff)) n += 2;
+        else if (c >= 0x80) n += 1;
+    }
+    return n;
+};
+const frameSize = (data, limit) => (data.length > limit || data.length * 3 <= limit ?
+    data.length : utf8Length(data));
 
 /*
  * Liveness. The server pings every 30s and drops sockets that stop answering,
@@ -64,6 +88,8 @@ class CollabClient {
         this._pingCovers = [];
         this._sentGen = 0;
         this._confirmedGen = 0;
+        this._learnedLimits = new Map();
+        this._largestSent = null;
         this._silenceLimit = SILENCE_LIMIT_MS;
         this._lastSilenceAt = 0;
         this._holding = false;
@@ -226,6 +252,7 @@ class CollabClient {
         this._lastPingAt = Date.now();
         this._pingCovers = [];
         this._holding = false;
+        this._largestSent = null;
         this._connectTimer = setTimeout(() => {
             this._connectTimer = null;
             if (gen !== this._openGen || !this.ws || this.ws.readyState !== 0) return;
@@ -289,13 +316,18 @@ class CollabClient {
             this.connected = false;
             this.ws = null;
             this._holding = false;
+            const code = event && typeof event.code === 'number' ? event.code : 0;
+            const reason = event && typeof event.reason === 'string' ? event.reason : '';
+            const dropped = code === 1009 && reason !== 'too-much-data' ? this._learnFrameLimit() : null;
             if (wasConnected) {
                 this._emit('disconnected', {
                     unconfirmed: this._takeUnconfirmed(),
-                    code: event && typeof event.code === 'number' ? event.code : 0,
-                    reason: event && typeof event.reason === 'string' ? event.reason : ''
+                    code,
+                    reason,
+                    dropped
                 });
             }
+            if (dropped) this._purgeOversized();
             if (!this._closedByUser) this._scheduleReconnect();
         };
         ws.onerror = () => { /* onclose follows */ };
@@ -322,14 +354,50 @@ class CollabClient {
         this._open();
     }
 
+    _frameLimit (type) {
+        const limit = FRAME_LIMITS.get(type) || DEFAULT_FRAME_LIMIT;
+        const learned = this._learnedLimits.get(type);
+        return typeof learned === 'number' ? Math.min(limit, learned) : limit;
+    }
+
+    _noteSent (entry) {
+        const ratio = entry.size / this._frameLimit(entry.type);
+        if (!this._largestSent || ratio > this._largestSent.ratio) {
+            this._largestSent = {type: entry.type, ref: entry.ref, size: entry.size, ratio};
+        }
+    }
+
+    _learnFrameLimit () {
+        const largest = this._largestSent;
+        this._largestSent = null;
+        if (!largest || largest.size <= DEFAULT_FRAME_LIMIT) return null;
+        this._learnedLimits.set(largest.type,
+            Math.max(DEFAULT_FRAME_LIMIT, Math.min(this._frameLimit(largest.type), largest.size - 1)));
+        return {type: largest.type, ref: largest.ref, bytes: largest.size};
+    }
+
+    _purgeOversized () {
+        const kept = [];
+        for (const entry of this._queue) {
+            if (entry.size > this._frameLimit(entry.type)) this._refuse(entry, false);
+            else kept.push(entry);
+        }
+        this._queue = kept;
+    }
+
+    _refuse (entry, lossy) {
+        this._emit('frame-refused', {type: entry.type, ref: entry.ref, bytes: entry.size, reliable: !lossy});
+    }
+
     _flushQueue () {
         if (!this.ws || this.ws.readyState !== 1) return;
         const pending = this._queue;
         this._queue = [];
         for (let i = 0; i < pending.length; i++) {
             try {
-                this.ws.send(pending[i]);
+                this.ws.send(pending[i].data);
                 this._sentGen++;
+                this._noteSent(pending[i]);
             } catch (e) {
                 // Re-queue the rest if the socket died mid-flush.
                 this._queue = pending.slice(i);
@@ -339,50 +407,58 @@ class CollabClient {
     }
 
     send (msg) {
-        if (!msg || typeof msg !== 'object') return;
+        if (!msg || typeof msg !== 'object') return false;
         const lossy = LOSSY.has(msg.type);
-        if (msg.type === 'snapshot' && this._queue.length) {
-            const kept = [];
-            for (let i = 0; i < this._queue.length; i++) {
-                if (this._queue[i].startsWith('{"type":"snapshot"')) {
-                    try {
-                        const old = JSON.parse(this._queue[i]);
-                        if (old.force) msg.force = true;
-                        if (old.reset) msg.reset = true;
-                    } catch (e) { /* unparseable — superseded either way */ }
-                } else {
-                    kept.push(this._queue[i]);
-                }
-            }
-            this._queue = kept;
+        const superseded = msg.type === 'snapshot' ? this._queue.filter(e => e.type === 'snapshot') : [];
+        for (const old of superseded) {
+            try {
+                const prior = JSON.parse(old.data);
+                if (prior.force) msg.force = true;
+                if (prior.reset) msg.reset = true;
+            } catch (e) { /* unparseable — superseded either way */ }
         }
         let data;
         try {
             data = JSON.stringify(msg);
         } catch (e) {
-            return;
+            return false;
         }
+        const limit = this._frameLimit(msg.type);
+        const entry = {
+            data,
+            type: msg.type,
+            ref: typeof msg.ref === 'number' ? msg.ref : null,
+            size: frameSize(data, limit)
+        };
+        if (entry.size > limit) {
+            this._refuse(entry, lossy);
+            return false;
+        }
+        if (superseded.length) this._queue = this._queue.filter(e => e.type !== 'snapshot');
 
         // Only treat the socket as writable after welcome — frames sent between
         // onopen and welcome are dropped server-side (no room yet) and would
         // bypass the reliable queue.
         if (this.connected && this.ws && this.ws.readyState === 1 && (lossy || !this._holding)) {
             // Under backpressure, drop lossy traffic so block edits keep flowing.
-            if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return;
+            if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return false;
             try {
                 this.ws.send(data);
                 if (!lossy) this._sentGen++;
+                this._noteSent(entry);
             } catch (e) {
-                if (!lossy) this._enqueue(data);
+                if (lossy) return false;
+                this._enqueue(entry);
             }
-            return;
+            return true;
         }
 
-        if (lossy) return; // no point queueing cursors for a dead socket
-        this._enqueue(data);
+        if (lossy) return false; // no point queueing cursors for a dead socket
+        this._enqueue(entry);
+        return true;
     }
 
-    _enqueue (data) {
+    _enqueue (entry) {
         if (this._queue.length >= MAX_QUEUE) {
             // Prefer keeping the newest reliable messages (latest block state
             // wins) — but say so. A dropped `create` with its later `move`
@@ -394,7 +470,7 @@ class CollabClient {
                 this._emit('queue-overflow', {});
             }
         }
-        this._queue.push(data);
+        this._queue.push(entry);
     }
 
     /*

@@ -113,11 +113,11 @@ client.send({type: 'snapshot', b64: 'AAA', cacheOnly: false, force: true, reset:
 client.send({type: 'block-event', target: 'Sprite1', event: {type: 'move'}});
 client.send({type: 'snapshot', b64: 'BBB', cacheOnly: true, force: false, reset: false});
 ok('a newer queued snapshot supersedes the older one', client._queue.length === 2, client._queue);
-const queuedSnap = JSON.parse(client._queue[1]);
+const queuedSnap = JSON.parse(client._queue[1].data);
 ok('the surviving snapshot is the newest', queuedSnap.b64 === 'BBB', queuedSnap);
 ok('force from the superseded snapshot carries over', queuedSnap.force === true, queuedSnap);
 ok('non-snapshot messages stay queued ahead of it',
-    JSON.parse(client._queue[0]).type === 'block-event', client._queue[0]);
+    JSON.parse(client._queue[0].data).type === 'block-event', client._queue[0]);
 
 client.disconnect();
 store.st_token = 'device-token';
@@ -250,6 +250,67 @@ closes = [];
 ws.readyState = 3;
 ws.onclose();
 ok('a close without an event reports code 0', closes[0] && closes[0].code === 0 && closes[0].reason === '', closes);
+client._clearReconnect();
+
+let refused = [];
+client.on('frame-refused', m => refused.push(m));
+ws = fresh();
+const before = ws.sent.length;
+ok('a block event over the server limit is not sent',
+    client.send({type: 'block-event', pad: 'x'.repeat((4 * 1024 * 1024) + 1)}) === false &&
+    ws.sent.length === before);
+ok('the refusal is reported as reliable', refused.length === 1 && refused[0].type === 'block-event' &&
+    refused[0].reliable === true, refused);
+refused = [];
+ok('the limit counts UTF-8 bytes, not characters',
+    client.send({type: 'block-event', pad: '\u20ac'.repeat(1500000)}) === false && refused.length === 1);
+refused = [];
+ok('an oversized cursor is dropped as lossy',
+    client.send({type: 'cursor', pad: 'x'.repeat(5000)}) === false && refused[0] && refused[0].reliable === false,
+    refused);
+ok('a frame within its limit still goes out', client.send({type: 'block-event', pad: 'ok'}) === true &&
+    sentTypes(ws).pop() === 'block-event');
+
+ws = fresh();
+refused = [];
+closes = [];
+client.send({type: 'snapshot', b64: 'A'.repeat(200 * 1024), ref: 7, cacheOnly: false});
+client._holding = true;
+client.send({type: 'block-event', target: 'Sprite1', event: {type: 'move'}});
+client.send({type: 'snapshot', b64: 'B'.repeat(300 * 1024), ref: 8, cacheOnly: true});
+ws.readyState = 3;
+ws.onclose({code: 1009, reason: ''});
+ok('a 1009 close names the frame that was too large', closes[0] && closes[0].dropped &&
+    closes[0].dropped.type === 'snapshot' && closes[0].dropped.ref === 7, closes);
+ok('a queued frame over the learned limit is dropped from the queue',
+    client._queue.length === 1 && client._queue[0].type === 'block-event', client._queue);
+ok('the dropped queued snapshot is reported', refused.length === 1 && refused[0].ref === 8, refused);
+client._clearReconnect();
+refused = [];
+ok('the same snapshot is refused next time instead of closing the socket again',
+    client.send({type: 'snapshot', b64: 'C'.repeat(200 * 1024), ref: 9, cacheOnly: false}) === false &&
+    refused[0].ref === 9, refused);
+ok('a smaller snapshot is still accepted', client.send({type: 'snapshot', b64: 'D'.repeat(100 * 1024), ref: 10}));
+ok('learning one type leaves the others alone',
+    client.send({type: 'vm-action', pad: 'E'.repeat(300 * 1024)}) === true);
+client._learnedLimits.clear();
+
+ws = fresh();
+closes = [];
+client.send({type: 'snapshot', b64: 'A'.repeat(200 * 1024), ref: 11});
+ws.readyState = 3;
+ws.onclose({code: 1009, reason: 'too-much-data'});
+ok('a byte-budget close drops nothing and learns nothing',
+    closes[0] && closes[0].dropped === null && client._learnedLimits.size === 0, closes);
+client._clearReconnect();
+
+ws = fresh();
+closes = [];
+client.send({type: 'block-event', pad: 'small'});
+ws.readyState = 3;
+ws.onclose({code: 1009, reason: 'frame-too-large'});
+ok('a 1009 after only small frames blames nothing',
+    closes[0] && closes[0].dropped === null && client._learnedLimits.size === 0, closes);
 client._clearReconnect();
 
 client.disconnect();
