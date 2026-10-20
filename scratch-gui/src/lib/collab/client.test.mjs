@@ -233,6 +233,25 @@ await new Promise(r => setTimeout(r, 3100));
 ok('a bfcache restore cancels the pending close', client.ws === ws && ws.readyState === 1);
 client.unloadGuard = null;
 
+let closes = [];
+client.on('disconnected', m => closes.push(m));
+for (const [code, reason] of [[1008, 'rate-limited'], [1009, 'too-much-data'], [4008, 'too-slow']]) {
+    ws = fresh();
+    closes = [];
+    ws.readyState = 3;
+    ws.onclose({code, reason});
+    ok(`a ${code} close tells the editor why`, closes.length === 1 && closes[0].code === code &&
+        closes[0].reason === reason, closes);
+    ok(`a ${code} close still reconnects`, client._reconnectTimer !== null);
+    client._clearReconnect();
+}
+ws = fresh();
+closes = [];
+ws.readyState = 3;
+ws.onclose();
+ok('a close without an event reports code 0', closes[0] && closes[0].code === 0 && closes[0].reason === '', closes);
+client._clearReconnect();
+
 client.disconnect();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -282,14 +282,20 @@ class CollabClient {
             }
             this._emit(msg.type, msg);
         };
-        ws.onclose = () => {
+        ws.onclose = event => {
             if (gen !== this._openGen) return;
             this._clearConnectTimer();
             const wasConnected = this.connected;
             this.connected = false;
             this.ws = null;
             this._holding = false;
-            if (wasConnected) this._emit('disconnected', {unconfirmed: this._takeUnconfirmed()});
+            if (wasConnected) {
+                this._emit('disconnected', {
+                    unconfirmed: this._takeUnconfirmed(),
+                    code: event && typeof event.code === 'number' ? event.code : 0,
+                    reason: event && typeof event.reason === 'string' ? event.reason : ''
+                });
+            }
             if (!this._closedByUser) this._scheduleReconnect();
         };
         ws.onerror = () => { /* onclose follows */ };
