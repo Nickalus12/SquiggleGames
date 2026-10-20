@@ -14,6 +14,7 @@
 import paper from '@turbowarp/paper';
 import client from './client';
 import showLogin from './login';
+import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
 
@@ -63,8 +64,23 @@ const state = {
     spriteInfoTimer: null,
     lastPresence: {status: null, sprite: null, sentAt: 0},
     lastSnapshotB64: null, // dedup — skip re-broadcasting identical project state
+    snapshotRef: 0,
+    unackedSnapshots: [],
+    sentSnapshotB64: null,
+    sentSnapshotGen: -1,
+    snapshotPromise: null,
+    ended: false,
+    localClaims: new Map(),
+    exportingSprites: new Set(),
+    heldSpriteEvents: [],
+    rescuedB64: null,
+    rescueTimes: [],
+    bitmapChain: Promise.resolve(),
+    snapshotsSeen: 0,
+    installingRemote: 0,
+    flushBitmaps: null,
     localTab: 0, // 0 code / 1 costumes / 2 sounds
-    pendingRemotePaint: new Map(), // deferred remote paint edits while locally painting
+    pendingRemotePaint: [], // deferred remote paint edits while locally painting
     pendingSnapshotMsg: null, // deferred remote snapshot while locally painting
     snapshotLoading: false,
     queuedBlockEvents: [],
@@ -143,9 +159,10 @@ const paintRev = (targetId, costumeIndex) => {
 // can carry costume state OLDER than live-synced paint edits (the zip is
 // debounced up to 20s behind) — without this cache a snapshot reverting fresh
 // strokes was the "we painted it and it came back undone" bug.
-const PAINT_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+const PAINT_CACHE_MAX_AGE_MS = 45 * 1000;
 const cachePaint = msg => {
     const key = `${msg.target}|${msg.costumeIndex}|${msg.action}`;
+    state.recentPaint.delete(key);
     state.recentPaint.set(key, {at: Date.now(), msg});
     if (state.recentPaint.size > 64) {
         const oldest = state.recentPaint.keys().next().value;
@@ -170,6 +187,33 @@ const hasPeers = () => overlay.peers.size > 0;
  */
 const canWrite = () => state.active && state.canEdit && !state.applyingRemote;
 
+const CLAIM_MS = 15000;
+const claimName = (kind, name, from) => {
+    if (!name) return;
+    state.localClaims.set(`${kind}|${name}`, {at: Date.now(), from});
+    if (state.localClaims.size > 50) state.localClaims.delete(state.localClaims.keys().next().value);
+};
+const recentClaim = (kind, name) => {
+    const claim = state.localClaims.get(`${kind}|${name}`);
+    return claim && Date.now() - claim.at < CLAIM_MS ? claim : null;
+};
+
+const sendBlockEvent = msg => {
+    if (state.exportingSprites.has(msg.target)) {
+        if (state.heldSpriteEvents.length < 500) state.heldSpriteEvents.push(msg);
+        return;
+    }
+    client.send(msg);
+};
+
+const releaseSpriteEvents = name => {
+    state.exportingSprites.delete(name);
+    const held = state.heldSpriteEvents.filter(m => m.target === name);
+    if (!held.length) return;
+    state.heldSpriteEvents = state.heldSpriteEvents.filter(m => m.target !== name);
+    for (const m of held) client.send(m);
+};
+
 /*
  * A viewer's edit is refused at the call, not after it.
  *
@@ -183,12 +227,33 @@ const canWrite = () => state.active && state.canEdit && !state.applyingRemote;
  */
 const REFUSE_TOAST_MS = 4000;
 const refuseIfViewer = () => {
-    if (!state.active || state.canEdit || state.applyingRemote) return false;
+    if (state.applyingRemote) return false;
+    if (state.ended) {
+        if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
+            state.lastRefuseAt = Date.now();
+            overlay.toast('🔌 Not connected to the room — save a copy to keep your changes', '#8a8fa3');
+        }
+        return true;
+    }
+    if (!state.active || state.canEdit) return false;
     if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
         state.lastRefuseAt = Date.now();
         overlay.toast('👀 You are watching — ask the owner for edit access', '#8a8fa3');
     }
     return true;
+};
+
+const HOST_ONLY_TEXT = 'Only the room host can open a different project here — it would replace what ' +
+    'everyone is working on. Ask them, or open it in a room of your own.';
+const mayReplaceProject = () => {
+    if (!state.active || state.applyingRemote) return true;
+    if (state.canEdit && state.role === 'owner') return true;
+    if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
+        state.lastRefuseAt = Date.now();
+        overlay.toast(state.canEdit ? `🔒 ${HOST_ONLY_TEXT}` :
+            '👀 You are watching — ask the owner for edit access', '#8a8fa3');
+    }
+    return false;
 };
 
 /*
@@ -210,15 +275,39 @@ const patchFlyoutReadOnly = SB => {
     proto.__squiggleReadOnly = true;
 };
 
+const saveFile = (blob, name) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+};
+
+const projectFileName = () => {
+    const title = (state.appliedTitle || '').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    return `${title || 'project'}.sb3`;
+};
+
+const downloadCurrentProject = () => {
+    if (!state.vm) return;
+    state.vm.saveProjectSb3().then(blob => saveFile(blob, projectFileName()), () => {
+        overlay.toast('⚠️ Could not make the download — try File → Save to your computer', '#e8386d');
+    });
+};
+
 const applyEditability = () => {
+    const editable = state.canEdit && !state.ended;
     // Blockly reads options.readOnly live — isMovable/isDeletable/isEditable
     // all consult it — so flipping it here is enough to stop dragging,
     // deleting and field edits on an already-injected workspace.
     if (state.workspace && state.workspace.options) {
-        state.workspace.options.readOnly = !state.canEdit;
+        state.workspace.options.readOnly = !editable;
     }
     patchFlyoutReadOnly(state.ScratchBlocks);
-    if (state.canEdit) {
+    if (editable) {
         if (state.readOnlyBannerUp) {
             state.readOnlyBannerUp = false;
             overlay.banner(null);
@@ -226,6 +315,14 @@ const applyEditability = () => {
         return;
     }
     state.readOnlyBannerUp = true;
+    if (state.ended) {
+        overlay.banner(state.endedText || 'Disconnected from the room — your changes here are not saved.', {
+            kind: 'update',
+            actionLabel: 'Save a copy to my computer',
+            onAction: downloadCurrentProject
+        });
+        return;
+    }
     overlay.banner('You are watching this project — your changes will not be saved.', {kind: 'busy'});
 };
 
@@ -409,7 +506,27 @@ const imageDataFromImg = (img, w, h) => {
     return ctx.getImageData(0, 0, w, h);
 };
 
-const sendSnapshotNow = async cacheOnly => {
+const ackSnapshot = msg => {
+    const list = state.unackedSnapshots;
+    let at = -1;
+    if (typeof msg.ref === 'number') {
+        at = list.findIndex(s => s.ref === msg.ref);
+    } else {
+        const wantCacheOnly = msg.cacheOnly === true;
+        at = list.findIndex(s => s.cacheOnly === wantCacheOnly);
+    }
+    if (at < 0) return null;
+    const entry = list[at];
+    state.unackedSnapshots = list.slice(at + 1);
+    state.lastSnapshotB64 = entry.b64;
+    return entry;
+};
+
+const hasUnsavedEdits = () => !!(state.snapshotTimer || state.snapshotInFlight ||
+    typeof state.deferredSnapshot === 'boolean' || state.offlineEdits ||
+    state.unackedSnapshots.some(entry => !entry.cacheOnly));
+
+const zipAndSendSnapshot = async cacheOnly => {
     if (!state.active || state.applyingRemote || !state.vm) return;
     // One zip at a time — overlapping saveProjectSb3 janks the editor hard.
     if (state.snapshotInFlight) {
@@ -437,15 +554,22 @@ const sendSnapshotNow = async cacheOnly => {
         }
         // Drop if we went inactive / started applying remote mid-zip.
         if (!state.active || state.applyingRemote) return;
-        if (b64 === state.lastSnapshotB64) return; // nothing actually changed
-        state.lastSnapshotB64 = b64;
         const force = state.forceNextSnapshot === true;
-        state.forceNextSnapshot = false;
         const reset = cacheOnly !== true && state.resetNextSnapshot === true;
+        if (!force && !reset && b64 === state.lastSnapshotB64) return; // nothing actually changed
+        if (!force && !reset && cacheOnly === true && b64 === state.sentSnapshotB64 &&
+            state.sentSnapshotGen === client.generation) return;
+        state.forceNextSnapshot = false;
         if (reset) state.resetNextSnapshot = false;
+        const ref = ++state.snapshotRef;
+        state.unackedSnapshots.push({ref, b64, cacheOnly: cacheOnly === true});
+        if (state.unackedSnapshots.length > 8) state.unackedSnapshots.shift();
+        state.sentSnapshotB64 = b64;
+        state.sentSnapshotGen = client.generation;
         client.send({
             type: 'snapshot',
             b64,
+            ref,
             cacheOnly: cacheOnly === true,
             basedOn: state.roomVersion,
             force,
@@ -462,6 +586,17 @@ const sendSnapshotNow = async cacheOnly => {
             scheduleSnapshot(again);
         }
     }
+};
+
+const sendSnapshotNow = cacheOnly => {
+    const prior = state.snapshotInFlight ? state.snapshotPromise : null;
+    const run = zipAndSendSnapshot(cacheOnly);
+    if (prior) return prior;
+    state.snapshotPromise = run;
+    run.then(() => {
+        if (state.snapshotPromise === run) state.snapshotPromise = null;
+    });
+    return run;
 };
 
 /*
@@ -508,12 +643,32 @@ const scheduleSnapshot = cacheOnly => {
     }, Math.max(0, Math.min(wait, remaining)));
 };
 
+const flushForLeave = () => {
+    if (!state.active || !state.canEdit) return null;
+    flushBlockMoves();
+    if (state.flushBitmaps && state.pendingBitmaps.size) {
+        clearTimeout(state.bitmapTimer);
+        state.flushBitmaps();
+    }
+    if (state.snapshotTimer) {
+        clearTimeout(state.snapshotTimer);
+        state.snapshotTimer = null;
+        state.snapshotDeferredSince = 0;
+        sendSnapshotNow(state.pendingSnapshotCacheOnly);
+    } else if (typeof state.deferredSnapshot === 'boolean') {
+        const flag = state.deferredSnapshot;
+        delete state.deferredSnapshot;
+        sendSnapshotNow(flag);
+    }
+    return state.snapshotPromise;
+};
+
 if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
         if (!state.active) return;
         if (document.hidden) {
             // Don't leave coalesced moves sitting in a timer across sleep.
-            flushBlockMoves();
+            flushForLeave();
             return;
         }
         if (state.deferredSnapshot !== undefined) {
@@ -533,7 +688,7 @@ if (typeof document !== 'undefined') {
         if (!state.pointerDown) return;
         state.pointerDown = false;
         setTimeout(() => {
-            if (!state.pointerDown && state.pendingRemotePaint.size) flushPendingPaint();
+            if (!state.pointerDown && state.pendingRemotePaint.length) flushPendingPaint();
         }, 80);
     };
     document.addEventListener('pointerup', pointerReleased, true);
@@ -585,38 +740,73 @@ const reapplyRecentPaint = () => {
  * snapshot can happen repeatedly during a bad connection, and 40 near-identical
  * rescues is its own kind of data loss.
  */
-const RESCUE_COOLDOWN_MS = 5 * 60 * 1000;
-const rescueLocalProject = async why => {
-    if (!state.vm || !state.canEdit) return false;
-    if (Date.now() - (state.lastRescueAt || 0) < RESCUE_COOLDOWN_MS) return false;
-    state.lastRescueAt = Date.now();
+const RESCUE_WINDOW_MS = 60 * 60 * 1000;
+const RESCUE_MAX_PER_WINDOW = 10;
+
+const offerRescueDownload = b64 => {
+    const name = projectFileName();
+    overlay.banner('Your version was replaced by the room\'s. Keep a copy on this computer?', {
+        kind: 'update',
+        actionLabel: 'Download your version',
+        onAction: () => {
+            saveFile(new Blob([bufferFromB64(b64)], {type: 'application/x.scratch.sb3'}), name);
+            overlay.banner(null);
+        }
+    });
+};
+
+const rescueLocalProject = async (why, incomingB64) => {
+    if (!state.vm || !state.canEdit) return null;
+    let b64;
     try {
-        const b64 = await state.vm.saveProjectSb3('base64');
-        const when = new Date().toLocaleString();
-        client.send({
-            type: 'save-project',
-            name: `Rescued — ${state.appliedTitle || 'project'} — ${when}`,
-            b64,
-            quiet: true
-        });
-        overlay.toast(`💾 Your unsaved changes were saved to your library (${why})`, '#f0912b');
-        return true;
+        b64 = await state.vm.saveProjectSb3('base64');
     } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[collab] rescue save failed', e);
-        return false;
+        return null;
     }
+    if (b64 === incomingB64 || b64 === state.rescuedB64) return b64;
+    const now = Date.now();
+    state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
+    if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) {
+        offerRescueDownload(b64);
+        return b64;
+    }
+    state.rescueTimes.push(now);
+    state.rescuedB64 = b64;
+    const when = new Date().toLocaleString();
+    client.send({
+        type: 'save-project',
+        name: `Rescued — ${state.appliedTitle || 'project'} — ${when}`,
+        b64,
+        quiet: true
+    });
+    overlay.toast(`💾 Your unsaved changes were saved to your library (${why})`, '#f0912b');
+    return b64;
+};
+
+const carrySnapshotFlags = (older, newer) => {
+    if (older && older !== newer) {
+        if (older._rescue && !newer._rescue) newer._rescue = older._rescue;
+        if (older._force) newer._force = true;
+    }
+    return newer;
+};
+
+const forceNextApply = () => {
+    state.forceApplyNextSnapshot = true;
 };
 
 const applySnapshot = async msg => {
     if (!state.vm || !msg || !msg.b64) return;
+    state.snapshotsSeen++;
     // This snapshot is about to overwrite edits of ours that never reached the
     // room. Keep a copy first — silently discarding someone's work is the one
     // outcome this whole sync engine must never produce.
     if (msg.stale || state.rescueOnNextSnapshot) {
-        const why = msg.stale ? 'someone else saved first' : 'someone else was already in the room';
+        msg._rescue = msg.stale ? 'someone else saved first' : 'someone else was already in the room';
+        if (state.rescueOnNextSnapshot) msg._force = true;
         state.rescueOnNextSnapshot = false;
-        await rescueLocalProject(why);
     }
     // Reconnect with edits made while offline and nobody else in the room:
     // our local copy is the newest truth — the welcome handler already pushed
@@ -632,35 +822,49 @@ const applySnapshot = async msg => {
     // belief that is wrong, and skipping would leave the divergence in place.
     if (state.forceApplyNextSnapshot) {
         state.forceApplyNextSnapshot = false;
-    } else if (msg.b64 === state.lastSnapshotB64) {
+        msg._force = true;
+    }
+    if (!msg._force && !msg._rescue &&
+        (msg.b64 === state.lastSnapshotB64 || msg.b64 === state.sentSnapshotB64)) {
+        state.lastSnapshotB64 = msg.b64;
         if (typeof msg.version === 'number') state.roomVersion = msg.version;
         return;
     }
     // Never yank the project while the user is mid-paint — hold the newest
     // snapshot and apply it when they leave the costumes tab.
     if (state.localTab === 1) {
-        state.pendingSnapshotMsg = msg;
-        state.pendingRemotePaint.clear(); // snapshot supersedes queued strokes
+        state.pendingSnapshotMsg = carrySnapshotFlags(state.pendingSnapshotMsg, msg);
         return;
     }
     // Serialize loads: concurrent loadProject on one VM corrupts state.
     // Keep only the newest pending message and run them one at a time.
     if (state.snapshotLoading) {
-        state.pendingSnapshotMsg = msg;
+        state.pendingSnapshotMsg = carrySnapshotFlags(state.pendingSnapshotMsg, msg);
         return;
     }
 
     const keepTarget = editingTargetName();
-    state.applyingRemote++;
     state.snapshotLoading = true;
+    let alreadyHave = false;
+    if (msg._rescue) {
+        try {
+            alreadyHave = await rescueLocalProject(msg._rescue, msg.b64) === msg.b64;
+        } catch (e) {
+            alreadyHave = false;
+        }
+        state.recentPaint.clear();
+    }
+    state.applyingRemote++;
     if (msg.reset) state.recentPaint.clear(); // deliberate project open — don't resurrect old paint
     // SVG diff bases die with the old assets (the editor reloads from the new
     // ones). Bitmap shadows survive — they're the freshest pixels to restore.
-    for (const k of [...state.paintBase.keys()]) {
-        if (k.endsWith('|svg') || msg.reset) state.paintBase.delete(k);
+    if (!alreadyHave) {
+        for (const k of [...state.paintBase.keys()]) {
+            if (k.endsWith('|svg') || msg.reset || msg._rescue) state.paintBase.delete(k);
+        }
     }
     try {
-        await state.vm.loadProject(bufferFromB64(msg.b64));
+        if (!alreadyHave) await state.vm.loadProject(bufferFromB64(msg.b64));
         // Only mark applied after a successful load — failed loads must retry.
         // Assigned after an await, but not a race: `snapshotLoading` above is
         // set before the await and gates every other entry to this function, so
@@ -674,19 +878,21 @@ const applySnapshot = async msg => {
         if (typeof msg.version === 'number' && msg.version > state.roomVersion) {
             state.roomVersion = msg.version;
         }
-        rebuildTargetIndex();
-        // The zip we just loaded can be up to ~20s behind live-synced paint —
-        // re-apply the freshest costume state so strokes never get reverted.
-        const reapplied = !msg.reset && state.recentPaint.size > 0;
-        if (reapplied) reapplyRecentPaint();
-        const restored = findTargetByName(keepTarget);
-        if (restored) state.vm.setEditingTarget(restored.id);
-        if (msg.author && msg.author !== 'server') {
-            overlay.toast(`🔄 Project synced from ${msg.author}`, msg.color);
+        if (!alreadyHave) {
+            rebuildTargetIndex();
+            // The zip we just loaded can be up to ~20s behind live-synced paint —
+            // re-apply the freshest costume state so strokes never get reverted.
+            const reapplied = !msg.reset && !msg._rescue && state.recentPaint.size > 0;
+            if (reapplied) reapplyRecentPaint();
+            const restored = findTargetByName(keepTarget);
+            if (restored) state.vm.setEditingTarget(restored.id);
+            if (msg.author && msg.author !== 'server') {
+                overlay.toast(`🔄 Project synced from ${msg.author}`, msg.color);
+            }
+            // Costumes now differ from the room's persisted zip — refresh it
+            // (cacheOnly: peers already have the paint live).
+            if (reapplied) setTimeout(() => scheduleSnapshot(true), 0);
         }
-        // Costumes now differ from the room's persisted zip — refresh it
-        // (cacheOnly: peers already have the paint live).
-        if (reapplied) setTimeout(() => scheduleSnapshot(true), 0);
     } catch (e) {
         /*
          * A load that throws part-way leaves the worst possible state: targets
@@ -703,6 +909,7 @@ const applySnapshot = async msg => {
         // eslint-disable-next-line no-console
         console.error('[collab] failed to apply snapshot', e);
         overlay.toast('⚠️ Could not load the project — retrying', '#f0912b');
+        forceNextApply();
         // Declared below, like the rest of the mutually-referring handlers here.
         // eslint-disable-next-line no-use-before-define
         requestResync('snapshot load failed');
@@ -723,7 +930,7 @@ const applySnapshot = async msg => {
 
     // A newer snapshot arrived while we were loading — apply it next (or
     // re-defer if the user is still on the costumes tab).
-    if (state.pendingSnapshotMsg && state.pendingSnapshotMsg.b64 !== state.lastSnapshotB64) {
+    if (state.pendingSnapshotMsg) {
         const next = state.pendingSnapshotMsg;
         state.pendingSnapshotMsg = null;
         await applySnapshot(next);
@@ -798,10 +1005,17 @@ const wrapVm = vm => {
                     const added = vm.runtime.targets.filter(t =>
                         t.isOriginal && !t.isStage && !before.has(t.getName()));
                     for (const t of added) {
+                        const name = t.getName();
+                        claimName('sprite', name);
                         if (hasPeers()) {
+                            state.exportingSprites.add(name);
                             vm.exportSprite(t.id, 'base64').then(b64 => {
-                                client.send({type: 'vm-action', action: 'spriteAdd', sprite: b64, name: t.getName()});
-                            }, () => scheduleSnapshot()); // export failed — fall back to full resync
+                                client.send({type: 'vm-action', action: 'spriteAdd', sprite: b64, name});
+                                releaseSpriteEvents(name);
+                            }, () => {
+                                releaseSpriteEvents(name);
+                                scheduleSnapshot();
+                            }); // export failed — fall back to full resync
                         }
                     }
                     scheduleSnapshot(true); // keep the server's cached copy fresh
@@ -899,6 +1113,7 @@ const wrapVm = vm => {
     // one legit full-snapshot left, and it must not resurrect cached paint.
     const originalLoad = vm.loadProject.bind(vm);
     vm.loadProject = (...args) => {
+        if (!mayReplaceProject()) return Promise.resolve();
         const result = originalLoad(...args);
         if (!state.applyingRemote) {
             Promise.resolve(result).then(() => {
@@ -960,10 +1175,19 @@ const wrapVm = vm => {
         return result;
     };
 
+    const unwrappedRenameSprite = vm.renameSprite.bind(vm);
     wrapTargeted(vm, 'renameSprite', (targetId, newName) => {
         const target = targetNameById(targetId);
+        if (target) claimName('sprite', newName, target);
         return target ? {target, newName} : null;
     });
+    const wrappedRenameSprite = vm.renameSprite;
+    vm.renameSprite = (targetId, newName) => {
+        if (!newName || newName !== targetNameById(targetId)) return wrappedRenameSprite(targetId, newName);
+        const result = unwrappedRenameSprite(targetId, newName);
+        rebuildTargetIndex();
+        return result;
+    };
     wrapTargeted(vm, 'renameCostume', (index, newName) => {
         const target = editingTargetName();
         return {target, index, newName, ident: costumeIdent(target, index)};
@@ -1116,6 +1340,7 @@ const wrapVm = vm => {
         state.pendingBitmaps.clear();
         for (const p of batch) sendBitmap(p).catch(() => {});
     };
+    state.flushBitmaps = flushPendingBitmaps;
 
     const originalUpdateBitmap = vm.updateBitmap.bind(vm);
     vm.updateBitmap = (costumeIndex, bitmap, rotationCenterX, rotationCenterY, bitmapResolution) => {
@@ -1123,7 +1348,7 @@ const wrapVm = vm => {
         const result = originalUpdateBitmap(costumeIndex, bitmap, rotationCenterX, rotationCenterY, bitmapResolution);
         if (canWrite()) {
             const target = editingTargetName();
-            if (target && hasPeers()) {
+            if (target) {
                 // Copy the pixel view only — bitmap.data.buffer may be a larger
                 // ArrayBuffer shared with other views (byteOffset !== 0).
                 const pixels = bitmap.data;
@@ -1150,7 +1375,7 @@ const wrapVm = vm => {
                 });
                 clearTimeout(state.bitmapTimer);
                 state.bitmapTimer = setTimeout(flushPendingBitmaps, 250);
-                sendPresence({status: '🎨 painting', sprite: target});
+                if (hasPeers()) sendPresence({status: '🎨 painting', sprite: target});
             }
             scheduleSnapshot(true);
         }
@@ -1176,6 +1401,9 @@ const wrapVm = vm => {
     });
 
     vm.runtime.on('PROJECT_LOADED', rebuildTargetIndex);
+    vm.runtime.on('EXTENSION_ADDED', () => {
+        if (canWrite() && !state.installingRemote && !state.snapshotLoading) scheduleSnapshot(false);
+    });
 };
 
 /*
@@ -1230,7 +1458,7 @@ const flushBlockMoves = () => {
     if (!state.pendingBlockMoves.size) return;
     const batch = state.pendingBlockMoves;
     state.pendingBlockMoves = new Map();
-    for (const msg of batch.values()) client.send(msg);
+    for (const msg of batch.values()) sendBlockEvent(msg);
 };
 
 const onWorkspaceEvent = e => {
@@ -1260,7 +1488,8 @@ const onWorkspaceEvent = e => {
         return;
     }
     if (state.pendingBlockMoves.size) flushBlockMoves();
-    client.send({type: 'block-event', target, event: json});
+    if (e.type === 'var_create' && json.varName) claimName('var', json.varName);
+    sendBlockEvent({type: 'block-event', target, event: json});
     sendPresence({status: '✏️ coding', sprite: target});
     // Block edits reach peers live but used to reach DISK only if some other
     // kind of edit happened to schedule a snapshot. An afternoon of pure block
@@ -1311,8 +1540,7 @@ const TAB_STATUS = ['here', '🎨 painting', '🎵 sounds'];
 // deferred — applying them mid-edit resets scratch-paint's working state
 // (color picker included). They flush as soon as the tab changes.
 const flushPendingPaint = () => {
-    const queued = [...state.pendingRemotePaint.values()];
-    state.pendingRemotePaint.clear();
+    const queued = state.pendingRemotePaint.splice(0);
     for (let i = 0; i < queued.length; i++) applyVmAction(queued[i]);
 };
 
@@ -1372,8 +1600,8 @@ const housekeep = () => {
             if (state.pendingSnapshotMsg) {
                 const snap = state.pendingSnapshotMsg;
                 state.pendingSnapshotMsg = null;
-                state.pendingRemotePaint.clear();
-                applySnapshot(snap);
+                flushPendingPaint();
+                state.bitmapChain.then(() => applySnapshot(snap));
             } else {
                 flushPendingPaint();
             }
@@ -1419,8 +1647,10 @@ const startHousekeeping = () => {
  * 1Hz housekeeper kept polling and every edit kept queueing messages for a
  * connection that is never coming back.
  */
-const endSession = () => {
+const endSession = text => {
     state.active = false;
+    state.ended = true;
+    state.endedText = text || null;
     if (state.housekeepTimer) {
         clearInterval(state.housekeepTimer);
         state.housekeepTimer = null;
@@ -1428,9 +1658,24 @@ const endSession = () => {
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
     overlay.setConnected(false);
+    applyEditability();
 };
 
 // ------------------------------------------------- incoming: application ---
+
+const nameClash = (kind, name, fromPeer) => {
+    if (recentClaim(kind, name) && String(state.selfId) < String(fromPeer)) {
+        setTimeout(() => scheduleSnapshot(false), 0);
+        return;
+    }
+    const seen = state.snapshotsSeen;
+    setTimeout(() => {
+        if (state.active && state.snapshotsSeen === seen) {
+            state.lastResyncAt = 0;
+            requestResync(`${kind} name clash: ${name}`);
+        }
+    }, 3000);
+};
 
 const applyBlockEvent = msg => {
     if (state.snapshotLoading) {
@@ -1443,7 +1688,7 @@ const applyBlockEvent = msg => {
     if (!target) {
         // Sprite not here yet (snapshot in flight / rename race) — hold briefly.
         if (state.orphanBlockEvents.length < 200) {
-            msg._queuedAt = Date.now();
+            if (!msg._queuedAt) msg._queuedAt = Date.now();
             state.orphanBlockEvents.push(msg);
         } else {
             requestResync('orphan block-event queue full');
@@ -1464,6 +1709,9 @@ const applyBlockEvent = msg => {
             target.blocks.blocklyListen(vmEvent);
         } finally {
             runtime._editingTarget = realEditingTarget;
+        }
+        if (vmEvent.type === 'var_create' && vmEvent.varId && !target.lookupVariableById(vmEvent.varId)) {
+            nameClash('var', vmEvent.varName, msg.from);
         }
 
         // Mirror into the visible workspace if this user is looking at the same sprite.
@@ -1513,17 +1761,30 @@ const applySpriteInfo = msg => {
     state.applyingRemote--;
 };
 
+const drainOrphans = () => {
+    if (!state.orphanBlockEvents.length || state.snapshotLoading) return;
+    const orphans = state.orphanBlockEvents.splice(0);
+    for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
+};
+
 // Install a relayed .sprite3 without yanking the local user off their sprite
 // (vm.addSprite switches editingTarget to the new sprite).
 const applySpriteAdd = msg => {
     const prevEditing = state.vm.editingTarget;
+    const before = new Set(state.vm.runtime.targets.map(t => t.id));
+    state.installingRemote++;
     state.vm.addSprite(new Uint8Array(bufferFromB64(msg.sprite))).then(() => {
+        state.installingRemote--;
         rebuildTargetIndex();
         if (prevEditing && state.vm.runtime.targets.includes(prevEditing)) {
             state.vm.setEditingTarget(prevEditing.id);
         }
         overlay.toast(`✨ ${msg.fromName} added ${msg.name}`, msg.color);
+        const added = state.vm.runtime.targets.find(t => t.isOriginal && !t.isStage && !before.has(t.id));
+        if (added && msg.name && added.getName() !== msg.name) nameClash('sprite', msg.name, msg.from);
+        drainOrphans();
     }, e => {
+        state.installingRemote--;
         // eslint-disable-next-line no-console
         console.error('[collab] sprite install failed', e);
     });
@@ -1563,6 +1824,27 @@ const applySoundAdd = msg => {
     });
 };
 
+const applyRemoteDuplicate = (target, index, isSound) => {
+    const original = (isSound ? target.getSounds() : target.getCostumes())[index];
+    if (!original) return;
+    const clone = Object.assign({}, original);
+    const added = isSound ?
+        state.vm.addSound(clone, target.id) :
+        state.vm.addCostume(`${clone.assetId}.${clone.dataFormat}`, clone, target.id);
+    Promise.resolve(added).then(() => {
+        if (!state.vm.runtime.targets.includes(target)) return;
+        const from = (isSound ? target.getSounds() : target.getCostumes()).indexOf(clone);
+        if (from < 0) return;
+        if (isSound) {
+            target.reorderSound(from, index + 1);
+        } else {
+            target.reorderCostume(from, index + 1);
+            target.setCostume(index + 1);
+        }
+        state.vm.emitTargetsUpdate();
+    }, () => requestResync('remote duplicate failed'));
+};
+
 const applyVmAction = msg => {
     state.applyingRemote++;
     try {
@@ -1576,10 +1858,17 @@ const applyVmAction = msg => {
             if (target) {
                 state.vm.renameSprite(target.id, msg.newName);
                 rebuildTargetIndex();
+                if (msg.newName && target.getName() !== msg.newName) nameClash('sprite', msg.newName, msg.from);
+                drainOrphans();
             }
+        } else if (msg.action === 'duplicateCostume' || msg.action === 'duplicateSound') {
+            const target = findTargetByName(msg.target);
+            const isSound = msg.action === 'duplicateSound';
+            const index = target ?
+                (isSound ? resolveSound(target, msg) : resolveCostume(target, msg, msg.index)) : -1;
+            if (target && index >= 0) applyRemoteDuplicate(target, index, isSound);
         } else if (msg.action === 'renameCostume' || msg.action === 'renameSound' ||
-            msg.action === 'deleteCostume' || msg.action === 'duplicateCostume' ||
-            msg.action === 'deleteSound' || msg.action === 'duplicateSound') {
+            msg.action === 'deleteCostume' || msg.action === 'deleteSound') {
             // these operate on vm.editingTarget — impersonate briefly
             const target = findTargetByName(msg.target);
             const isSound = msg.action.endsWith('Sound');
@@ -1629,7 +1918,7 @@ const applyVmAction = msg => {
             // costume — the only deferral left is while the local user is
             // mid-stroke (pointer down), so a reload never eats a drag.
             if (state.pointerDown && state.localTab === 1 && msg.target === editingTargetName()) {
-                state.pendingRemotePaint.set(`${msg.target}|${msg.costumeIndex}|${msg.action}`, msg);
+                state.pendingRemotePaint.push(msg);
                 return; // the finally below is what balances the ++
 
             }
@@ -1786,22 +2075,22 @@ const applyRemoteBitmap = incoming => {
         return;
     }
     if (msg.mode === 'patch') {
-        applyBitmapPatch(msg).catch(e => {
+        state.bitmapChain = state.bitmapChain.then(() => applyBitmapPatch(msg)).catch(e => {
             // eslint-disable-next-line no-console
             console.error('[collab] bitmap patch failed', e);
         });
         return;
     }
-    if (msg.encoding === 'png') {
-        decodePng(msg.data).then(img => {
-            commitRemoteBitmap(msg, imageDataFromImg(img, msg.width, msg.height).data);
-        }, e => {
+    const decode = msg.encoding === 'png' ?
+        () => decodePng(msg.data).then(img => imageDataFromImg(img, msg.width, msg.height).data) :
+        () => new Uint8ClampedArray(bufferFromB64(msg.data));
+    state.bitmapChain = state.bitmapChain
+        .then(decode)
+        .then(pixels => commitRemoteBitmap(msg, pixels))
+        .catch(e => {
             // eslint-disable-next-line no-console
-            console.error('[collab] png bitmap decode failed', e);
+            console.error('[collab] bitmap decode failed', e);
         });
-        return;
-    }
-    commitRemoteBitmap(msg, new Uint8ClampedArray(bufferFromB64(msg.data)));
 };
 
 // -------------------------------------------- multiplayer game bridge ---
@@ -1842,7 +2131,7 @@ const installNetBridge = () => {
     window.SquiggleNet = {
         __st: true,
         send (msg) {
-            if (!state.active) return;
+            if (!state.active || !state.canEdit) return;
             // Mirror outbound shared-var writes into the local cache immediately
             // so reporters work before the (non-echoed) round-trip.
             if (msg && msg.type === 'game' && msg.action === 'var') {
@@ -1879,7 +2168,7 @@ const installNetBridge = () => {
             return cachedPeerNamesStr;
         },
         get connected () {
-            return !!(state.active && client.connected);
+            return !!(state.active && state.canEdit && client.connected);
         },
         get room () {
             return (overlay.self && overlay.self.room) ||
@@ -1903,11 +2192,67 @@ installNetBridge();
 
 // ------------------------------------------------------------- wiring up ---
 
+const onSnapshotRefused = msg => {
+    state.unackedSnapshots = [];
+    state.sentSnapshotB64 = null;
+    if (msg && typeof msg.message === 'string' && msg.message) overlay.toast(`🔒 ${msg.message}`, '#e8386d');
+    if (!state.canEdit) return;
+    state.resetNextSnapshot = false;
+    state.forceNextSnapshot = false;
+    state.rescueOnNextSnapshot = true;
+    if (msg && typeof msg.b64 === 'string' && msg.b64) {
+        applySnapshot({type: 'snapshot', b64: msg.b64, version: msg.roomVersion, stale: true});
+        return;
+    }
+    const seen = state.snapshotsSeen;
+    setTimeout(() => {
+        if (state.active && state.snapshotsSeen === seen) {
+            state.lastResyncAt = 0;
+            requestResync(`snapshot refused: ${msg && msg.reason}`);
+        }
+    }, 1500);
+};
+
+const applyMaskedVmAction = m => {
+    if (m.action === 'renameSprite') {
+        for (const [key, claim] of state.localClaims) {
+            if (key.startsWith('sprite|') && claim.from === m.target) {
+                applyVmAction(Object.assign({}, m, {target: key.slice('sprite|'.length)}));
+                return;
+            }
+        }
+    } else if (m.action === 'renameCostume' || m.action === 'renameSound') {
+        applyVmAction(m);
+    }
+};
+
+const applyModerated = msg => {
+    if (!msg) return;
+    overlay.toast(`🧹 ${moderated.moderatedText(msg)}`, '#f0912b');
+    const m = msg.masked && typeof msg.masked === 'object' ? msg.masked : null;
+    if (m && m.type === 'block-event') {
+        for (const event of moderated.maskedBlockEvents(m)) applyBlockEvent(event);
+    } else if (m && m.type === 'vm-action') {
+        applyMaskedVmAction(m);
+    } else if (m && m.type === 'sprite-info') {
+        applySpriteInfo(m);
+    } else if (m && m.type === 'game' && m.action === 'var') {
+        const key = m.name ? String(m.name) : '';
+        if (key) cachedGameVars[key] = m.value === null || typeof m.value === 'undefined' ? '' : m.value;
+        netEmit('game', m);
+    } else if (msg.event && typeof msg.event === 'object' && typeof msg.target === 'string') {
+        const inverse = moderated.inverseBlockEvent(msg.event);
+        if (inverse) applyBlockEvent({type: 'block-event', target: msg.target, event: inverse});
+    }
+};
+
 const wireSocket = () => {
+    client.unloadGuard = flushForLeave;
     client.on('welcome', msg => {
         const isReconnect = state.everConnected;
         state.everConnected = true;
         state.active = true;
+        state.ended = false;
         startHousekeeping();
         overlay.setConnected(true);
         state.selfId = msg.id;
@@ -1952,6 +2297,14 @@ const wireSocket = () => {
         if (!state.canEdit) overlay.toast('👀 You are watching — ask the owner for edit access', '#8a8fa3');
         rebuildTargetIndex();
         state.roomVersion = typeof msg.version === 'number' ? msg.version : 0;
+        state.unackedSnapshots = [];
+        if (isReconnect) state.recentPaint.clear();
+        if (client.holdingQueue) state.offlineEdits = true;
+        if (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit) {
+            client.discardQueue();
+        } else {
+            client.releaseQueue();
+        }
         // First one in an empty room seeds it with the current project.
         if (!msg.hasSnapshot && msg.peers.length <= 1) {
             sendSnapshotNow();
@@ -1976,7 +2329,8 @@ const wireSocket = () => {
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
     });
-    client.on('disconnected', () => {
+    client.on('disconnected', msg => {
+        if (msg && msg.unconfirmed && state.canEdit) state.offlineEdits = true;
         overlay.setConnected(false);
         // Keep housekeeping running — reconnect is expected; stop only on solo exit.
         netEmit('disconnected', {});
@@ -2013,15 +2367,16 @@ const wireSocket = () => {
     client.on('error', msg => {
         if (msg.error === 'session-replaced') {
             client.disconnect();
-            endSession();
+            endSession('This room is open in another tab, so this one stopped saving. ' +
+                'Save a copy to keep what you changed here.');
             overlay.toast('👀 Opened in another tab — disconnected here', '#ff8c00');
         } else if (msg.error === 'room-full') {
             client.disconnect();
-            endSession();
+            endSession('The room is full, so changes here are not saved.');
             overlay.toast('🚫 Room is full', '#e8386d');
         } else if (msg.error === 'no-access') {
             client.disconnect();
-            endSession();
+            endSession('You no longer have access to this room, so changes here are not saved.');
             overlay.toast('🔒 Access denied', '#e8386d');
         } else if (msg.error === 'read-only') {
             // The gate below should mean this never fires. If it does, the
@@ -2038,8 +2393,10 @@ const wireSocket = () => {
                 'This project is too big to save. Delete a few costumes or sounds to fix it.',
                 {kind: 'update'}
             );
+        } else if (msg.message && typeof msg.message === 'string') {
+            overlay.toast(`⚠️ ${msg.message}`, '#e8386d');
         } else if (msg.error) {
-            overlay.toast(`⚠️ ${msg.error.replace(/-/g, ' ')}`, '#e8386d');
+            overlay.toast(`⚠️ ${String(msg.error).replace(/-/g, ' ')}`, '#e8386d');
         }
     });
     client.on('queue-overflow', () => {
@@ -2054,12 +2411,21 @@ const wireSocket = () => {
     });
     client.on('kicked', msg => {
         client.disconnect();
-        endSession();
+        endSession(msg.reason === 'room-deleted' ?
+            'This room was deleted, so changes here are not saved.' :
+            'Your access to this room changed, so changes here are not saved.');
         overlay.toast(msg.reason === 'room-deleted' ?
             '🚪 This room was deleted' : '🔒 Your access to this room changed', '#e8386d');
     });
     client.on('peer-joined', msg => {
+        const wasAlone = !hasPeers();
         overlay.addPeer(msg.peer.id, msg.peer.name, msg.peer.color, msg.peer.cursor);
+        if (wasAlone && canWrite() && hasUnsavedEdits()) {
+            clearTimeout(state.snapshotTimer);
+            state.snapshotTimer = null;
+            state.snapshotDeferredSince = 0;
+            sendSnapshotNow(false);
+        }
         rebuildPeerCache();
         overlay.toast(`👋 ${msg.peer.name} joined!`, msg.peer.color);
         // Re-announce so the newcomer immediately sees our sprite/status.
@@ -2078,8 +2444,14 @@ const wireSocket = () => {
     });
     client.on('snapshot', applySnapshot);
     client.on('snapshot-ack', msg => {
-        if (typeof msg.version === 'number') state.roomVersion = msg.version;
+        const entry = ackSnapshot(msg);
+        if (typeof msg.version === 'number' &&
+            (!entry || !entry.cacheOnly || msg.version > state.roomVersion)) {
+            state.roomVersion = msg.version;
+        }
     });
+    client.on('snapshot-refused', onSnapshotRefused);
+    client.on('moderated', applyModerated);
     client.on('projects', msg => overlay.setProjects(msg.projects));
     client.on('project-saved', msg => {
         overlay.setProjects(msg.projects);
@@ -2218,6 +2590,7 @@ export default {
     paintRev,
     setAppearance,
     setRoomTitle,
+    mayReplaceProject,
     // Which room this tab is in, for anything that needs to ask the server
     // about it — the history panel is the first.
     get roomName () {
