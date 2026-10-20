@@ -72,6 +72,7 @@ const state = {
     ended: false,
     localClaims: new Map(),
     exportingSprites: new Set(),
+    sentSpriteAdds: [],
     heldSpriteEvents: [],
     rescuedB64: null,
     rescueTimes: [],
@@ -196,6 +197,15 @@ const claimName = (kind, name, from) => {
 const recentClaim = (kind, name) => {
     const claim = state.localClaims.get(`${kind}|${name}`);
     return claim && Date.now() - claim.at < CLAIM_MS ? claim : null;
+};
+
+const SPRITE_ADD_MEMORY_MS = 60000;
+const rememberSpriteAdd = (name, sprite) => {
+    const now = Date.now();
+    state.sentSpriteAdds = state.sentSpriteAdds
+        .filter(entry => now - entry.at < SPRITE_ADD_MEMORY_MS)
+        .slice(-4)
+        .concat({at: now, name, sprite});
 };
 
 const sendBlockEvent = msg => {
@@ -449,6 +459,9 @@ const jsonToVmEvent = json => {
         } catch (err) {
             return null;
         }
+    }
+    if (e.type === 'comment_change' && !e.newContents_ && e.newContents && typeof e.newContents === 'object') {
+        e.newContents_ = e.newContents;
     }
     for (const key of ['newCoordinate', 'oldCoordinate']) {
         if (typeof e[key] === 'string') {
@@ -1011,6 +1024,7 @@ const wrapVm = vm => {
                             state.exportingSprites.add(name);
                             vm.exportSprite(t.id, 'base64').then(b64 => {
                                 client.send({type: 'vm-action', action: 'spriteAdd', sprite: b64, name});
+                                rememberSpriteAdd(name, b64);
                                 releaseSpriteEvents(name);
                             }, () => {
                                 releaseSpriteEvents(name);
@@ -2213,8 +2227,49 @@ const onSnapshotRefused = msg => {
     }, 1500);
 };
 
+const renameMaskedAsset = (m, list, rename) => {
+    const asset = m.action === 'costumeAdd' ? m.costume : m.sound;
+    if (!asset || typeof asset.name !== 'string' || typeof m.data !== 'string') return;
+    const target = findTargetByName(m.target);
+    if (!target) return;
+    const items = list(target);
+    for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        if (item.name === asset.name || !item.asset || !item.asset.data) continue;
+        if (b64FromBuffer(item.asset.data) !== m.data) continue;
+        state.applyingRemote++;
+        try {
+            rename(target, i, asset.name);
+        } finally {
+            state.applyingRemote--;
+        }
+        state.vm.emitTargetsUpdate();
+        return;
+    }
+};
+
+const renameMaskedSprite = m => {
+    if (typeof m.name !== 'string' || typeof m.sprite !== 'string') return;
+    const sent = state.sentSpriteAdds.find(entry => entry.sprite === m.sprite);
+    const target = sent && sent.name !== m.name ? findTargetByName(sent.name) : null;
+    if (!target) return;
+    state.applyingRemote++;
+    try {
+        state.vm.renameSprite(target.id, m.name);
+    } finally {
+        state.applyingRemote--;
+    }
+    rebuildTargetIndex();
+};
+
 const applyMaskedVmAction = m => {
-    if (m.action === 'renameSprite') {
+    if (m.action === 'costumeAdd') {
+        renameMaskedAsset(m, t => t.getCostumes(), (t, i, name) => t.renameCostume(i, name));
+    } else if (m.action === 'soundAdd') {
+        renameMaskedAsset(m, t => t.getSounds(), (t, i, name) => t.renameSound(i, name));
+    } else if (m.action === 'spriteAdd') {
+        renameMaskedSprite(m);
+    } else if (m.action === 'renameSprite') {
         for (const [key, claim] of state.localClaims) {
             if (key.startsWith('sprite|') && claim.from === m.target) {
                 applyVmAction(Object.assign({}, m, {target: key.slice('sprite|'.length)}));
@@ -2240,10 +2295,11 @@ const applyModerated = msg => {
         const key = m.name ? String(m.name) : '';
         if (key) cachedGameVars[key] = m.value === null || typeof m.value === 'undefined' ? '' : m.value;
         netEmit('game', m);
-    } else if (msg.event && typeof msg.event === 'object' && typeof msg.target === 'string') {
+    } else if (!m && msg.event && typeof msg.event === 'object' && typeof msg.target === 'string') {
         const inverse = moderated.inverseBlockEvent(msg.event);
         if (inverse) applyBlockEvent({type: 'block-event', target: msg.target, event: inverse});
     }
+    if (canWrite() && (!m || m.type === 'block-event' || m.type === 'vm-action')) scheduleSnapshot(true);
 };
 
 const wireSocket = () => {
@@ -2393,6 +2449,8 @@ const wireSocket = () => {
                 'This project is too big to save. Delete a few costumes or sounds to fix it.',
                 {kind: 'update'}
             );
+        } else if (msg.error === 'not-allowed-here' && (msg.masked || msg.event)) {
+            applyModerated(msg);
         } else if (msg.message && typeof msg.message === 'string') {
             overlay.toast(`⚠️ ${msg.message}`, '#e8386d');
         } else if (msg.error) {

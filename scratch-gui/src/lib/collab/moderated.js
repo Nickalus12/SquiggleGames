@@ -14,6 +14,16 @@ const maskedFieldChanges = m => {
         const blockId = el.getAttribute('id');
         if (!blockId) continue;
         for (const f of el.children) {
+            if (f.tagName === 'comment' && f.getAttribute('id')) {
+                const contents = {text: f.textContent};
+                out.push(Object.assign({}, m, {event: {
+                    type: 'comment_change',
+                    commentId: f.getAttribute('id'),
+                    newContents: contents,
+                    newContents_: contents
+                }}));
+                continue;
+            }
             if (f.tagName !== 'field' || !f.getAttribute('name') || f.getAttribute('id')) continue;
             out.push(Object.assign({}, m, {event: {
                 type: 'change', blockId, element: 'field', name: f.getAttribute('name'), newValue: f.textContent

@@ -96,6 +96,36 @@ ok('the masked text lands on the shadow that held it',
 ok('variable fields with an id are left alone', !changes.some(c => c.event.name === 'VARIABLE'));
 ok('the target rides along on each change', changes.every(c => c.target === 'Sprite1'));
 
+const guardShape = {
+    type: 'moderated',
+    of: 'block-event',
+    target: 'Sprite1',
+    message: 'Some words were hidden.',
+    category: 'profanity',
+    event: {type: 'create', blockId: 'b3', xml: '<block id="b3"><field name="TEXT">raw words</field></block>'},
+    masked: {
+        type: 'block-event',
+        target: 'Sprite1',
+        from: 'u2',
+        fromName: 'Kid',
+        color: '#fff',
+        event: {
+            type: 'create',
+            blockId: 'b3',
+            xml: '<block type="looks_say" id="b3"><field name="TEXT">***</field>' +
+                '<comment id="c7" pinned="false">****</comment></block>'
+        }
+    }
+};
+const fromGuard = moderated.maskedBlockEvents(guardShape.masked);
+ok('the guard\'s masked copy replays the masked field, not the original text',
+    fromGuard.some(c => c.event.type === 'change' && c.event.blockId === 'b3' && c.event.newValue === '***') &&
+    !fromGuard.some(c => JSON.stringify(c).includes('raw words')), fromGuard.map(c => c.event));
+ok('a block comment inside the masked xml is masked too',
+    fromGuard.some(c => c.event.type === 'comment_change' && c.event.commentId === 'c7' &&
+        c.event.newContents_.text === '****'), fromGuard.map(c => c.event));
+ok('the replayed events keep the sprite they belong to', fromGuard.every(c => c.target === 'Sprite1'));
+
 parserThrows = true;
 ok('unparseable xml applies nothing instead of crashing', moderated.maskedBlockEvents(create).length === 0);
 parserThrows = false;
