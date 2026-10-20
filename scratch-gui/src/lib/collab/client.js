@@ -18,6 +18,8 @@ const FRAME_LIMITS = new Map([
     ['presence', 4 * 1024]
 ]);
 const DEFAULT_FRAME_LIMIT = 64 * 1024;
+const SNAPSHOT_WINDOW_MS = 60 * 1000;
+const SNAPSHOT_BYTES_PER_WINDOW = Math.floor(0.6 * Math.min(128 * 1024 * 1024, 512 * 1024 * 1024));
 
 const utf8Length = s => {
     let n = s.length;
@@ -90,6 +92,9 @@ class CollabClient {
         this._confirmedGen = 0;
         this._learnedLimits = new Map();
         this._largestSent = null;
+        this._snapshotLog = [];
+        this._paced = null;
+        this._pacedTimer = null;
         this._silenceLimit = SILENCE_LIMIT_MS;
         this._lastSilenceAt = 0;
         this._holding = false;
@@ -213,6 +218,7 @@ class CollabClient {
 
     discardQueue () {
         this._holding = false;
+        this._dropPaced();
         const dropped = this._queue.length;
         this._queue = [];
         return dropped;
@@ -252,7 +258,9 @@ class CollabClient {
         this._lastPingAt = Date.now();
         this._pingCovers = [];
         this._holding = false;
+        this._unpace();
         this._largestSent = null;
+        this._snapshotLog = [];
         this._connectTimer = setTimeout(() => {
             this._connectTimer = null;
             if (gen !== this._openGen || !this.ws || this.ws.readyState !== 0) return;
@@ -316,6 +324,7 @@ class CollabClient {
             this.connected = false;
             this.ws = null;
             this._holding = false;
+            this._unpace();
             const code = event && typeof event.code === 'number' ? event.code : 0;
             const reason = event && typeof event.reason === 'string' ? event.reason : '';
             const dropped = code === 1009 && reason !== 'too-much-data' ? this._learnFrameLimit() : null;
@@ -361,6 +370,7 @@ class CollabClient {
     }
 
     _noteSent (entry) {
+        if (entry.type === 'snapshot') this._snapshotLog.push({at: Date.now(), size: entry.size});
         const ratio = entry.size / this._frameLimit(entry.type);
         if (!this._largestSent || ratio > this._largestSent.ratio) {
             this._largestSent = {type: entry.type, ref: entry.ref, size: entry.size, ratio};
@@ -385,6 +395,68 @@ class CollabClient {
         this._queue = kept;
     }
 
+    _snapshotWait (size, now) {
+        this._snapshotLog = this._snapshotLog.filter(sent => now - sent.at < SNAPSHOT_WINDOW_MS);
+        let used = this._snapshotLog.reduce((sum, sent) => sum + sent.size, 0);
+        let wait = 0;
+        for (const sent of this._snapshotLog) {
+            if (used + size <= SNAPSHOT_BYTES_PER_WINDOW) break;
+            used -= sent.size;
+            wait = sent.at + SNAPSHOT_WINDOW_MS - now;
+        }
+        return wait;
+    }
+
+    _pace (entry, msg) {
+        entry.force = !!msg.force;
+        entry.reset = !!msg.reset;
+        this._paced = entry;
+        if (!this._pacedTimer) this._armPaced();
+    }
+
+    _armPaced () {
+        const wait = this._paced ? this._snapshotWait(this._paced.size, Date.now()) : 0;
+        this._pacedTimer = setTimeout(() => {
+            this._pacedTimer = null;
+            if (!this._paced) return;
+            if (this._snapshotWait(this._paced.size, Date.now()) > 0) {
+                this._armPaced();
+                return;
+            }
+            this.flushPaced();
+        }, Math.max(0, wait));
+    }
+
+    flushPaced () {
+        const entry = this._paced;
+        if (!entry) return;
+        this._dropPaced();
+        if (!this.connected || !this.ws || this.ws.readyState !== 1 || this._holding) {
+            this._enqueue(entry);
+            return;
+        }
+        try {
+            this.ws.send(entry.data);
+            this._sentGen++;
+            this._noteSent(entry);
+        } catch (e) {
+            this._enqueue(entry);
+        }
+    }
+
+    _dropPaced () {
+        clearTimeout(this._pacedTimer);
+        this._pacedTimer = null;
+        this._paced = null;
+    }
+
+    _unpace () {
+        const entry = this._paced;
+        if (!entry) return;
+        this._dropPaced();
+        this._enqueue(entry);
+    }
+
     _refuse (entry, lossy) {
         this._emit('frame-refused', {type: entry.type, ref: entry.ref, bytes: entry.size, reliable: !lossy});
     }
@@ -406,7 +478,7 @@ class CollabClient {
         }
     }
 
-    send (msg) {
+    send (msg, urgent) {
         if (!msg || typeof msg !== 'object') return false;
         const lossy = LOSSY.has(msg.type);
         const superseded = msg.type === 'snapshot' ? this._queue.filter(e => e.type === 'snapshot') : [];
@@ -416,6 +488,10 @@ class CollabClient {
                 if (prior.force) msg.force = true;
                 if (prior.reset) msg.reset = true;
             } catch (e) { /* unparseable — superseded either way */ }
+        }
+        if (msg.type === 'snapshot' && this._paced) {
+            if (this._paced.force) msg.force = true;
+            if (this._paced.reset) msg.reset = true;
         }
         let data;
         try {
@@ -442,6 +518,12 @@ class CollabClient {
         if (this.connected && this.ws && this.ws.readyState === 1 && (lossy || !this._holding)) {
             // Under backpressure, drop lossy traffic so block edits keep flowing.
             if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return false;
+            if (msg.type === 'snapshot' && urgent !== true &&
+                (this._paced || this._snapshotWait(entry.size, Date.now()) > 0)) {
+                this._pace(entry, msg);
+                return true;
+            }
+            if (msg.type === 'snapshot') this._dropPaced();
             try {
                 this.ws.send(data);
                 if (!lossy) this._sentGen++;
@@ -513,6 +595,7 @@ class CollabClient {
     }
 
     _closeNow () {
+        this.flushPaced();
         this._stopHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();
@@ -531,6 +614,7 @@ class CollabClient {
         this._clearReconnect();
         this._clearConnectTimer();
         this._stopHeartbeat();
+        this._dropPaced();
         this._queue = [];
         this._openGen++;
         if (this.ws) {

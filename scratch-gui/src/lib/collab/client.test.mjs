@@ -313,6 +313,49 @@ ok('a 1009 after only small frames blames nothing',
     closes[0] && closes[0].dropped === null && client._learnedLimits.size === 0, closes);
 client._clearReconnect();
 
+const SNAPSHOT_BUDGET = Math.floor(0.6 * 128 * 1024 * 1024);
+const lastSent = sock => JSON.parse(sock.sent[sock.sent.length - 1]);
+ws = fresh();
+ok('a new socket starts with an empty snapshot budget', client._snapshotLog.length === 0);
+client._snapshotLog = [{at: Date.now(), size: SNAPSHOT_BUDGET}];
+let sentBefore = ws.sent.length;
+ok('a snapshot over the per-minute budget is held, not sent',
+    client.send({type: 'snapshot', b64: 'S1', ref: 20, force: true}) === true &&
+    ws.sent.length === sentBefore && client._paced && client._paced.ref === 20);
+client.send({type: 'snapshot', b64: 'S2', ref: 21});
+ok('a newer held snapshot replaces the older one and keeps its force',
+    client._paced.ref === 21 && JSON.parse(client._paced.data).force === true, client._paced);
+client.send({type: 'block-event', pad: 'live'});
+ok('live block events are not held behind it', lastSent(ws).type === 'block-event');
+client._snapshotLog[0].at = Date.now() - 60001;
+clearTimeout(client._pacedTimer);
+client._pacedTimer = null;
+client._armPaced();
+await new Promise(r => setTimeout(r, 5));
+ok('the held snapshot goes out once the budget allows',
+    lastSent(ws).ref === 21 && client._paced === null && client._snapshotLog.length === 1, lastSent(ws));
+
+client._snapshotLog = [{at: Date.now(), size: SNAPSHOT_BUDGET}];
+client.send({type: 'snapshot', b64: 'S3', ref: 22});
+client.send({type: 'snapshot', b64: 'S4', ref: 23}, true);
+ok('an urgent snapshot skips the budget and replaces the held one',
+    lastSent(ws).ref === 23 && client._paced === null && client._pacedTimer === null, lastSent(ws));
+
+client.send({type: 'snapshot', b64: 'S5', ref: 24});
+ws.readyState = 3;
+ws.onclose({code: 1006, reason: ''});
+ok('a held snapshot moves to the queue when the socket drops',
+    client._paced === null && client._queue.length === 1 && client._queue[0].ref === 24, client._queue);
+client._clearReconnect();
+
+ws = fresh();
+client._snapshotLog = [{at: Date.now(), size: SNAPSHOT_BUDGET}];
+client.send({type: 'snapshot', b64: 'S6', ref: 25});
+sentBefore = ws.sent.length;
+client.closeForUnload();
+ok('leaving the page sends the held snapshot before closing',
+    ws.sent.length === sentBefore + 1 && JSON.parse(ws.sent[sentBefore]).ref === 25 && client._paced === null);
+
 client.disconnect();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

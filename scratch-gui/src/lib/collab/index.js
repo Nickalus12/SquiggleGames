@@ -68,6 +68,7 @@ const state = {
     unackedSnapshots: [],
     sentSnapshotB64: null,
     sentSnapshotGen: -1,
+    urgentSnapshot: false,
     snapshotPromise: null,
     ended: false,
     localClaims: new Map(),
@@ -579,6 +580,8 @@ const zipAndSendSnapshot = async cacheOnly => {
         if (state.unackedSnapshots.length > 8) state.unackedSnapshots.shift();
         state.sentSnapshotB64 = b64;
         state.sentSnapshotGen = client.generation;
+        const urgent = state.urgentSnapshot === true;
+        state.urgentSnapshot = false;
         client.send({
             type: 'snapshot',
             b64,
@@ -587,7 +590,7 @@ const zipAndSendSnapshot = async cacheOnly => {
             basedOn: state.roomVersion,
             force,
             reset
-        });
+        }, urgent);
     } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[collab] snapshot failed', e);
@@ -663,14 +666,17 @@ const flushForLeave = () => {
         clearTimeout(state.bitmapTimer);
         state.flushBitmaps();
     }
+    client.flushPaced();
     if (state.snapshotTimer) {
         clearTimeout(state.snapshotTimer);
         state.snapshotTimer = null;
         state.snapshotDeferredSince = 0;
+        state.urgentSnapshot = true;
         sendSnapshotNow(state.pendingSnapshotCacheOnly);
     } else if (typeof state.deferredSnapshot === 'boolean') {
         const flag = state.deferredSnapshot;
         delete state.deferredSnapshot;
+        state.urgentSnapshot = true;
         sendSnapshotNow(flag);
     }
     return state.snapshotPromise;
@@ -2488,6 +2494,8 @@ const wireSocket = () => {
     client.on('server-restarting', () => {
         overlay.banner('Squiggle is updating — saving your work…', {kind: 'busy'});
         // Don't wait for the debounce; the server is holding the door for this.
+        client.flushPaced();
+        state.urgentSnapshot = true;
         sendSnapshotNow();
     });
     client.on('role-changed', msg => {
