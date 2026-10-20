@@ -50,7 +50,9 @@ const store = {};
 const sandboxGlobals = `
 const WebSocket = globalThis.__FakeWebSocket;
 const localStorage = globalThis.__localStorage;
+const location = globalThis.__location;
 `;
+globalThis.__location = {hostname: 'test.invalid', host: 'test.invalid', port: ''};
 globalThis.__FakeWebSocket = FakeWebSocket;
 globalThis.__localStorage = {
     getItem: k => (k in store ? store[k] : null),
@@ -118,5 +120,28 @@ ok('non-snapshot messages stay queued ahead of it',
     JSON.parse(client._queue[0]).type === 'block-event', client._queue[0]);
 
 client.disconnect();
+store.st_token = 'device-token';
+const joinOf = sock => sock.sent.map(d => JSON.parse(d)).find(m => m.type === 'join');
+
+client.connect({url: 'wss://test.invalid', room: 'r1', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+ws.open();
+ok('the device token goes to the page\'s own server', joinOf(ws).token === 'device-token', joinOf(ws));
+client.disconnect();
+
+client.connect({url: 'wss://evil.example', room: 'r1', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+ws.open();
+ok('the device token never goes to another origin', joinOf(ws).token === undefined, joinOf(ws));
+ws.message({type: 'welcome', id: 'u1', color: '#fff', token: 'planted'});
+ok('a foreign server cannot plant a device token', store.st_token === 'device-token', store.st_token);
+client.disconnect();
+
+client.connect({url: 'ws://test.invalid.evil.example', room: 'r1', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+ws.open();
+ok('a look-alike host is another origin', joinOf(ws).token === undefined, joinOf(ws));
+client.disconnect();
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

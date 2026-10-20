@@ -27,6 +27,17 @@ const SILENCE_LIMIT_MS = 70000; // ~2 missed heartbeats
 // so the handshake needs its own deadline or nothing ever replaces it.
 const CONNECT_TIMEOUT_MS = 12000;
 
+const ownsSocketUrl = url => {
+    if (typeof location === 'undefined') return false;
+    try {
+        const target = new URL(url);
+        if (target.hostname !== location.hostname) return false;
+        return target.host === location.host || location.port === '8601';
+    } catch (e) {
+        return false;
+    }
+};
+
 class CollabClient {
     constructor () {
         this.ws = null;
@@ -164,7 +175,7 @@ class CollabClient {
             // join, kept in localStorage — name-only login stays that simple.
             let token;
             try {
-                token = localStorage.getItem('st_token') || undefined;
+                token = ownsSocketUrl(url) ? (localStorage.getItem('st_token') || undefined) : undefined;
             } catch (e) {
                 token = undefined;
             }
@@ -184,7 +195,7 @@ class CollabClient {
                 this.connected = true;
                 this._backoff = 1000;
                 this.me = {id: msg.id, color: msg.color};
-                if (msg.token) {
+                if (msg.token && ownsSocketUrl(url)) {
                     try {
                         localStorage.setItem('st_token', msg.token);
                     } catch (e) { /* private mode */ }
