@@ -85,16 +85,22 @@ const {installWorldSeams} = await import('../../../world/seams.js');
 const {getWorld, installWorldApi} = await import('../../../world/world.js');
 const {setFrameRequest} = await import('./overlay.js');
 
-const queue = [];
-const requests = {count: 0};
-setFrameRequest(fn => {
+const queue = new Map();
+const requests = {count: 0, cancelled: 0};
+const requestFrame = fn => {
     requests.count++;
-    queue.push(fn);
+    queue.set(requests.count, fn);
     return requests.count;
-});
+};
+const cancelFrame = id => {
+    if (queue.delete(id)) requests.cancelled++;
+};
+const restoreFrames = () => setFrameRequest(requestFrame, cancelFrame);
+restoreFrames();
 
 const frame = () => {
-    const run = queue.splice(0);
+    const run = Array.from(queue.values());
+    queue.clear();
     run.forEach(fn => fn(0));
     return run.length;
 };
@@ -105,7 +111,7 @@ const frames = n => {
     return ran;
 };
 
-const pending = () => queue.length;
+const pending = () => queue.size;
 
 const sprite = (name, extra) => Object.assign({
     isStage: false, name, variables: {}, lists: {}, broadcasts: {}, blocks: {}, comments: {},
@@ -154,4 +160,4 @@ const boot = async () => {
     return {vm, runtime, cat, seam, renderer, stageCanvas, world, step};
 };
 
-export {boot, element, fixedClock, frame, frames, listeners, observers, parent, pending, requests};
+export {boot, element, fixedClock, frame, frames, listeners, observers, parent, pending, requests, restoreFrames};

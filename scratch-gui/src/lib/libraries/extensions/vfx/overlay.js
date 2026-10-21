@@ -18,7 +18,7 @@ const cameraActive = runtime => {
     return !!(seam && typeof seam.camera === 'function' && seam.camera());
 };
 
-const loop = {overlays: new Set(), handle: null, request: null, run: null};
+const loop = {overlays: new Set(), handle: null, request: null, cancel: null, run: null};
 
 const requestFrame = fn => {
     if (loop.request) return loop.request(fn);
@@ -26,8 +26,16 @@ const requestFrame = fn => {
     return setTimeout(fn, 16);
 };
 
-const drawIfAwake = overlay => {
-    if (overlay.awake()) overlay.draw();
+const cancelFrame = handle => {
+    if (loop.request) {
+        if (loop.cancel) loop.cancel(handle);
+        return;
+    }
+    if (typeof requestAnimationFrame === 'function') {
+        if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle);
+        return;
+    }
+    clearTimeout(handle);
 };
 
 const keepsLoop = () => {
@@ -43,13 +51,26 @@ const schedule = () => {
 
 loop.run = () => {
     loop.handle = null;
-    loop.overlays.forEach(drawIfAwake);
+    let failed = false;
+    let failure = null;
+    for (const overlay of loop.overlays) {
+        try {
+            if (overlay.awake()) overlay.draw();
+        } catch (error) {
+            if (!failed) failure = error;
+            failed = true;
+        }
+    }
     if (keepsLoop()) schedule();
+    if (failed) throw failure;
 };
 
-const setFrameRequest = request => {
-    loop.request = request || null;
+const setFrameRequest = (request, cancel) => {
+    if (loop.handle !== null) cancelFrame(loop.handle);
     loop.handle = null;
+    loop.request = request || null;
+    loop.cancel = cancel || null;
+    if (keepsLoop()) schedule();
 };
 
 const liveness = new WeakMap();
@@ -137,7 +158,10 @@ const createOverlay = (runtime, options) => {
         running: !!(runtime.threads && runtime.threads.length),
         view: null,
         world: null,
-        pinned: null
+        pinned: null,
+        lastX: NaN,
+        lastY: NaN,
+        lastZoom: NaN
     };
     const stats = {draws: 0, total: 0, max: 0, last: 0};
     const identity = (x, y) => ({x, y});
@@ -209,29 +233,41 @@ const createOverlay = (runtime, options) => {
             const t = overlay.clock();
             const dt = state.last === null ? FIRST_DT : Math.min(MAX_DT, Math.max(0, (t - state.last) / 1000));
             state.last = t;
-            state.view = overlay.view();
-            state.world = overlay.projector(false);
-            state.pinned = overlay.projector(true);
-            const ctx = overlay.ctx;
-            if (ctx && state.drawn) ctx.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
-            const live = !!opts.frame(ctx, dt, t / 1000);
-            state.view = null;
-            state.world = null;
-            state.pinned = null;
+            const view = overlay.view();
+            state.view = view;
+            state.lastX = view ? view.x : NaN;
+            state.lastY = view ? view.y : NaN;
+            state.lastZoom = view ? view.zoom : NaN;
+            let live = false;
+            try {
+                state.world = overlay.projector(false);
+                state.pinned = overlay.projector(true);
+                const ctx = overlay.ctx;
+                if (ctx && state.drawn) ctx.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
+                state.drawn = true;
+                live = !!opts.frame(ctx, dt, t / 1000);
+            } finally {
+                state.view = null;
+                state.world = null;
+                state.pinned = null;
+                if (!live) {
+                    state.awake = false;
+                    state.last = null;
+                }
+            }
             const spent = now() - started;
             stats.draws++;
             stats.total += spent;
             stats.last = spent;
             if (spent > stats.max) stats.max = spent;
-            state.drawn = true;
-            if (!live) {
-                state.awake = false;
-                state.last = null;
-            }
+        },
+        moved () {
+            const view = overlay.view();
+            return !!view && (view.x !== state.lastX || view.y !== state.lastY || view.zoom !== state.lastZoom);
         },
         step () {
             livenessFor(runtime).stale = true;
-            if (!state.awake && opts.sample && opts.sample()) state.awake = true;
+            if (!state.awake && (overlay.moved() || (opts.sample && opts.sample()))) state.awake = true;
             if (state.awake || state.running) schedule();
         },
         dispose: null

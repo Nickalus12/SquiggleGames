@@ -1,8 +1,10 @@
 import {ok, near, section, done} from '../../../world/harness.mjs';
-import {boot, fixedClock, frame, frames, listeners, observers, parent, pending, requests} from './overlay-harness.mjs';
+import {boot, fixedClock, frame, frames, listeners, observers, parent, pending, requests, restoreFrames}
+    from './overlay-harness.mjs';
 
-const {createOverlay} = await import('./overlay.js');
+const {createOverlay, setFrameRequest} = await import('./overlay.js');
 const {default: ThunderboltVFX} = await import('./index.js');
+const {default: SquiggleAnimateBlocks} = await import('../squiggleanimate/index.js');
 
 const {runtime, cat, seam, stageCanvas, world, step} = await boot();
 
@@ -210,6 +212,9 @@ ok('zoom punch hands the zoom back', near(made.camera.state.zoom, 2), made.camer
 writes.length = 0;
 step();
 ok('a finished punch stops writing', writes.length === 0, writes);
+frames(3);
+ok('a finished camera punch does not replay on the stage canvas', !stageCanvas.style.transform && pending() === 0,
+    stageCanvas.style.transform);
 made.camera.setZoom(200);
 vfx.zoomPunch({DURATION: 0.2, AMOUNT: 0.5});
 wall = 300;
@@ -232,5 +237,175 @@ frame();
 ok('a flash fills the whole overlay', vfx.overlay.ctx.calls.some(c => c[0] === 'fillRect' && c[3] === 960));
 frames(20);
 ok('the flash ends and the loop sleeps', pending() === 0);
+
+
+section('a punch over a clamped zoom');
+made.camera.setTarget(null, null, 5000);
+step();
+vfx.zoomPunch({DURATION: 0.2, AMOUNT: 0.5});
+wall = 700;
+step();
+wall = 900;
+step();
+ok('a punch over a zoom past the clamp ends at the clamp', near(made.camera.state.zoom, 10), made.camera.state.zoom);
+made.camera.setTarget(null, null, 800);
+step();
+vfx.zoomPunch({DURATION: 0.2, AMOUNT: 0.5});
+wall = 950;
+step();
+ok('a punch that hits the clamp stays at the clamp', near(made.camera.state.zoom, 10), made.camera.state.zoom);
+wall = 1200;
+step();
+ok('a punch that hit the clamp ends at the zoom before it', near(made.camera.state.zoom, 8), made.camera.state.zoom);
+
+section('a camera reset mid punch');
+made.camera.setTarget(0, 0, 200);
+step();
+vfx.zoomPunch({DURATION: 0.2, AMOUNT: 0.5});
+wall = 1250;
+step();
+made.camera.reset();
+writes.length = 0;
+wall = 1300;
+step();
+ok('a reset mid punch ends the punch', vfx.zoom.camera === null && vfx.zoom.elapsed === vfx.zoom.duration);
+ok('a reset mid punch leaves the camera off', !made.camera.state.active && made.camera.state.zoom === 1 &&
+    writes.length === 0, writes);
+vfx.resetCamera();
+ok('reset camera after a camera reset writes nothing', !made.camera.state.active && writes.length === 0, writes);
+
+section('animate and the punch share one after step order');
+const anim = new SquiggleAnimateBlocks(runtime);
+let animAt = 0;
+anim.clock = () => {
+    animAt += 1000 / 30;
+    return animAt;
+};
+const stageUtil = {target: runtime.getTargetForStage(), stackFrame: {}, yield: () => {}};
+const zoomWrites = [];
+const spied = made.camera.setTarget;
+made.camera.setTarget = (x, y, z) => {
+    zoomWrites.push(z);
+    return spied.call(made.camera, x, y, z);
+};
+const composes = punchFirst => {
+    anim.tweens = [];
+    made.camera.setTarget(0, 0, 100);
+    step();
+    wall = 2000;
+    const register = [() => anim.write(null, 'camera zoom', 100), () => vfx.zoomPunch({DURATION: 1, AMOUNT: 0.5})];
+    if (punchFirst) register.reverse();
+    register.forEach(fn => fn());
+    anim.startTween({PROP: 'camera zoom', V: 300, T: 1, EASE: 'linear'}, stageUtil);
+    wall = 2500;
+    let fine = true;
+    let last = 0;
+    for (let i = 0; i < 4; i++) {
+        zoomWrites.length = 0;
+        step();
+        const [animated, punched] = zoomWrites;
+        fine = fine && zoomWrites.length === 2 && animated > last && near(punched, animated * 1.5) &&
+            near(made.camera.state.zoom, punched / 100);
+        last = animated;
+    }
+    anim.detachFlush();
+    anim.detachFlush = null;
+    vfx.endPunch();
+    vfx.disposeStep();
+    vfx.disposeStep = null;
+    anim.tweens = [];
+    return fine;
+};
+ok('animate first: each step writes the tween then the punch over it', composes(false));
+ok('punch first: each step still writes the tween then the punch over it', composes(true));
+made.camera.setTarget = spied;
+
+section('a camera move wakes a sleeping overlay');
+let redraws = 0;
+const watcher = createOverlay(runtime, {frame: () => {
+    redraws++;
+    return false;
+}});
+step();
+frames(3);
+redraws = 0;
+step();
+ok('a still camera leaves the overlays asleep', pending() === 0 && redraws === 0, {pending: pending(), redraws});
+const asked = requests.count;
+made.camera.setTarget(made.camera.state.x + 100, null, null);
+step();
+step();
+ok('a camera move with no thread running asks for one frame once the view moves',
+    requests.count - asked === 1 && pending() === 1, requests.count - asked);
+frame();
+ok('the moved view redraws and the overlay sleeps again', redraws === 1 && pending() === 0, redraws);
+
+section('swapping the frame request');
+watcher.wake();
+const cancelled = requests.cancelled;
+const swapped = [];
+const swapCancelled = [];
+setFrameRequest(fn => swapped.push(fn), id => swapCancelled.push(id));
+ok('a swap cancels the pending frame', requests.cancelled === cancelled + 1 && pending() === 0);
+ok('an awake overlay asks the new request for its frame', swapped.length === 1);
+restoreFrames();
+ok('swapping back cancels that frame too', swapCancelled.length === 1 && swapCancelled[0] === 1 && pending() === 1);
+const clearTimer = globalThis.clearTimeout;
+let cleared = 0;
+globalThis.clearTimeout = handle => {
+    cleared++;
+    clearTimer(handle);
+};
+setFrameRequest(null);
+restoreFrames();
+globalThis.clearTimeout = clearTimer;
+ok('the default timer frame is cleared on a swap', cleared === 1 && pending() === 1, cleared);
+frame();
+
+section('a throwing overlay');
+let boom = true;
+let otherDraws = 0;
+let otherLive = true;
+let caught = null;
+const thrower = createOverlay(runtime, {frame: () => {
+    if (boom) throw new Error('boom');
+    return false;
+}});
+const sibling = createOverlay(runtime, {frame: () => {
+    otherDraws++;
+    return otherLive;
+}});
+try {
+    frame();
+} catch (error) {
+    caught = error;
+}
+ok('the loop rethrows the frame error', !!caught && caught.message === 'boom');
+ok('the other overlays still draw', otherDraws === 1, otherDraws);
+ok('the loop still schedules', pending() === 1);
+ok('a throwing overlay sleeps', !thrower.awake());
+made.camera.setTarget(made.camera.state.x + 40, null, null);
+step();
+const fresh = thrower.project(made.camera.state.x, 0, false);
+ok('a throwing draw leaves no cached view', near(fresh.x, 480), fresh);
+boom = false;
+otherLive = false;
+frames(3);
+ok('the loop sleeps once nothing is live', pending() === 0);
+thrower.dispose();
+sibling.dispose();
+watcher.dispose();
+
+section('the projector matches the seam');
+made.camera.setTarget(100, 0, 200);
+step();
+const checker = createOverlay(runtime, {frame: () => false});
+frame();
+ok('projector and seam toView agree', [[100, 0], [130, -20], [-50, 75]].every(([x, y]) => {
+    const p = checker.project(x, y, false);
+    const v = seam.toView(x, y);
+    return near(p.x, (v.x + 240) * 2) && near(p.y, (180 - v.y) * 2) && near(p.scale, v.scale * 2);
+}));
+checker.dispose();
 
 done();
