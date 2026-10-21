@@ -4,14 +4,11 @@ Flair: Devlog
 
 # Squiggle 2.0: what changed, why, and what is next
 
-Squiggle 2.0 is live. Here is what changed and why.
-
 ## What changed for makers
 
 **Five new kits.** World builds big levels out of tiles and follows the action
-with a camera. It comes with a tile painter that has its own zoom and pan, so
-you can work on a level much bigger than the stage. Scenes switches between
-levels, menus and cutscenes. Animate adds glides, bounces and costume clips.
+with a camera. Its tile painter has its own zoom and pan, for levels much
+bigger than the stage. Scenes switches between levels, menus and cutscenes. Animate adds glides, bounces and costume clips.
 Game Tools moves toward a spot, rolls a chance and sends messages with data.
 3D turns a tile level into a first-person world you can walk through, and a
 sprite can show a different picture for each of eight sides.
@@ -31,16 +28,14 @@ avatar. A sync chip tells you whether your edits have reached the room. If you
 edit while offline, Keep my work asks whether your changes or the room's win,
 then tells you how many of yours it kept.
 
-**Everything else.** Night and Day themes. A project checker in the menu bar
-that explains problems in plain words, with Show me and Fix it. A command
-palette on Ctrl or Cmd+K. The tile painter on phones as a bottom sheet, and an
-on-screen game pad in the player for touch screens.
+**Everything else.** Night and Day themes, a project checker with Show me and
+Fix it, a command palette on Ctrl or Cmd+K, the tile painter on phones, and an
+on-screen game pad in the player.
 
 ## What changed underneath, and why
 
 Squiggle used to be one program on one machine. Every room, save and chat line
-went through it. That worked, but it meant one place for everything to go
-wrong, and a game's state lived only in the players' browsers.
+went through it, and a game's state lived only in the players' browsers.
 
 2.0 moves the service to Cloudflare. The pages, the API and the rooms are
 separate Workers, and every room is its own Durable Object. A room is placed
@@ -62,10 +57,10 @@ over. Nobody needs a new account.
 ## What is next
 
 Turning the game server on, so Game Rules run for real. After that, the
-reference game we are building inside Squiggle itself: a Doom-style
-first-person game made from World levels, the 3D kit and Arena rules, with
-the phone game pad. It is a test of the tools as much as a game. If something
-is hard to build in Squiggle, the reference game will find it first.
+reference game built inside Squiggle itself: a Doom-style first-person game
+made with the same kits and blocks anyone can use, playable with the phone
+game pad. If something is hard to build in Squiggle, the reference
+game will find it first.
 
 If something broke, post with the Bug flair, use `/bug` in Discord, or open an
 issue on GitHub. The full list of changes is in the editor's CHANGELOG.md.
