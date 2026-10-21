@@ -1,5 +1,7 @@
+import {findPhrase, freeTextAllowed, phraseText} from './quick-phrases.js';
+
 const MAX_TEXT = 300;
-const MAX_MESSAGES = 200;
+const MAX_MESSAGES = 50;
 const HIDDEN_KEY = 'sq_chat_hidden';
 
 const BLOCKED_TEXT = {
@@ -10,22 +12,33 @@ const BLOCKED_TEXT = {
     'rate': 'Slow down a little. Try again in a few seconds.'
 };
 
+const WITHHELD_TEXT = 'A guest typed a message. Guest messages stay hidden.';
+
 const blockedText = msg => (msg && typeof msg.message === 'string' && msg.message ?
     msg.message : (BLOCKED_TEXT[msg && msg.reason] || BLOCKED_TEXT.filter));
 
 const hasId = m => !!m && (typeof m.id === 'number' || typeof m.id === 'string');
 
-const cleanMessage = m => ({
-    id: m.id,
-    userId: typeof m.userId === 'number' ? m.userId : null,
-    handle: typeof m.handle === 'string' ? m.handle : '',
-    name: typeof m.name === 'string' && m.name ? m.name : (m.handle || ''),
-    color: typeof m.color === 'string' ? m.color : '',
-    text: typeof m.text === 'string' ? m.text : '',
-    phrase: typeof m.phrase === 'string' ? m.phrase : null,
-    ts: typeof m.ts === 'number' ? m.ts : 0,
-    mine: m.mine === true
-});
+const cleanMessage = (m, label) => {
+    const phrase = typeof m.phrase === 'string' ? m.phrase : null;
+    const withheld = m.withheld === true && !phrase;
+    const known = phrase ? label(phrase) : null;
+    let text = typeof m.text === 'string' ? m.text : '';
+    if (known) text = known;
+    if (withheld) text = WITHHELD_TEXT;
+    return {
+        id: m.id,
+        userId: typeof m.userId === 'number' ? m.userId : null,
+        handle: typeof m.handle === 'string' ? m.handle : '',
+        name: typeof m.name === 'string' && m.name ? m.name : (m.handle || ''),
+        color: typeof m.color === 'string' ? m.color : '',
+        text,
+        phrase,
+        withheld,
+        ts: typeof m.ts === 'number' ? m.ts : 0,
+        mine: m.mine === true
+    };
+};
 
 const readHidden = storage => {
     try {
@@ -45,10 +58,25 @@ const writeHidden = (storage, list) => {
     }
 };
 
-const createChatStore = ({send, storage}) => {
+const cleanPhrases = (list, label) => {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const p of list) {
+        const id = typeof p === 'string' ? p : (p && typeof p.id === 'string' ? p.id : null);
+        if (!id || out.some(x => x.id === id)) continue;
+        const text = label(id) || (p && typeof p.text === 'string' ? p.text : null);
+        if (text) out.push({id, text});
+    }
+    return out;
+};
+
+const createChatStore = ({send, storage, patchRoom, label}) => {
     const subscribers = new Set();
     const viewers = new Set();
+    const say = id => (typeof label === 'function' && label(id)) || (findPhrase(id) ? phraseText(id) : null);
     let lastSentText = null;
+    let lastConfig = null;
+    let self = {guest: false, childSafe: false};
     let state = {
         config: null,
         messages: [],
@@ -57,6 +85,8 @@ const createChatStore = ({send, storage}) => {
         unread: 0,
         lastAdded: null,
         selfHandle: '',
+        selfGuest: false,
+        selfChildSafe: false,
         hidden: storage ? readHidden(storage) : [],
         mutedUserIds: [],
         reported: []
@@ -77,6 +107,20 @@ const createChatStore = ({send, storage}) => {
     };
     const isMine = m => m.mine || (!!state.selfHandle && m.handle === state.selfHandle);
     const isHidden = m => m.userId !== null && state.hidden.indexOf(m.userId) !== -1;
+    const buildConfig = msg => {
+        const locked = msg.locked === true;
+        const serverMode = msg.mode === 'free' ? 'free' : 'quick';
+        const free = freeTextAllowed({mode: serverMode, locked, guest: self.guest, childSafe: self.childSafe});
+        return {
+            mode: free ? 'free' : 'quick',
+            serverMode,
+            locked,
+            on: msg.on !== false,
+            muted: msg.muted === true,
+            canModerate: msg.canModerate === true,
+            phrases: cleanPhrases(msg.phrases, say)
+        };
+    };
 
     return {
         getState: () => state,
@@ -89,19 +133,22 @@ const createChatStore = ({send, storage}) => {
         get visible () {
             return viewers.size > 0;
         },
-        setSelf ({handle}) {
-            set({selfHandle: typeof handle === 'string' ? handle : ''});
+        setSelf ({handle, guest, childSafe}) {
+            self = {guest: guest === true, childSafe: childSafe === true};
+            const patch = {
+                selfHandle: typeof handle === 'string' ? handle : '',
+                selfGuest: self.guest,
+                selfChildSafe: self.childSafe
+            };
+            if (lastConfig && state.config) {
+                patch.config = Object.assign(buildConfig(lastConfig), {on: state.config.on});
+            }
+            set(patch);
         },
         handleConfig (msg) {
             if (!msg) return;
-            const config = {
-                mode: msg.mode === 'free' ? 'free' : 'quick',
-                on: msg.on !== false,
-                muted: msg.muted === true,
-                canModerate: msg.canModerate === true,
-                phrases: Array.isArray(msg.phrases) ?
-                    msg.phrases.filter(p => p && typeof p.id === 'string' && typeof p.text === 'string') : []
-            };
+            lastConfig = msg;
+            const config = buildConfig(msg);
             const patch = {config};
             if (Array.isArray(msg.mutedUserIds)) {
                 patch.mutedUserIds = msg.mutedUserIds.filter(n => typeof n === 'number');
@@ -116,14 +163,14 @@ const createChatStore = ({send, storage}) => {
         handleHistory (msg) {
             const list = msg && Array.isArray(msg.messages) ? msg.messages : [];
             set({
-                messages: list.filter(hasId).map(cleanMessage)
+                messages: list.filter(hasId).map(m => cleanMessage(m, say))
                     .slice(-MAX_MESSAGES),
                 lastAdded: null
             });
         },
         handleMessage (msg) {
             if (!hasId(msg)) return;
-            const m = cleanMessage(msg);
+            const m = cleanMessage(msg, say);
             if (state.messages.some(x => x.id === m.id)) return;
             const messages = state.messages.concat([m]).slice(-MAX_MESSAGES);
             const patch = {messages, lastAdded: m.id};
@@ -161,6 +208,7 @@ const createChatStore = ({send, storage}) => {
                 .slice(0, MAX_TEXT);
             const config = state.config;
             if (!text || !config || config.mode !== 'free' || !config.on || config.muted) return false;
+            if (self.guest || self.childSafe || config.locked) return false;
             lastSentText = text;
             if (state.blocked) set({blocked: null});
             return send({type: 'room-chat', text}) !== false;
@@ -174,9 +222,20 @@ const createChatStore = ({send, storage}) => {
             return send({type: 'room-chat', phrase: id}) !== false;
         },
         setOn (on) {
-            if (!state.config || !state.config.canModerate) return false;
+            if (!state.config || !state.config.canModerate || typeof patchRoom !== 'function') return false;
+            const was = state.config.on;
             set({config: Object.assign({}, state.config, {on: !!on})});
-            return send({type: 'room-chat-settings', on: !!on}) !== false;
+            const undo = () => {
+                if (state.config && state.config.on === !!on) {
+                    set({config: Object.assign({}, state.config, {on: was})});
+                }
+            };
+            try {
+                Promise.resolve(patchRoom({chatOn: !!on})).catch(undo);
+            } catch (e) {
+                undo();
+            }
+            return true;
         },
         setMuted (userId, muted) {
             if (!state.config || !state.config.canModerate || typeof userId !== 'number') return false;
@@ -202,6 +261,7 @@ const createChatStore = ({send, storage}) => {
         },
         reset () {
             lastSentText = null;
+            lastConfig = null;
             set({
                 config: null,
                 messages: [],
@@ -216,4 +276,4 @@ const createChatStore = ({send, storage}) => {
     };
 };
 
-export default {createChatStore, blockedText, MAX_TEXT, BLOCKED_TEXT};
+export default {createChatStore, blockedText, MAX_MESSAGES, MAX_TEXT, BLOCKED_TEXT, WITHHELD_TEXT};

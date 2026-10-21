@@ -3,6 +3,7 @@ import React from 'react';
 import overlay from '../../lib/collab/overlay';
 import client from '../../lib/collab/client';
 import chatRoom from '../../lib/collab/chat-room';
+import {listProjects} from '../../lib/collab/room-api.js';
 import ChatPanel from '../collab-chat/chat-panel.jsx';
 import ChatToggle from '../collab-chat/chat-toggle.jsx';
 import chatStyles from '../collab-chat/collab-chat.css';
@@ -134,11 +135,14 @@ class CollabPresence extends React.Component {
         };
         this.handleToggle = () => {
             this.setState(s => {
-                if (!s.open) client.send({type: 'list-projects'});
+                if (!s.open) this.loadProjects();
                 return {open: !s.open, copied: false, confirmOpenId: null};
             });
         };
         this.handleCopy = this.handleCopy.bind(this);
+        this.loadProjects = () => listProjects()
+            .then(list => overlay.setProjects(list))
+            .catch(() => {});
         this.handleSave = () => {
             const name = this.state.saveName.trim();
             if (!name) return;
@@ -146,7 +150,6 @@ class CollabPresence extends React.Component {
             this.setState({saveName: ''});
         };
         this.handleOpenProject = id => {
-            // two-click confirm — opening replaces the room's project for everyone
             if (this.state.confirmOpenId === id) {
                 client.send({type: 'load-project', id});
                 this.setState({confirmOpenId: null, open: false});
@@ -168,7 +171,7 @@ class CollabPresence extends React.Component {
         this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
         document.addEventListener('mousedown', this.handleClickOutside);
         this.handleChange();
-        if (this.props.variant === 'pane') client.send({type: 'list-projects'});
+        if (this.props.variant === 'pane') this.loadProjects();
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
