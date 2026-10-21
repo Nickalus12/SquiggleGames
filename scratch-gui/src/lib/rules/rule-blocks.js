@@ -114,7 +114,7 @@ const asMenu = names => {
 };
 
 const namesOf = list => (Array.isArray(list) ? list.map(item => (
-    item && typeof item === 'object' ? item.name : item
+    item && typeof item === 'object' ? (typeof item.n === 'undefined' ? item.name : item.n) : item
 )) : []);
 
 const timerNames = target => {
@@ -140,7 +140,7 @@ const menuItems = (runtime, name) => {
             .filter(variable => variable.type === '')
             .map(variable => variable.name) : []);
     case 'playerValues':
-        return asMenu(namesOf(mark && mark.players));
+        return asMenu(namesOf(mark && (mark.playerValues || mark.players)));
     case 'timers':
         return asMenu(['timer'].concat(timerNames(target)));
     case 'teams':

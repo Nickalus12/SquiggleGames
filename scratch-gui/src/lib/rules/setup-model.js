@@ -6,8 +6,10 @@ const LIMITS = Object.freeze({
     players: schema.limits.playerValues,
     teams: schema.limits.teams,
     boards: schema.limits.boards,
-    name: 40
+    name: schema.limits.nameLength
 });
+
+const PLAYER_ROLE = 'player';
 
 const SEE = Object.freeze(['all', 'self']);
 const ORDER = Object.freeze(['high', 'low']);
@@ -55,7 +57,59 @@ const setupVariables = target => {
         .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind.localeCompare(b.kind)));
 };
 
-const normalizeSetup = (setup, variables) => {
+const fromMark = mark => {
+    if (!mark || typeof mark !== 'object') return mark;
+    const out = Object.assign({}, mark);
+    if (Array.isArray(mark.playerValues)) {
+        out.players = mark.playerValues.map(value => value && {
+            name: value.n,
+            default: value.d,
+            see: value.see,
+            save: value.save
+        });
+    }
+    if (Array.isArray(mark.boards)) {
+        out.boards = mark.boards.map(board => board && Object.assign({}, board, {
+            name: typeof board.n === 'undefined' ? board.name : board.n
+        }));
+    }
+    return out;
+};
+
+const toMark = clean => ({
+    secret: clean.secret,
+    saved: clean.saved,
+    playerValues: clean.players.map(player => ({
+        n: player.name,
+        d: player.default,
+        see: player.see,
+        save: player.save
+    })),
+    teams: clean.teams,
+    boards: clean.boards.map(board => ({
+        n: board.name,
+        order: board.order,
+        keep: board.keep
+    }))
+});
+
+const storageOf = target => (target && target.extensionStorage && target.extensionStorage[RULES_KEY]) || null;
+
+const isPlayerSprite = target => {
+    const mark = storageOf(target);
+    return !!(mark && mark.role === PLAYER_ROLE);
+};
+
+const playerSprites = runtime => ((runtime && runtime.targets) || [])
+    .filter(t => t.isOriginal && !t.isStage)
+    .filter(t => {
+        const mark = storageOf(t);
+        return !mark || mark.role !== RULES_ROLE;
+    });
+
+const playerSpriteNames = runtime => playerSprites(runtime).map(t => t.getName());
+
+const normalizeSetup = (setup, variables, sprites) => {
     const source = setup || {};
     const known = variables ? new Set(variables.map(variable => variable.id)) : null;
     const ids = list => Array.from(new Set(listOf(list).filter(id => typeof id === 'string' && id)))
@@ -72,31 +126,49 @@ const normalizeSetup = (setup, variables) => {
         order: pick(board && board.order, ORDER),
         keep: pick(board && board.keep, KEEP)
     })), board => board.name, LIMITS.boards);
+    const player = typeof source.player === 'string' ? source.player : '';
     return {
         secret: ids(source.secret),
         saved: ids(source.saved),
         players,
         teams,
-        boards
+        boards,
+        player: !sprites || sprites.includes(player) ? player : ''
     };
 };
 
-const readSetup = target => {
-    const mark = target && target.extensionStorage && target.extensionStorage[RULES_KEY];
-    return normalizeSetup(mark, setupVariables(target));
+const readSetup = (target, runtime) => {
+    const marked = playerSprites(runtime).find(isPlayerSprite);
+    const setup = Object.assign({}, fromMark(storageOf(target)), {player: marked ? marked.getName() : ''});
+    return normalizeSetup(setup, setupVariables(target), runtime ? playerSpriteNames(runtime) : null);
+};
+
+const markPlayerSprite = (runtime, name) => {
+    playerSprites(runtime).forEach(sprite => {
+        const chosen = sprite.getName() === name;
+        if (chosen === isPlayerSprite(sprite)) return;
+        const before = storageOf(sprite);
+        const after = chosen ? {role: PLAYER_ROLE, v: RULES_VERSION} : null;
+        if (after) sprite.extensionStorage[RULES_KEY] = after;
+        else delete sprite.extensionStorage[RULES_KEY];
+        announceKitSet(runtime, {scope: 'target', target: sprite, ext: RULES_KEY, before, after});
+    });
 };
 
 const writeSetup = (vm, target, setup) => {
-    const clean = normalizeSetup(setup, setupVariables(target));
+    const runtime = vm && vm.runtime;
+    const clean = normalizeSetup(setup, setupVariables(target), runtime ? playerSpriteNames(runtime) : null);
     const before = target.extensionStorage[RULES_KEY];
-    const mark = Object.assign({}, before, clean, {
+    const mark = Object.assign({}, before, toMark(clean), {
         role: RULES_ROLE,
         v: RULES_VERSION
     });
+    delete mark.players;
     target.extensionStorage[RULES_KEY] = mark;
-    if (vm && vm.runtime) {
-        announceKitSet(vm.runtime, {scope: 'target', target, ext: RULES_KEY, before, after: mark});
-        if (typeof vm.runtime.emitProjectChanged === 'function') vm.runtime.emitProjectChanged();
+    if (runtime) {
+        announceKitSet(runtime, {scope: 'target', target, ext: RULES_KEY, before, after: mark});
+        markPlayerSprite(runtime, clean.player);
+        if (typeof runtime.emitProjectChanged === 'function') runtime.emitProjectChanged();
     }
     return mark;
 };
@@ -106,12 +178,15 @@ const blankBoard = () => ({name: '', order: ORDER[0], keep: KEEP[0]});
 
 export {
     LIMITS,
+    PLAYER_ROLE,
     SEE,
     ORDER,
     KEEP,
     blankBoard,
     blankPlayer,
+    fromMark,
     normalizeSetup,
+    playerSpriteNames,
     readSetup,
     setupVariables,
     writeSetup

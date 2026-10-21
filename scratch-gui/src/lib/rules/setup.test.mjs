@@ -15,8 +15,9 @@ vmLog.info = () => {};
 
 const {installProjectSeam, RULES_KEY} = await import('../collab/project-seam.js');
 const {installRulesGuard} = await import('./guard.js');
-const {LIMITS, normalizeSetup, readSetup, setupVariables, writeSetup} = await import('./setup-model.js');
+const {LIMITS, fromMark, normalizeSetup, readSetup, setupVariables, writeSetup} = await import('./setup-model.js');
 const {openGameSetup} = await import('./open-setup.js');
+const {KIT_SET_EVENT} = await import('../collab/kit-set.js');
 const {OPEN_SETUP_FUNC, OPEN_RULES_FUNC} = await import('./rule-blocks.js');
 const {filterCategory, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
 const {SetupHost} = await import('./mount-setup.jsx');
@@ -39,7 +40,7 @@ section('normalizeSetup');
 {
     const empty = normalizeSetup(null);
     ok('an empty mark gives empty lists',
-        JSON.stringify(empty) === JSON.stringify({secret: [], saved: [], players: [], teams: [], boards: []}), empty);
+        JSON.stringify(empty) === JSON.stringify({secret: [], saved: [], players: [], teams: [], boards: [], player: ''}), empty);
 
     const many = Array.from({length: 40}, (unused, i) => ({name: `v${i}`}));
     const clean = normalizeSetup({
@@ -181,6 +182,65 @@ section('openGameSetup');
     ok('the setup survives save and load',
         again && JSON.stringify(readSetup(again).saved) === '["list-1"]' &&
         JSON.stringify(again.extensionStorage[RULES_KEY].teams) === '[]', again && again.extensionStorage[RULES_KEY]);
+}
+
+section('the mark on the wire');
+{
+    const vm = new VM();
+    installProjectSeam(vm);
+    installRulesGuard(vm);
+    const sprite = name => ({
+        isStage: false, name, variables: {}, lists: {}, broadcasts: {}, blocks: {}, comments: {},
+        currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 1, visible: true,
+        x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around'
+    });
+    await vm.loadProject(JSON.stringify({
+        targets: [{
+            isStage: true, name: 'Stage', variables: {}, lists: {}, broadcasts: {}, blocks: {}, comments: {},
+            currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 0
+        }, sprite('Cat'), sprite('Hero')],
+        monitors: [],
+        extensions: [],
+        meta: {semver: '3.0.0', vm: '0.2.0', agent: ''}
+    }));
+    const sets = [];
+    vm.runtime.on(KIT_SET_EVENT, event => sets.push(event));
+    const opened = [];
+    const answer = setup => () => Promise.resolve(props => {
+        opened.push(props);
+        return Promise.resolve(setup);
+    });
+    const mark = await openGameSetup(vm, answer({
+        players: [{name: 'coins', default: '3', see: 'self', save: true}],
+        boards: [{name: 'Best', order: 'low', keep: 'last'}],
+        player: 'Hero'
+    }));
+    ok('player values go out as playerValues {n, d, see, save}',
+        JSON.stringify(mark.playerValues) === '[{"n":"coins","d":3,"see":"self","save":true}]', mark.playerValues);
+    ok('boards go out as {n, order, keep}', JSON.stringify(mark.boards) === '[{"n":"Best","order":"low","keep":"last"}]',
+        mark.boards);
+    ok('the old players key is gone', !('players' in mark));
+    ok('the sheet was offered the sprites but not Game Rules',
+        JSON.stringify(opened[0].sprites) === '["Cat","Hero"]', opened[0].sprites);
+    const byName = name => vm.runtime.targets.find(t => t.isOriginal && t.getName() === name);
+    ok('the chosen sprite gets the player mark',
+        JSON.stringify(byName('Hero').extensionStorage[RULES_KEY]) === '{"role":"player","v":1}');
+    ok('the other sprite stays unmarked', !byName('Cat').extensionStorage[RULES_KEY]);
+    ok('the player mark travels as kit-set', sets.some(e => e.target === byName('Hero') && e.path[0] === 'role'),
+        sets.map(e => e.path));
+    const rules = vm.runtime.targets.find(t => t.extensionStorage[RULES_KEY] && t.extensionStorage[RULES_KEY].role === 'rules');
+    const back = readSetup(rules, vm.runtime);
+    ok('reading turns the wire shape back into the sheet\'s', back.players[0].name === 'coins' &&
+        back.boards[0].name === 'Best' && back.player === 'Hero', back);
+
+    await openGameSetup(vm, answer(Object.assign({}, back, {player: 'Cat'})));
+    ok('choosing another sprite moves the mark', !byName('Hero').extensionStorage[RULES_KEY] &&
+        byName('Cat').extensionStorage[RULES_KEY].role === 'player');
+    await openGameSetup(vm, answer(Object.assign({}, back, {player: 'Nobody'})));
+    ok('an unknown sprite name clears the choice', !byName('Cat').extensionStorage[RULES_KEY]);
+
+    const legacy = fromMark({role: 'rules', v: 1, players: [{name: 'old', default: 1}]});
+    ok('a mark saved before playerValues still reads', legacy.players[0].name === 'old');
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

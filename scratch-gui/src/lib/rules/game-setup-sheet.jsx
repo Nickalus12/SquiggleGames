@@ -41,7 +41,8 @@ class GameSetupSheet extends React.Component {
             saved: setup.saved.slice(),
             players: setup.players.map(player => Object.assign({}, player, {default: String(player.default)})),
             teams: setup.teams.slice(),
-            boards: setup.boards.map(board => Object.assign({}, board))
+            boards: setup.boards.map(board => Object.assign({}, board)),
+            player: setup.player || ''
         };
     }
     componentDidMount () {
@@ -52,7 +53,7 @@ class GameSetupSheet extends React.Component {
         this.sheet = el;
     }
     draft () {
-        return normalizeSetup(this.state, this.props.variables);
+        return normalizeSetup(this.state, this.props.variables, this.props.sprites);
     }
     handleSave () {
         this.props.onSave(this.draft());
@@ -60,6 +61,10 @@ class GameSetupSheet extends React.Component {
     handleChange (e) {
         const {section, index, field, id} = e.target.dataset;
         const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        if (section === 'player') {
+            this.setState({player: value});
+            return;
+        }
         if (section === 'secret' || section === 'saved') {
             this.setState({[section]: toggle(this.state[section], id, value)});
             return;
@@ -303,6 +308,31 @@ class GameSetupSheet extends React.Component {
             </ul>
         );
     }
+    renderPlayerSprite () {
+        const {intl, sprites} = this.props;
+        return (
+            <div className={styles.row}>
+                <select
+                    aria-label={intl.formatMessage(messages.playerSprite)}
+                    className={styles.select}
+                    data-section="player"
+                    value={this.state.player}
+                    onChange={this.handleChange}
+                >
+                    <option value="">{intl.formatMessage(messages.playerSpriteFirst)}</option>
+                    {sprites.map(name => (
+                        <option
+                            key={name}
+                            value={name}
+                        >
+                            {name}
+                        </option>
+                    ))}
+                </select>
+                <p className={styles.note}>{intl.formatMessage(messages.playerSpriteHelp)}</p>
+            </div>
+        );
+    }
     renderSection (heading, section, body, addLabel) {
         return (
             <section className={styles.section}>
@@ -337,6 +367,7 @@ class GameSetupSheet extends React.Component {
                         {intl.formatMessage(messages.title)}
                     </h3>
                     <p className={styles.intro}>{intl.formatMessage(messages.intro)}</p>
+                    {this.renderSection(messages.playerSprite, null, this.renderPlayerSprite())}
                     {this.renderSection(messages.values, null, this.renderValues())}
                     {this.renderSection(messages.players, 'players', this.renderPlayers(), messages.addPlayer)}
                     {this.renderSection(messages.teams, 'teams', this.renderTeams(), messages.addTeam)}
@@ -375,13 +406,19 @@ GameSetupSheet.propTypes = {
         saved: PropTypes.arrayOf(PropTypes.string),
         players: PropTypes.arrayOf(PropTypes.object),
         teams: PropTypes.arrayOf(PropTypes.string),
-        boards: PropTypes.arrayOf(PropTypes.object)
+        boards: PropTypes.arrayOf(PropTypes.object),
+        player: PropTypes.string
     }),
+    sprites: PropTypes.arrayOf(PropTypes.string),
     variables: PropTypes.arrayOf(PropTypes.shape({
         id: PropTypes.string,
         name: PropTypes.string,
         kind: PropTypes.oneOf(['variable', 'list'])
     })).isRequired
+};
+
+GameSetupSheet.defaultProps = {
+    sprites: []
 };
 
 export {GameSetupSheet};

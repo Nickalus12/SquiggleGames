@@ -1,6 +1,6 @@
 import {OPEN_SETUP_FUNC} from './rule-blocks.js';
 import {ensureRulesSprite} from './ensure-sprite.js';
-import {readSetup, setupVariables, writeSetup} from './setup-model.js';
+import {playerSpriteNames, readSetup, setupVariables, writeSetup} from './setup-model.js';
 
 const opening = new WeakMap();
 
@@ -14,7 +14,8 @@ const openGameSetup = (vm, load) => {
                 vm.setEditingTarget(target.id);
             }
             return (load || loadSheet)().then(mount => mount({
-                setup: readSetup(target),
+                setup: readSetup(target, vm.runtime),
+                sprites: playerSpriteNames(vm.runtime),
                 variables: setupVariables(target)
             }))
                 .then(result => (result ? writeSetup(vm, target, result) : null));

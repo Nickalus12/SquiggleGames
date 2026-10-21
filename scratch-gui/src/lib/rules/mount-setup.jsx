@@ -22,6 +22,7 @@ class SetupHost extends React.Component {
             <IntlProvider locale="en">
                 <GameSetupSheet
                     setup={this.props.setup}
+                    sprites={this.props.sprites}
                     variables={this.props.variables}
                     onClose={this.handleClose}
                     onSave={this.handleSave}
@@ -34,10 +35,11 @@ class SetupHost extends React.Component {
 SetupHost.propTypes = {
     onDone: PropTypes.func.isRequired,
     setup: PropTypes.object,
+    sprites: PropTypes.arrayOf(PropTypes.string),
     variables: PropTypes.arrayOf(PropTypes.object).isRequired
 };
 
-const mountSetup = ({setup, variables}) => new Promise(resolve => {
+const mountSetup = ({setup, sprites, variables}) => new Promise(resolve => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const previous = document.activeElement;
@@ -47,7 +49,7 @@ const mountSetup = ({setup, variables}) => new Promise(resolve => {
         if (previous && typeof previous.focus === 'function') previous.focus();
         resolve(result);
     };
-    ReactDOM.render(React.createElement(SetupHost, {setup, variables, onDone: finish}), host);
+    ReactDOM.render(React.createElement(SetupHost, {setup, sprites, variables, onDone: finish}), host);
 });
 
 export {SetupHost};

@@ -36,6 +36,21 @@ export default defineMessages({
         defaultMessage: 'Saved',
         description: 'Toggle: this value is kept between games'
     },
+    playerSprite: {
+        id: 'sq.rules.setup.playerSprite',
+        defaultMessage: 'Your player',
+        description: 'Heading for the sprite each player moves in a game'
+    },
+    playerSpriteHelp: {
+        id: 'sq.rules.setup.playerSpriteHelp',
+        defaultMessage: 'This sprite moves for you in a game, and everyone sees it move.',
+        description: 'Help under the player sprite picker'
+    },
+    playerSpriteFirst: {
+        id: 'sq.rules.setup.playerSpriteFirst',
+        defaultMessage: 'The first sprite',
+        description: 'Option: use the first sprite as the player sprite'
+    },
     players: {
         id: 'sq.rules.setup.players',
         defaultMessage: 'Player values',
