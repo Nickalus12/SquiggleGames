@@ -1,6 +1,6 @@
 import React from 'react';
 
-import collab from '../../lib/collab';
+import {collabRoomName} from '../gui/collab-handle.js';
 
 /* The dev server (8601) and the API (4455) are different origins; in
  * production they are the same one and this is empty. login.js has always
@@ -81,7 +81,7 @@ class HistoryPanel extends React.Component {
     }
 
     room () {
-        return collab.roomName || '';
+        return collabRoomName() || '';
     }
 
     load () {

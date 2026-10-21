@@ -40,7 +40,7 @@ import cloudManagerHOC from '../lib/cloud-manager-hoc.jsx';
 
 import GUIComponent from '../components/gui/gui.jsx';
 import {setIsScratchDesktop} from '../lib/isScratchDesktop.js';
-import collab from '../lib/collab';
+import {loadCollab, loadedCollab} from '../components/gui/collab-handle.js';
 import TWFullScreenResizerHOC from '../lib/tw-fullscreen-resizer-hoc.jsx';
 import LayoutModeHOC from '../lib/layout-mode-hoc.jsx';
 import TWThemeManagerHOC from './tw-theme-manager-hoc.jsx';
@@ -63,19 +63,12 @@ class GUI extends React.Component {
         this.props.onStorageInit(storage);
         this.props.onVmInit(this.props.vm);
         setProjectIdMetadata(this.props.projectId);
-        collab.init(this.props.vm, {
-            setProjectTitle: this.props.onSetProjectTitle,
-            // Keeps the Settings checkbox honest about interpolation: collab
-            // re-asserts the setting after every project load, and the UI has
-            // to be told, or it shows OFF while motion is plainly smoothed.
-            setInterpolation: this.props.onSetInterpolation
-        });
+        if (!this.props.isPlayerOnly) this.startCollab();
     }
     componentDidUpdate (prevProps) {
-        // A room and its project share one name. Renaming in the title box
-        // renames the room for everyone; collab ignores echoes of titles it
-        // just applied itself, so this cannot ping-pong.
-        if (this.props.projectTitle !== prevProps.projectTitle) {
+        if (!this.props.isPlayerOnly && prevProps.isPlayerOnly) this.startCollab();
+        const collab = loadedCollab();
+        if (collab && this.props.projectTitle !== prevProps.projectTitle) {
             collab.setRoomTitle(this.props.projectTitle);
         }
         if (this.props.projectId !== prevProps.projectId) {
@@ -89,6 +82,20 @@ class GUI extends React.Component {
             // At this time the project view in www doesn't need to know when a project is unloaded
             this.props.onProjectLoaded();
         }
+    }
+    componentWillUnmount () {
+        this.unmounted = true;
+    }
+    startCollab () {
+        if (this.collabStarted) return;
+        this.collabStarted = true;
+        loadCollab().then(collab => {
+            if (this.unmounted) return;
+            collab.init(this.props.vm, {
+                setProjectTitle: this.props.onSetProjectTitle,
+                setInterpolation: this.props.onSetInterpolation
+            });
+        });
     }
     render () {
         if (this.props.isError) {
@@ -137,6 +144,7 @@ GUI.propTypes = {
     isEmbedded: PropTypes.bool,
     isFullScreen: PropTypes.bool,
     isLoading: PropTypes.bool,
+    isPlayerOnly: PropTypes.bool,
     isScratchDesktop: PropTypes.bool,
     isShowingProject: PropTypes.bool,
     isTotallyNormal: PropTypes.bool,

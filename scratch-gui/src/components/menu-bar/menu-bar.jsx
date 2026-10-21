@@ -107,7 +107,7 @@ import sharedMessages from '../../lib/shared-messages';
 import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
 import {APP_NAME} from '../../lib/brand.js';
-import collab from '../../lib/collab';
+import {mayReplaceProject} from '../gui/collab-handle.js';
 
 const MENU_ICON = {color: '#ffffff'};
 const aboutIcon = sqIconDataUri('help', MENU_ICON);
@@ -245,7 +245,7 @@ class MenuBar extends React.Component {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
     handleClickNew () {
-        if (!collab.mayReplaceProject()) {
+        if (!mayReplaceProject()) {
             this.props.onRequestCloseFile();
             return;
         }
