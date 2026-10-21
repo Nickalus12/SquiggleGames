@@ -62,7 +62,11 @@ const styleSig = style => {
     return out;
 };
 
-/** Depth-first leaves with their effective inherited style. */
+/**
+ * Depth-first leaves with their effective inherited style.
+ * @param {SVGElement} svgEl Root of a parsed costume SVG.
+ * @return {Array<object>} Leaf elements, each with its style signature.
+ */
 const collectLeaves = svgEl => {
     const leaves = [];
     const walk = (el, parentStyle) => {
@@ -85,8 +89,13 @@ const countBySig = leaves => {
     return m;
 };
 
-/** Diff two exports of the same costume into stroke-level adds/removes.
- *  Returns null when the delta is degenerate (fall back to full replace). */
+/**
+ * Diff two exports of the same costume into stroke-level adds/removes.
+ * @param {string} prevText SVG text before the edit.
+ * @param {string} newText SVG text after the edit.
+ * @return {?object} {adds, removes}, or null when the delta is degenerate
+ *  and the caller should fall back to a full replace.
+ */
 export const diffSvg = (prevText, newText) => {
     const prevDoc = parseSvg(prevText);
     const newDoc = parseSvg(newText);
@@ -115,7 +124,12 @@ export const diffSvg = (prevText, newText) => {
     return {adds, removes};
 };
 
-/** Geometry of a scratch-paint export: absolute origin + size. */
+/**
+ * Geometry of a scratch-paint export: absolute origin + size.
+ * @param {SVGElement} svgEl Root of a parsed costume SVG.
+ * @return {?object} {ox, oy, w, h, wrapper}, or null when the export has no
+ *  translated wrapper group or no usable size.
+ */
 const exportGeometry = svgEl => {
     const w = parseFloat(svgEl.getAttribute('width'));
     const h = parseFloat(svgEl.getAttribute('height'));
@@ -128,9 +142,16 @@ const exportGeometry = svgEl => {
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** Merge a sender's stroke delta into the receiver's current costume SVG.
- *  centers are the receiver's current rotation center (viewBox-relative).
- *  Returns {svg, rotationCenterX, rotationCenterY} or null (caller falls back). */
+/**
+ * Merge a sender's stroke delta into the receiver's current costume SVG.
+ * @param {string} currentText The receiver's current costume SVG.
+ * @param {string} incomingFullText The sender's full export, the source of added strokes.
+ * @param {object} delta {adds, removes} from diffSvg.
+ * @param {number} centerX The receiver's rotation center x, viewBox-relative.
+ * @param {number} centerY The receiver's rotation center y, viewBox-relative.
+ * @return {?object} {svg, rotationCenterX, rotationCenterY}, or null so the
+ *  caller falls back to a full replace.
+ */
 export const mergeSvg = (currentText, incomingFullText, delta, centerX, centerY) => {
     const curDoc = parseSvg(currentText);
     const incDoc = parseSvg(incomingFullText);
@@ -207,8 +228,15 @@ export const mergeSvg = (currentText, incomingFullText, delta, centerX, centerY)
 
 // ------------------------------------------------------------------ bitmap ---
 
-/** Changed-pixel bounding rect between two same-size RGBA buffers.
- *  Returns {px, py, pw, ph, patch: ImageData, mask: Uint8ClampedArray} or null. */
+/**
+ * Changed-pixel bounding rect between two same-size RGBA buffers.
+ * @param {Uint8ClampedArray} prevPixels RGBA pixels before the edit.
+ * @param {Uint8ClampedArray} nextPixels RGBA pixels after the edit.
+ * @param {number} width Width of both buffers in pixels.
+ * @param {number} height Height of both buffers in pixels.
+ * @return {?object} {px, py, pw, ph, patch: ImageData, mask: Uint8ClampedArray},
+ *  or null when nothing changed or the sizes differ.
+ */
 export const diffBitmap = (prevPixels, nextPixels, width, height) => {
     if (!prevPixels || prevPixels.length !== nextPixels.length) return null;
     const prev32 = new Uint32Array(prevPixels.buffer, prevPixels.byteOffset, width * height);
@@ -246,7 +274,17 @@ export const diffBitmap = (prevPixels, nextPixels, width, height) => {
     return {px: minX, py: minY, pw, ph, patch, mask};
 };
 
-/** Copy masked patch pixels onto base (in place). Buffers are RGBA. */
+/**
+ * Copy masked patch pixels onto base (in place). Buffers are RGBA.
+ * @param {Uint8ClampedArray} basePixels Pixels to write into.
+ * @param {number} baseWidth Width of the base in pixels.
+ * @param {Uint8ClampedArray} patchPixels Pixels of the changed rect.
+ * @param {Uint8ClampedArray} maskAlpha 255 where the patch pixel changed.
+ * @param {number} px Left edge of the patch in the base.
+ * @param {number} py Top edge of the patch in the base.
+ * @param {number} pw Patch width.
+ * @param {number} ph Patch height.
+ */
 export const compositePatch = (basePixels, baseWidth, patchPixels, maskAlpha, px, py, pw, ph) => {
     const base32 = new Uint32Array(basePixels.buffer, basePixels.byteOffset, basePixels.length / 4);
     const patch32 = new Uint32Array(patchPixels.buffer, patchPixels.byteOffset, patchPixels.length / 4);

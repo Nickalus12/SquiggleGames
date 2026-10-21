@@ -40,6 +40,8 @@ const savePref = (key, value) => {
     } catch (e) { /* not worth breaking anything over */ }
 };
 
+const orEmpty = v => (v === null || typeof v === 'undefined' ? '' : v);
+
 const state = {
     vm: null,
     workspace: null,
@@ -342,8 +344,8 @@ const sendPresence = fields => {
     if (!state.active) return;
     const now = Date.now();
     const next = {
-        status: fields.status === undefined ? state.lastPresence.status : fields.status,
-        sprite: fields.sprite === undefined ? state.lastPresence.sprite : fields.sprite
+        status: typeof fields.status === 'undefined' ? state.lastPresence.status : fields.status,
+        sprite: typeof fields.sprite === 'undefined' ? state.lastPresence.sprite : fields.sprite
     };
     const changed = next.status !== state.lastPresence.status || next.sprite !== state.lastPresence.sprite;
     if (!changed && now - state.lastPresence.sentAt < 3000) return;
@@ -596,9 +598,9 @@ const zipAndSendSnapshot = async cacheOnly => {
         console.error('[collab] snapshot failed', e);
     } finally {
         state.snapshotInFlight = false;
-        if (state.snapshotAgain !== undefined) {
+        if (typeof state.snapshotAgain !== 'undefined') {
             const again = state.snapshotAgain;
-            state.snapshotAgain = undefined;
+            delete state.snapshotAgain;
             scheduleSnapshot(again);
         }
     }
@@ -690,9 +692,9 @@ if (typeof document !== 'undefined') {
             flushForLeave();
             return;
         }
-        if (state.deferredSnapshot !== undefined) {
+        if (typeof state.deferredSnapshot !== 'undefined') {
             const flag = state.deferredSnapshot;
-            state.deferredSnapshot = undefined;
+            delete state.deferredSnapshot;
             scheduleSnapshot(flag);
         }
     });
@@ -1085,7 +1087,7 @@ const wrapVm = vm => {
                             type: 'vm-action',
                             action: 'costumeAdd',
                             target: targetName,
-                            version: fixedVersion === undefined ? optVersion : fixedVersion,
+                            version: typeof fixedVersion === 'number' ? fixedVersion : optVersion,
                             costume: {
                                 name: costumeObject.name,
                                 dataFormat: costumeObject.dataFormat || asset.dataFormat,
@@ -1104,7 +1106,7 @@ const wrapVm = vm => {
     };
     wrapCostumeAdder('addCostume');
     wrapCostumeAdder('addCostumeFromLibrary', 2);
-    wrapCostumeAdder('addBackdrop', undefined, true);
+    wrapCostumeAdder('addBackdrop', null, true);
 
     const originalAddSound = vm.addSound.bind(vm);
     vm.addSound = (soundObject, optTargetId) => {
@@ -1281,7 +1283,7 @@ const wrapVm = vm => {
                 // what the receiver is holding.
                 ident = costumeIdent(target, costumeIndex);
                 prev = state.paintBase.get(`${target}|${costumeIndex}|svg`);
-                if (prev == null) prev = costumeSvgText(target, costumeIndex);
+                if (prev === null || typeof prev === 'undefined') prev = costumeSvgText(target, costumeIndex);
             }
         }
         const result = originalUpdateSvg(costumeIndex, svg, rotationCenterX, rotationCenterY);
@@ -2159,8 +2161,8 @@ const installNetBridge = () => {
             // Mirror outbound shared-var writes into the local cache immediately
             // so reporters work before the (non-echoed) round-trip.
             if (msg && msg.type === 'game' && msg.action === 'var') {
-                const key = String(msg.name == null ? '' : msg.name);
-                if (key) cachedGameVars[key] = msg.value == null ? '' : msg.value;
+                const key = String(orEmpty(msg.name));
+                if (key) cachedGameVars[key] = orEmpty(msg.value);
             }
             client.send(msg);
         },
@@ -2630,8 +2632,8 @@ const wireSocket = () => {
     // Together extension traffic — never gated by projectRunning.
     client.on('game', msg => {
         if (msg && msg.action === 'var') {
-            const key = String(msg.name == null ? '' : msg.name);
-            if (key) cachedGameVars[key] = msg.value == null ? '' : msg.value;
+            const key = String(orEmpty(msg.name));
+            if (key) cachedGameVars[key] = orEmpty(msg.value);
         }
         netEmit('game', msg);
     });
