@@ -48,6 +48,10 @@ With a camera set, drawing, picking, `mouse x` and `mouse y` all go through the 
 
 The Game Rules sprite is marked with `target.extensionStorage.together = {role: 'rules', v: 1}`. Stock `vm.toJSON` drops storage for extensions with no blocks. The seam keeps it, so the mark survives save, sprite export and collab snapshots. Use `isRulesTarget(target)` and `markRulesTarget(target)`. To keep a kit's own project-level data (for example level maps in `runtime.extensionStorage.squiggleworld`), call `preserveExtensionStorage('squiggleworld')` once when the kit loads.
 
+## 4. 3D views (`squiggle3d`)
+
+`show me in 3D as 8 views` picks a costume named `NAME-1` to `NAME-8` from where the viewer stands, following Doom exactly. `NAME-1` faces the viewer. The numbers go clockwise around the sprite as seen from above: `NAME-3` faces the viewer's left (its left side shows), `NAME-5` shows its back, `NAME-7` faces the viewer's right (its right side shows), and 2, 4, 6 and 8 are the diagonals in between in that order. A sheet drawn for Doom works unchanged. A missing view keeps the current costume.
+
 ## Known gaps
 
 - Sprite dragging in `src/containers/stage.jsx` still converts in stage space. A world kit with a camera needs a CR to the lead for that.

@@ -311,20 +311,24 @@ section('wall texels');
 
 section('8-direction facing');
 ok('viewer in front gives 0', facingIndex(90, {x: 10, y: 0}) === 0);
-ok('viewer on the left side gives 6', facingIndex(90, {x: 0, y: 10}) === 6);
+ok('viewer on the sprite left gives 2, its left side shows', facingIndex(90, {x: 0, y: 10}) === 2);
 ok('viewer behind gives 4', facingIndex(90, {x: -10, y: 0}) === 4);
-ok('viewer on the right side gives 2', facingIndex(90, {x: 0, y: -10}) === 2);
-ok('diagonal gives 1', facingIndex(0, {x: 10, y: 10}) === 1);
+ok('viewer on the sprite right gives 6, its right side shows', facingIndex(90, {x: 0, y: -10}) === 6);
+ok('front left diagonal gives 1', facingIndex(0, {x: -10, y: 10}) === 1);
+ok('front right diagonal gives 7', facingIndex(0, {x: 10, y: 10}) === 7);
+ok('back diagonals give 3 and 5', facingIndex(0, {x: -10, y: -10}) === 3 && facingIndex(0, {x: 10, y: -10}) === 5);
 ok('rounding snaps to the nearest 45', facingIndex(0, {x: Math.sin(0.3), y: Math.cos(0.3)}) === 0 &&
-    facingIndex(0, {x: Math.sin(0.5), y: Math.cos(0.5)}) === 1);
+    facingIndex(0, {x: Math.sin(0.5), y: Math.cos(0.5)}) === 7);
 {
     const costumes = ['guard-1', 'guard-2', 'guard-3', 'guard-4', 'guard-5', 'guard-6', 'guard-7', 'guard-8']
         .map(name => ({name}));
     const target = {x: 0, y: 0, direction: 90, currentCostume: 0, getCostumes: () => costumes};
     ok('facingCostume picks guard-1 from in front', facingCostume(target, {x: 50, y: 0}).name === 'guard-1');
     ok('facingCostume picks guard-5 from behind', facingCostume(target, {x: -50, y: 0}).name === 'guard-5');
-    ok('facingCostume picks guard-3 from the right side', facingCostume(target, {x: 0, y: -50}).name === 'guard-3');
-    ok('facingCostume picks guard-8 from front left', facingCostume(target, {x: 50, y: 50}).name === 'guard-8');
+    ok('facingCostume picks guard-3 from the sprite left', facingCostume(target, {x: 0, y: 50}).name === 'guard-3');
+    ok('facingCostume picks guard-7 from the sprite right', facingCostume(target, {x: 0, y: -50}).name === 'guard-7');
+    ok('facingCostume picks guard-2 from front left', facingCostume(target, {x: 50, y: 50}).name === 'guard-2');
+    ok('facingCostume picks guard-8 from front right', facingCostume(target, {x: 50, y: -50}).name === 'guard-8');
     const cache = new WeakMap();
     facingCostume(target, {x: -50, y: 0}, cache);
     ok('facingCostume caches the view set per costume', cache.get(costumes[0]).views.length === 8);
@@ -394,6 +398,19 @@ section('no allocation per frame');
     ok('the placed pool is reused', frame.placed.length === pooled.length &&
         frame.placed.every(item => pooled.indexOf(item) !== -1));
     ok('pooled entries drop their sprite after a frame', frame.placed.every(item => item.sprite === null));
+    const view = frame.view;
+    const dir = view.dir;
+    const plane = view.plane;
+    for (let i = 0; i < 100; i++) {
+        scene.player.direction = i * 7;
+        render(frame, scene);
+    }
+    ok('the view basis is reused across 100 frames', frame.view === view && view.dir === dir &&
+        view.plane === plane && near(view.dir.x, Math.sin(693 * Math.PI / 180)));
+    const out = {dir: {x: 0, y: 0}, plane: {x: 0, y: 0}, focal: 0};
+    const filled = basis(90, 66, out);
+    ok('basis fills the object it is given', filled === out && near(out.dir.x, 1) &&
+        near(out.focal, b90.focal) && near(out.plane.y, b90.plane.y));
 }
 
 done();

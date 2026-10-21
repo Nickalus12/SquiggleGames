@@ -573,6 +573,7 @@ const extendSeam = seam => {
     const tilesetOwner = () => {
         const grid = activeLevel();
         const sprite = grid && grid.tileset ? runtime.getSpriteTargetByName(grid.tileset) : null;
+        if (grid && grid.tileset && !sprite) return null;
         return sprite || runtime.getTargetForStage() || null;
     };
     const createTile = name => {
@@ -599,7 +600,9 @@ const extendSeam = seam => {
             const costumes = owner.getCostumes();
             const added = costumes[costumes.length - 1].name;
             owner.setCostume(before);
-            live().addTile(grid.id, added, 0);
+            const current = live();
+            if (!current) return fail('no world');
+            current.addTile(grid.id, added, 0);
             return added;
         });
     };

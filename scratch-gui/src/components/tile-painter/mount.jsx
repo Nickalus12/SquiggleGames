@@ -6,7 +6,8 @@ import {Provider, connect} from 'react-redux';
 import {IntlProvider, defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode, watchLayoutMode} from '../../lib/layout-mode';
-import kitLoaded from '../../lib/world/kit-loaded.js';
+import kitLoaded, {afterKitAdded} from '../../lib/world/kit-loaded.js';
+import {mountPlan, needsSync, openStep, shouldFocusToggle} from '../../lib/world/painter-shell.js';
 import {setPainterOpen} from '../../reducers/world-ui';
 import SqIcon from '../sq-icon';
 import {addTopBarItem, closeSheet, openSheet, subscribe as watchSlots} from '../phone-shell/phone-slots';
@@ -163,11 +164,9 @@ const installTilePainter = ({runtime, world, win = window, store = win.ReduxStor
     };
 
     const sync = () => {
-        const active = kitLoaded(runtime, KIT_ID);
-        const phone = isPhone();
         const slot = doc.getElementById(SLOT_ID);
-        const desktop = active && !phone && !!slot;
-        if (desktop) {
+        const plan = mountPlan({active: kitLoaded(runtime, KIT_ID), phone: isPhone(), slot});
+        if (plan.desktop) {
             if (toggleHost.parentNode !== slot) slot.appendChild(toggleHost);
             if (!toggleRendered) {
                 ReactDOM.render(wrap(<ConnectedToggle />), toggleHost);
@@ -176,17 +175,17 @@ const installTilePainter = ({runtime, world, win = window, store = win.ReduxStor
         } else if (toggleRendered) {
             unmountToggle();
         }
-        if (active && phone && !removeTopBar) {
+        if (plan.topBar && !removeTopBar) {
             removeTopBar = addTopBarItem({id: TOP_BAR_ID, order: 30, render: renderTopBar});
-        } else if ((!active || !phone) && removeTopBar) {
+        } else if (!plan.topBar && removeTopBar) {
             removeTopBar();
             removeTopBar = null;
             closeSheet(SHEET_ID);
         }
-        if (desktop || (active && phone)) {
-            if (docked !== phone) {
+        if (plan.overlay) {
+            if (docked !== plan.docked) {
                 close();
-                docked = phone;
+                docked = plan.docked;
             }
             if (!overlayHost.parentNode) doc.body.appendChild(overlayHost);
             renderOverlay();
@@ -199,35 +198,21 @@ const installTilePainter = ({runtime, world, win = window, store = win.ReduxStor
     const focusToggle = () => {
         win.setTimeout(() => {
             const button = toggleHost.querySelector('button');
-            const now = doc.activeElement;
-            if (!button || isOpen()) return;
-            if (!now || now === doc.body || overlayHost.contains(now)) button.focus();
+            const target = {button, open: isOpen(), active: doc.activeElement, body: doc.body, overlay: overlayHost};
+            if (shouldFocusToggle(target)) button.focus();
         }, 0);
     };
 
     let wasOpen = isOpen();
     const stopStore = store.subscribe(() => {
-        const open = isOpen();
-        if (open && isPhone() && !onStageTab(store.getState())) {
-            close();
-            return;
+        const step = openStep(wasOpen, {open: isOpen(), phone: isPhone(), onStage: onStageTab(store.getState())});
+        wasOpen = step.wasOpen;
+        if (step.action === 'close') close();
+        if (step.action === 'openSheet') {
+            openSheet({id: SHEET_ID, title: sheetTitle(), render: renderSheet, size: 'half'});
         }
-        if (open === wasOpen) return;
-        wasOpen = open;
-        if (isPhone()) {
-            if (open) {
-                openSheet({
-                    id: SHEET_ID,
-                    title: sheetTitle(),
-                    render: renderSheet,
-                    size: 'half'
-                });
-            } else {
-                closeSheet(SHEET_ID);
-            }
-        } else if (!open) {
-            focusToggle();
-        }
+        if (step.action === 'closeSheet') closeSheet(SHEET_ID);
+        if (step.action === 'focusToggle') focusToggle();
     });
 
     const stopSlots = watchSlots(next => {
@@ -237,14 +222,16 @@ const installTilePainter = ({runtime, world, win = window, store = win.ReduxStor
 
     const observer = new win.MutationObserver(() => {
         const slot = doc.getElementById(SLOT_ID);
-        if ((slot && toggleHost.parentNode !== slot) || (!slot && toggleRendered)) sync();
+        const inSlot = toggleHost.parentNode === slot;
+        if (needsSync({slot, phone: isPhone(), inSlot, rendered: toggleRendered})) sync();
     });
     observer.observe(doc.body, {childList: true, subtree: true});
     const stopWatching = watchLayoutMode(win, next => {
         mode = next;
         sync();
     });
-    runtime.on('EXTENSION_ADDED', sync);
+    const onAdded = afterKitAdded(sync);
+    runtime.on('EXTENSION_ADDED', onAdded);
     runtime.on('PROJECT_LOADED', close);
     runtime.on('PROJECT_LOADED', sync);
     sync();
@@ -256,7 +243,7 @@ const installTilePainter = ({runtime, world, win = window, store = win.ReduxStor
             if (typeof stopWatching === 'function') stopWatching();
             stopStore();
             stopSlots();
-            runtime.removeListener('EXTENSION_ADDED', sync);
+            runtime.removeListener('EXTENSION_ADDED', onAdded);
             runtime.removeListener('PROJECT_LOADED', close);
             runtime.removeListener('PROJECT_LOADED', sync);
             close();

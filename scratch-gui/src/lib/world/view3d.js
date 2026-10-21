@@ -1,3 +1,4 @@
+import log from '../log.js';
 import {FLAGS, flagsAt} from './tilemap.js';
 import {browserCanvas, browserImageLoader, costumeFor} from './textures.js';
 import {chainHook} from './world.js';
@@ -72,7 +73,7 @@ const createPixelCache = ({loadImage, createCanvas, onLoad}) => {
                 loaded++;
                 onLoad();
             })
-            .catch(() => null);
+            .catch(error => log.warn('squiggle3d texture did not load', error));
         return null;
     };
 
@@ -402,7 +403,7 @@ const createView3d = (runtime, world, options) => {
         const input = {canvas, doc};
         input.onClick = () => {
             if (state.on && state.mouseTurn && !locked(input) && typeof canvas.requestPointerLock === 'function') {
-                canvas.requestPointerLock();
+                Promise.resolve(canvas.requestPointerLock()).catch(() => {});
             }
         };
         input.onMove = event => {

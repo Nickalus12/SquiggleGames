@@ -74,11 +74,16 @@ const fogEnd = fog => FOG_FAR - (FOG_SLOPE * fog);
 
 const fogFactor = (fog, dist) => (fog > 0 ? Math.min(1, dist / fogEnd(fog)) : 0);
 
-const basis = (direction, fov) => {
+const basis = (direction, fov, out) => {
     const a = rad(direction);
-    const dir = {x: Math.sin(a), y: -Math.cos(a)};
     const k = Math.tan(rad(clampFov(fov)) / 2);
-    return {dir, plane: {x: Math.cos(a) * k, y: Math.sin(a) * k}, focal: (WIDTH / 2) / k};
+    const view = out || {dir: {x: 0, y: 0}, plane: {x: 0, y: 0}, focal: 0};
+    view.dir.x = Math.sin(a);
+    view.dir.y = -Math.cos(a);
+    view.plane.x = Math.cos(a) * k;
+    view.plane.y = Math.sin(a) * k;
+    view.focal = (WIDTH / 2) / k;
+    return view;
 };
 
 const castRay = (map, u, v, rx, ry, out) => {
@@ -119,7 +124,7 @@ const castRay = (map, u, v, rx, ry, out) => {
 
 const facingIndex = (spriteDirection, fromSprite) => {
     const bearing = Math.atan2(fromSprite.x, fromSprite.y) * 180 / Math.PI;
-    const rel = ((wrapDegrees(bearing - spriteDirection) + 360) % 360);
+    const rel = ((wrapDegrees(spriteDirection - bearing) + 360) % 360);
     return Math.round(rel / (360 / FACINGS)) % FACINGS;
 };
 
@@ -130,6 +135,7 @@ const createFrame = () => ({
     zbuffer: new Float32Array(WIDTH),
     heights: new Float32Array(WIDTH),
     hit: {dist: 0, side: 0, col: 0, row: 0, wallX: 0, value: 0},
+    view: {dir: {x: 0, y: 0}, plane: {x: 0, y: 0}, focal: 0},
     placed: [],
     result: {crosshair: '', target: null, ahead: Infinity}
 });
@@ -281,7 +287,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor) => {
 };
 
 const render = (frame, scene) => {
-    const view = basis(scene.player.direction, scene.fov);
+    const view = basis(scene.player.direction, scene.fov, frame.view);
     const eye = eyeOf(scene);
     const fog = clampFog(scene.fog);
     const fogColor = mixColors(scene.floor, scene.ceiling);
