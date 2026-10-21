@@ -32,8 +32,18 @@ const messages = defineMessages({
         defaultMessage: 'This file opens in Squiggle. Scratch and TurboWarp cannot run Squiggle blocks.',
         description: 'Note shown once per session when a project with Squiggle blocks is saved to the computer',
         id: 'sq.notice.portability'
+    },
+    loadError: {
+        defaultMessage: 'Those blocks did not load. Check your internet and try again.',
+        description: 'Note shown when an extension fails to load from the extension library',
+        id: 'sq.notice.loadError'
     }
 });
+
+const NOTE_MESSAGES = {
+    loadError: messages.loadError,
+    portability: messages.portability
+};
 
 const FOCUSABLE = 'button:not([disabled])';
 
@@ -88,14 +98,14 @@ class SquiggleOnlyNotice extends React.Component {
     }
     render () {
         const {intl, kind, onClose, onStartRoom} = this.props;
-        if (kind === 'portability') {
+        if (NOTE_MESSAGES[kind]) {
             return (
                 <div
                     className={styles.note}
                     role="status"
                     aria-live="polite"
                 >
-                    <p className={styles.noteText}>{intl.formatMessage(messages.portability)}</p>
+                    <p className={styles.noteText}>{intl.formatMessage(NOTE_MESSAGES[kind])}</p>
                     <button
                         type="button"
                         className={styles.secondaryButton}
@@ -157,7 +167,7 @@ class SquiggleOnlyNotice extends React.Component {
 
 SquiggleOnlyNotice.propTypes = {
     intl: intlShape.isRequired,
-    kind: PropTypes.oneOf(['together', 'portability']).isRequired,
+    kind: PropTypes.oneOf(['together', 'portability', 'loadError']).isRequired,
     onClose: PropTypes.func.isRequired,
     onStartRoom: PropTypes.func
 };

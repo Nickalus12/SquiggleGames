@@ -103,10 +103,10 @@ EXPANSIONS.concat(KITS).forEach(id => {
     ok(`${id} title matches the registry name`, textOf(card.name) === registry.getKit(id).name,
         [textOf(card.name), registry.getKit(id).name]);
     const line = textOf(card.description);
-    ok(`${id} has one kid-words line`, line.length > 0 && line.length <= 80 && !/[\n—]/.test(line), line);
+    ok(`${id} has one kid-words line`, line.length > 0 && line.length <= 80 && !/[\n\u2014]/.test(line), line);
 });
 ok('no em dash in any Squiggle card text', library.filter(isSquiggleItem)
-    .every(card => !/—/.test(textOf(card.name) + textOf(card.description))));
+    .every(card => !/\u2014/.test(textOf(card.name) + textOf(card.description))));
 
 section('sorting');
 const firstClassic = library.findIndex(card => !isSquiggleItem(card));

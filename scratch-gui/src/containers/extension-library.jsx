@@ -14,7 +14,7 @@ import extensionTags from '../lib/libraries/tw-extension-tags';
 import {getKit, isKit, TOGETHER_ID} from '../lib/kits/registry.js';
 import {isTogetherRequired, squiggleFirst, tagChipsFor} from '../components/extension-library/extension-cards.js';
 import collab from '../lib/collab';
-import {showTogetherSheet} from '../components/squiggle-only-notice';
+import {showLoadError, showTogetherSheet} from '../components/squiggle-only-notice';
 
 import LibraryComponent from '../components/library/library.jsx';
 import extensionIcon from '../components/action-menu/icon--sprite.svg';
@@ -170,8 +170,7 @@ class ExtensionLibrary extends React.PureComponent {
             })
             .catch(err => {
                 log.error(err);
-                // eslint-disable-next-line no-alert
-                alert(err);
+                showLoadError({intl: this.props.intl});
             });
     }
     handleItemShowBlocks (item) {
@@ -193,7 +192,7 @@ class ExtensionLibrary extends React.PureComponent {
                 return null;
             })
             .catch(err => log.error(err));
-        if (!collab.roomName) showTogetherSheet();
+        if (!collab.roomName) showTogetherSheet({intl: this.props.intl});
     }
     isUnshippedKit (extensionId) {
         if (!isKit(extensionId)) return false;

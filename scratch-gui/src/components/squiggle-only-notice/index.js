@@ -43,7 +43,12 @@ const close = () => {
     showing = null;
 };
 
-const mount = (kind, onStartRoom) => {
+const intlConfig = intl => ({
+    locale: (intl && intl.locale) || 'en',
+    messages: (intl && intl.messages) || {}
+});
+
+const mount = (kind, {intl, onStartRoom} = {}) => {
     close();
     host = document.createElement('div');
     host.setAttribute('data-sq-notice', kind);
@@ -51,7 +56,7 @@ const mount = (kind, onStartRoom) => {
     showing = kind;
     ReactDOM.render(React.createElement(
         IntlProvider,
-        {locale: 'en', messages: {}},
+        intlConfig(intl),
         React.createElement(SquiggleOnlyNotice, {kind, onClose: close, onStartRoom})
     ), host);
 };
@@ -60,12 +65,15 @@ const setStartRoomHandler = handler => {
     startRoomHandler = typeof handler === 'function' ? handler : defaultStartRoom;
 };
 
-const showTogetherSheet = ({force} = {}) => {
+const showTogetherSheet = ({force, intl} = {}) => {
     if (!force && storageGet('localStorage', TOGETHER_SEEN_KEY)) return false;
     storageSet('localStorage', TOGETHER_SEEN_KEY);
-    mount('together', () => {
-        close();
-        startRoomHandler();
+    mount('together', {
+        intl,
+        onStartRoom: () => {
+            close();
+            startRoomHandler();
+        }
     });
     return true;
 };
@@ -81,16 +89,20 @@ const squiggleExtensionIds = () => {
 
 const usesSquiggleBlocks = vm => {
     const manager = vm && vm.extensionManager;
-    if (!manager || !manager._loadedExtensions) return false;
-    const ids = squiggleExtensionIds();
-    return Array.from(manager._loadedExtensions.keys()).some(id => ids.has(id));
+    if (!manager || typeof manager.isExtensionLoaded !== 'function') return false;
+    return Array.from(squiggleExtensionIds()).some(id => manager.isExtensionLoaded(id));
 };
 
-const showPortabilityNote = (vm, {force} = {}) => {
+const showPortabilityNote = (vm, {force, intl} = {}) => {
     if (!force && storageGet('sessionStorage', PORTABILITY_SEEN_KEY)) return false;
     if (!force && !usesSquiggleBlocks(vm)) return false;
     storageSet('sessionStorage', PORTABILITY_SEEN_KEY);
-    mount('portability');
+    mount('portability', {intl});
+    return true;
+};
+
+const showLoadError = ({intl} = {}) => {
+    mount('loadError', {intl});
     return true;
 };
 
@@ -102,6 +114,7 @@ export {
     closeNotice,
     currentNotice,
     setStartRoomHandler,
+    showLoadError,
     showPortabilityNote,
     showTogetherSheet,
     usesSquiggleBlocks

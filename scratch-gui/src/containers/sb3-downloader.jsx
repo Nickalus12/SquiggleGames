@@ -81,7 +81,9 @@ class SB3Downloader extends React.Component {
         if (this.props.onSaveFinished) {
             this.props.onSaveFinished();
         }
-        showPortabilityNote(this.props.vm);
+        showPortabilityNote(this.props.vm, {
+            intl: {locale: this.props.locale, messages: this.props.localeMessages}
+        });
     }
     downloadProject () {
         if (!this.props.canSaveProject) {
@@ -282,6 +284,8 @@ SB3Downloader.propTypes = {
     fileHandle: PropTypes.shape({
         name: PropTypes.string
     }),
+    locale: PropTypes.string,
+    localeMessages: PropTypes.objectOf(PropTypes.string),
     onSaveFinished: PropTypes.func,
     projectFilename: PropTypes.string,
     saveProjectSb3: PropTypes.func,
@@ -311,6 +315,8 @@ const mapStateToProps = state => ({
     saveProjectSb3Stream: state.scratchGui.vm.saveProjectSb3Stream.bind(state.scratchGui.vm),
     canSaveProject: getIsShowingProject(state.scratchGui.projectState.loadingState),
     projectFilename: getProjectFilename(state.scratchGui.projectTitle, projectTitleInitialState),
+    locale: state.locales.locale,
+    localeMessages: state.locales.messages,
     vm: state.scratchGui.vm
 });
 
