@@ -45,6 +45,7 @@ import LoadScratchBlocksHOC from '../lib/tw-load-scratch-blocks-hoc.jsx';
 import {findTopBlock} from '../lib/backpack/code-payload.js';
 import {gentlyRequestPersistentStorage} from '../lib/tw-persistent-storage.js';
 import collab from '../lib/collab';
+import {isRulesTarget} from '../lib/collab/project-seam.js';
 import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 
@@ -470,7 +471,8 @@ class Blocks extends React.Component {
                 targetCostumes[targetCostumes.length - 1].name,
                 stageCostumes[stageCostumes.length - 1].name,
                 targetSounds.length > 0 ? targetSounds[targetSounds.length - 1].name : '',
-                this.props.theme.getBlockColors()
+                this.props.theme.getBlockColors(),
+                isRulesTarget(target) ? 'rules' : 'device'
             );
         } catch {
             return null;

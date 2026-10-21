@@ -1,3 +1,4 @@
+import log from '../../../log.js';
 import {registerKit} from '../../../kits/registry.js';
 import {KIT_COLORS} from '../../../themes/tokens.js';
 import {FLAGS, cellAt, cellCenter, flagsAt, getCell, tileIndex} from '../../../world/tilemap.js';
@@ -30,6 +31,13 @@ class SquiggleWorldBlocks {
         this.runtime = runtime;
         this.world = getWorld(runtime);
         attachWhenReady(this.world);
+        if (typeof window !== 'undefined' && typeof document !== 'undefined') this.mountPainter();
+    }
+
+    mountPainter () {
+        import('../../../../components/tile-painter/mount.jsx')
+            .then(mod => mod.installTilePainter({runtime: this.runtime, world: this.world}))
+            .catch(error => log.warn('Squiggle tile painter did not load', error));
     }
 
     getInfo () {

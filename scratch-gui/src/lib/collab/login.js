@@ -86,4 +86,6 @@ const showLogin = () => new Promise(resolve => {
         });
 });
 
+showLogin.apiBase = apiBase;
+
 export default showLogin;

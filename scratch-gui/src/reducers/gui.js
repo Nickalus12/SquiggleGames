@@ -31,6 +31,7 @@ import customStageSizeReducer, {customStageSizeInitialState} from './custom-stag
 import vmReducer, {vmInitialState} from './vm';
 import vmStatusReducer, {vmStatusInitialState} from './vm-status';
 import workspaceMetricsReducer, {workspaceMetricsInitialState} from './workspace-metrics';
+import worldUiReducer, {worldUiInitialState} from './world-ui';
 import checkerReducer, {checkerInitialState} from './checker';
 import throttle from 'redux-throttle';
 
@@ -71,6 +72,7 @@ const guiInitialState = {
     vm: vmInitialState,
     vmStatus: vmStatusInitialState,
     workspaceMetrics: workspaceMetricsInitialState,
+    worldUi: worldUiInitialState,
     checker: checkerInitialState
 };
 
@@ -179,6 +181,7 @@ const guiReducer = combineReducers({
     vm: vmReducer,
     vmStatus: vmStatusReducer,
     workspaceMetrics: workspaceMetricsReducer,
+    worldUi: worldUiReducer,
     checker: checkerReducer
 });
 

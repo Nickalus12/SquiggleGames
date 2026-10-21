@@ -11,6 +11,7 @@ const HOOKS = Object.freeze([
     'drawablePosition',
     'drawableDirectionScale',
     'drawableProperties',
+    'drawableEffect',
     'bubble',
     'touchingEdge',
     'edgeBounce',
@@ -167,6 +168,7 @@ const createWorld = (vm, runtime, renderer) => {
     wrapRenderer('updateDrawablePosition', 'drawablePosition');
     wrapRenderer('updateDrawableDirectionScale', 'drawableDirectionScale');
     wrapRenderer('updateDrawableProperties', 'drawableProperties');
+    wrapRenderer('updateDrawableEffect', 'drawableEffect');
 
     const mouse = runtime.ioDevices.mouse;
     const getScratchX = mouse.getScratchX;

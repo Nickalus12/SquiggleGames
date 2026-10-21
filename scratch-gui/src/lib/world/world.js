@@ -7,6 +7,7 @@ import {createTextureCache, browserCanvas, browserImageLoader} from './textures.
 import {SCENES_KEY, WORLD_KEY, readLevels, readScenes, removeLevel, writeLevel} from './storage.js';
 import {preserveExtensionStorage} from '../collab/project-seam.js';
 import {createTilemapSync} from './tilemap-sync.js';
+import {getScenes} from './scenes.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_START = 'PROJECT_START';
@@ -55,11 +56,14 @@ const createWorldState = (runtime, options) => {
         tiles: null,
         textures: null,
         view: IDENTITY_VIEW,
+        edit: null,
         applied: null,
         pinned: new Set(),
+        revision: 0,
         backdrop: {mode: 'scrolls', speed: 50},
         echo: null,
         echoSkin: null,
+        providers: new Set(),
         hitboxes: new WeakMap(),
         hits: new WeakMap(),
         disposers: [],
@@ -82,6 +86,7 @@ const createWorldState = (runtime, options) => {
             state.tiles.markAll();
         }
         state.applied = null;
+        state.revision++;
         emitter.emit('level', state.play);
     };
 
@@ -110,7 +115,10 @@ const createWorldState = (runtime, options) => {
         return {x: target.x, y: target.y};
     };
 
-    const currentView = progress => (camera.isActive() ? camera.view(progress) : IDENTITY_VIEW);
+    const currentView = progress => {
+        if (state.edit) return state.edit;
+        return camera.isActive() ? camera.view(progress) : IDENTITY_VIEW;
+    };
 
     const parallaxShift = view => {
         const speed = Math.max(0, Math.min(100, state.backdrop.speed)) / 100;
@@ -264,7 +272,7 @@ const createWorldState = (runtime, options) => {
                     const view = currentView(progress);
                     state.view = view;
                     applyScreenSpace(view);
-                    return camera.isActive() ? view : null;
+                    return state.edit || camera.isActive() ? view : null;
                 }),
                 chainHook(seam, 'drawablePosition', hookPosition),
                 chainHook(seam, 'drawableDirectionScale', hookScale),
@@ -279,6 +287,7 @@ const createWorldState = (runtime, options) => {
             state.seam = null;
         },
         isAttached: () => !!state.seam,
+        seam: () => state.seam,
         reload: loadFromStorage,
         resetPlay,
         levels: () => state.saved,
@@ -331,6 +340,7 @@ const createWorldState = (runtime, options) => {
             const value = addTexture(grid, name, flags);
             if (value && state.play && state.play.id === grid.id) {
                 state.play.tiles = grid.tiles.map(tile => Object.assign({}, tile));
+                state.revision++;
                 if (state.tiles) state.tiles.markAll();
             }
             if (value) writeLevel(runtime, grid);
@@ -351,6 +361,7 @@ const createWorldState = (runtime, options) => {
             }
             if (changed.length) {
                 writeLevel(runtime, grid);
+                state.revision++;
                 emitter.emit('cells', {level: grid.id, layer, cells: changed, origin: origin || 'local'});
             }
             return changed;
@@ -361,6 +372,7 @@ const createWorldState = (runtime, options) => {
             const cell = cellAt(grid, x, y);
             const name = layer || 'main';
             if (!setCell(grid, name, cell.col, cell.row, value)) return false;
+            state.revision++;
             if (state.tiles) state.tiles.markCell(cell.col, cell.row, name);
             return true;
         },
@@ -368,6 +380,7 @@ const createWorldState = (runtime, options) => {
             const grid = state.play;
             if (!grid) return 0;
             const value = addTexture(grid, name, 0);
+            if (value) state.revision++;
             if (value && state.tiles) state.tiles.markAll();
             return value;
         },
@@ -442,6 +455,38 @@ const createWorldState = (runtime, options) => {
             }
         },
         isPinned: target => state.pinned.has(target),
+        holdCamera: owner => camera.hold(owner),
+        setEditView (view) {
+            const next = view && Number.isFinite(view.x) && Number.isFinite(view.y) && view.zoom > 0 ?
+                {x: view.x, y: view.y, zoom: view.zoom} : null;
+            if (sameView(next, state.edit) || (!next && !state.edit)) return;
+            state.edit = next;
+            state.applied = null;
+            if (state.tiles) state.tiles.update(currentView(1));
+        },
+        editView: () => state.edit,
+        addDrawables (provider) {
+            state.providers.add(provider);
+            return () => state.providers.delete(provider);
+        },
+        ownDrawables () {
+            const ids = [];
+            if (state.tiles) {
+                state.tiles.chunks.forEach(chunk => {
+                    if (chunk.drawable !== null) ids.push(chunk.drawable);
+                });
+            }
+            if (state.echo !== null) ids.push(state.echo);
+            state.providers.forEach(provider => {
+                const id = provider();
+                if (typeof id === 'number') ids.push(id);
+            });
+            return ids;
+        },
+        revision: () => state.revision,
+        setTilesHidden (on) {
+            if (state.tiles) state.tiles.setHidden(on);
+        },
         setBackdrop (mode, speed) {
             const next = BACKDROP_MODES.indexOf(mode) === -1 ? 'scrolls' : mode;
             const was = state.backdrop.mode;
@@ -487,6 +532,8 @@ const getWorld = (runtime, options) => {
 const peekWorld = runtime => (runtime && states.get(runtime)) || null;
 
 const seamFor = runtime => {
+    const own = runtime && states.get(runtime);
+    if (own && own.seam()) return own.seam();
     if (typeof window === 'undefined') return null;
     const seam = window.SquiggleWorld;
     return seam && seam.runtime === runtime ? seam : null;
@@ -508,10 +555,57 @@ const attachWhenReady = world => {
     window.addEventListener('SquiggleWorldReady', onReady);
 };
 
+const blankTile = size => new TextEncoder().encode(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"></svg>`
+);
+
+const fail = message => Promise.reject(new Error(message));
+
 const extendSeam = seam => {
     if (!seam || seam.levels) return seam;
     const runtime = seam.runtime;
     const live = () => peekWorld(runtime);
+    const activeLevel = () => {
+        const world = live();
+        if (!world || !world.currentId()) return null;
+        return world.level(world.currentId());
+    };
+    const tilesetOwner = () => {
+        const grid = activeLevel();
+        const sprite = grid && grid.tileset ? runtime.getSpriteTargetByName(grid.tileset) : null;
+        if (grid && grid.tileset && !sprite) return null;
+        return sprite || runtime.getTargetForStage() || null;
+    };
+    const createTile = name => {
+        const grid = activeLevel();
+        const owner = tilesetOwner();
+        const storage = runtime.storage;
+        const vm = seam.vm;
+        if (!grid || !owner) return fail('no tileset');
+        if (!storage || !vm) return fail('no storage');
+        const size = grid.tileSize;
+        const asset = storage.createAsset(storage.AssetType.ImageVector, 'svg', blankTile(size), null, true);
+        const before = owner.currentCostume;
+        const costume = {
+            name: String(name || 'tile').trim() || 'tile',
+            asset,
+            assetId: asset.assetId,
+            md5: `${asset.assetId}.svg`,
+            dataFormat: 'svg',
+            rotationCenterX: size / 2,
+            rotationCenterY: size / 2,
+            bitmapResolution: 1
+        };
+        return vm.addCostume(costume.md5, costume, owner.id).then(() => {
+            const costumes = owner.getCostumes();
+            const added = costumes[costumes.length - 1].name;
+            owner.setCostume(before);
+            const current = live();
+            if (!current) return fail('no world');
+            current.addTile(grid.id, added, 0);
+            return added;
+        });
+    };
     Object.assign(seam, {
         scale: () => seam.getView().zoom,
         camera: () => (live() ? live().cameraInfo() : null),
@@ -528,6 +622,28 @@ const extendSeam = seam => {
         solidAt: (x, y) => (live() ? live().solidAt(x, y) : false),
         rulesLevels: withSolid => (live() ? live().rulesLevels(withSolid) :
             readLevels(runtime).map(grid => toRulesLevel(grid, withSolid))),
+        levelsForUpload: ({solid} = {}) => seam.rulesLevels(!!solid),
+        currentLevelIndex: () => seam.levels().findIndex(level => level.id === seam.currentLevel()) + 1,
+        tileNames: () => {
+            const owner = tilesetOwner();
+            return owner ? owner.getCostumes().map(costume => costume.name) : [];
+        },
+        tilesets: () => {
+            const names = (live() ? live().levels() : readLevels(runtime)).map(grid => grid.tileset);
+            return Array.from(new Set(names)).filter(name => name && runtime.getSpriteTargetByName(name));
+        },
+        createScene: name => {
+            const scene = getScenes(runtime).add(name ? {name: String(name)} : {});
+            return scene ? Promise.resolve(scene.id) : fail('scene limit');
+        },
+        createLevel: name => {
+            const grid = activeLevel();
+            const made = getWorld(runtime).createLevel({name, tileset: grid ? grid.tileset : ''});
+            return made ? Promise.resolve(made.id) : fail('level limit');
+        },
+        createTile,
+        showScene: name => !!getScenes(runtime).preview(name),
+        showLevel: key => getWorld(runtime).useLevel(key),
         connectTilemap: (send, options) => createTilemapSync(Object.assign({}, options, {
             world: getWorld(runtime),
             send
@@ -551,6 +667,7 @@ export {
     getWorld,
     peekWorld,
     attachWhenReady,
+    seamFor,
     extendSeam,
     installWorldApi
 };
