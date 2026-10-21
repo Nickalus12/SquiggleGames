@@ -34,6 +34,7 @@ const Controls = function (props) {
         framerate,
         interpolation,
         isSmall,
+        hideFramerateIndicator,
         ...componentProps
     } = props;
     return (
@@ -54,7 +55,7 @@ const Controls = function (props) {
             {turbo ? (
                 <TurboMode isSmall={isSmall} />
             ) : null}
-            {!isSmall && (
+            {!isSmall && !hideFramerateIndicator && (
                 <FramerateIndicator
                     framerate={framerate}
                     interpolation={interpolation}
@@ -71,6 +72,7 @@ Controls.propTypes = {
     onGreenFlagClick: PropTypes.func.isRequired,
     onStopAllClick: PropTypes.func.isRequired,
     framerate: PropTypes.number,
+    hideFramerateIndicator: PropTypes.bool,
     interpolation: PropTypes.bool,
     isSmall: PropTypes.bool,
     turbo: PropTypes.bool
@@ -79,7 +81,8 @@ Controls.propTypes = {
 Controls.defaultProps = {
     active: false,
     turbo: false,
-    isSmall: false
+    isSmall: false,
+    hideFramerateIndicator: false
 };
 
 export default injectIntl(Controls);
