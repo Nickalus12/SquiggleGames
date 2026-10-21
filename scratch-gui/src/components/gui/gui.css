@@ -129,7 +129,7 @@
 
 .tab.is-selected {
     height: 90%;
-    color: $looks-secondary;
+    color: var(--sq-accent-text, $looks-secondary);
     background-color: $ui-white;
     z-index: 4; /* Make sure selected is always above */
 }

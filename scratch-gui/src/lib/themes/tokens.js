@@ -10,6 +10,8 @@ const BRAND = {
 const MENU_BAR_FROM = '#6d4ae0';
 const MENU_BAR_TO = '#8a4fd8';
 const MENU_BAR_GRADIENT = `linear-gradient(135deg, ${MENU_BAR_FROM} 0%, ${MENU_BAR_TO} 100%)`;
+const MENU_BAR_CONTROL = '#4a2fa6';
+const MENU_BAR_CONTROL_ACTIVE = '#3f2890';
 
 const RULES_COLORS = {
     color1: '#6d4ae0',
@@ -71,6 +73,11 @@ const SCALE = {
     'sq-menu-bar-from': MENU_BAR_FROM,
     'sq-menu-bar-to': MENU_BAR_TO,
     'sq-menu-bar-text': '#ffffff',
+    'sq-menu-bar-control': MENU_BAR_CONTROL,
+    'sq-menu-bar-control-active': MENU_BAR_CONTROL_ACTIVE,
+    'sq-menu-bar-focus': '#ffffff',
+    'sq-peer-outline-bar': '#ffffff',
+    'sq-stage-surface': '#ffffff',
 
     'sq-rules-fill': RULES_COLORS.color1,
     'sq-rules-edge': RULES_COLORS.color3
@@ -97,6 +104,7 @@ const NIGHT = {
     'sq-text-muted': '#b8bfd9',
     'sq-link': '#22d3ee',
     'sq-focus': '#22d3ee',
+    'sq-accent-text': '#b9a0ff',
     'sq-success': '#2fbf71',
     'sq-warn': '#ffb020',
     'sq-danger': '#ff5a6e',
@@ -116,10 +124,11 @@ const DAY = {
     'sq-text-muted': '#4f5677',
     'sq-link': '#5b3aa0',
     'sq-focus': '#5b3aa0',
-    'sq-success': '#1a7f4b',
+    'sq-accent-text': '#5b3aa0',
+    'sq-success': '#167443',
     'sq-warn': '#9a5b00',
     'sq-danger': '#c62839',
-    'sq-info': '#0b7f99',
+    'sq-info': '#0a7089',
     'sq-elevation-1': '0 1px 2px rgba(27, 31, 58, 0.08)',
     'sq-elevation-2': '0 2px 8px rgba(27, 31, 58, 0.12)',
     'sq-elevation-3': '0 8px 24px rgba(27, 31, 58, 0.18)',
@@ -139,6 +148,8 @@ export {
     EXPANSION_IDS,
     FONT_STACK,
     KIT_COLORS,
+    MENU_BAR_CONTROL,
+    MENU_BAR_CONTROL_ACTIVE,
     MENU_BAR_FROM,
     MENU_BAR_GRADIENT,
     MENU_BAR_TO,
