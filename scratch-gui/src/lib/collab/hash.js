@@ -1,10 +1,11 @@
 import {sha256Hex} from './snapshot-http.js';
 
-const RUNTIME_ENTRY = '*';
+const MAX_HASHED_TARGETS = 512;
+const MAX_HASHED_NAME = 128;
 
 const canonical = value => {
     if (value === null || typeof value === 'undefined') return 'null';
-    if (typeof value === 'number') return Number.isFinite(value) ? JSON.stringify(value) : '0';
+    if (typeof value === 'number') return JSON.stringify(value);
     if (typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
     if (typeof value === 'object') {
@@ -16,34 +17,29 @@ const canonical = value => {
     return 'null';
 };
 
-const md5extOf = asset => {
-    if (!asset) return null;
-    return asset.md5ext || (asset.assetId ? `${asset.assetId}.${asset.dataFormat}` : null);
-};
+const orNull = value => (typeof value === 'undefined' ? null : value);
 
-const declared = (map, withCloud) => Object.keys(map || {}).sort()
+const md5exts = list => (list || []).map(asset => (asset ? asset.md5ext : null));
+
+const declared = map => Object.keys(map || {}).sort()
     .map(id => {
         const entry = map[id];
-        const name = Array.isArray(entry) ? entry[0] : entry;
-        return withCloud ? [id, name, Array.isArray(entry) && entry[2] === true] : [id, name];
+        return [id, Array.isArray(entry) ? entry[0] : entry];
     });
 
 const targetPayload = target => ({
     name: target.name,
-    stage: target.isStage === true,
-    layer: typeof target.layerOrder === 'number' ? target.layerOrder : 0,
-    blocks: target.blocks || {},
-    costumes: (target.costumes || []).map(md5extOf),
-    sounds: (target.sounds || []).map(md5extOf),
-    variables: declared(target.variables, true),
-    lists: declared(target.lists, false),
-    broadcasts: declared(target.broadcasts, false),
-    extensionStorage: target.extensionStorage || null
-});
-
-const runtimePayload = project => ({
-    extensions: (project.extensions || []).slice().sort(),
-    extensionStorage: project.extensionStorage || null
+    isStage: target.isStage,
+    blocks: target.blocks,
+    comments: target.comments || {},
+    costumes: md5exts(target.costumes),
+    sounds: md5exts(target.sounds),
+    variables: declared(target.variables),
+    lists: declared(target.lists),
+    broadcasts: declared(target.broadcasts),
+    extensionStorage: target.extensionStorage || {},
+    rotationStyle: orNull(target.rotationStyle),
+    draggable: orNull(target.draggable)
 });
 
 const projectHashes = async json => {
@@ -53,8 +49,13 @@ const projectHashes = async json => {
         if (!target || typeof target.name !== 'string') continue;
         out[target.name] = await sha256Hex(canonical(targetPayload(target)));
     }
-    out[RUNTIME_ENTRY] = await sha256Hex(canonical(runtimePayload(project)));
     return out;
+};
+
+const sendableHashes = hashes => {
+    const names = Object.keys(hashes || {});
+    if (!names.length || names.length > MAX_HASHED_TARGETS) return null;
+    return names.every(name => name.length <= MAX_HASHED_NAME) ? hashes : null;
 };
 
 const driftedTargets = (local, remote) => {
@@ -65,9 +66,10 @@ const driftedTargets = (local, remote) => {
 };
 
 export {
-    RUNTIME_ENTRY,
+    MAX_HASHED_TARGETS,
     canonical,
     driftedTargets,
     projectHashes,
+    sendableHashes,
     targetPayload
 };

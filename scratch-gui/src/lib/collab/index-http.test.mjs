@@ -185,6 +185,8 @@ section('welcome with proto 2 seeds the room over http');
     ok('the sha is the project text hash', frame.sha === await sha256Hex(vm.toJSON()));
     ok('it carries the size and the ref', typeof frame.size === 'number' && typeof frame.ref === 'number');
     ok('it is based on the welcome version', frame.basedOn === 0);
+    ok('it carries the manifest hash of every target', JSON.stringify(frame.hashes) ===
+        JSON.stringify(await (await import('./hash.js')).projectHashes(vm.toJSON())), frame.hashes);
     ok('the project went up gzipped first', puts().length === 1 && puts()[0].headers['content-encoding'] === 'gzip');
     ok('the asset store points at the server once',
         webStores.length === 1 && webStores[0].getUrl({assetId: 'a'.repeat(32), dataFormat: 'png'}) ===

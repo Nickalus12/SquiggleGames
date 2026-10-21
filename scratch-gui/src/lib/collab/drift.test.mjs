@@ -1,7 +1,6 @@
 process.removeAllListeners('warning');
 
 const {DRIFT_REPAIR_MAX, planDriftRepair} = await import('./drift.js');
-const {RUNTIME_ENTRY} = await import('./hash.js');
 
 let pass = 0;
 let fail = 0;
@@ -66,7 +65,6 @@ ok('nothing drifted plans nothing', planDriftRepair([], local, local).length ===
     const steps = planDriftRepair(['Stage'], local, remote);
     ok('a stage with only new blocks swaps them', steps && steps[0].kind === 'blocks', steps);
 }
-ok('the runtime entry resyncs', planDriftRepair([RUNTIME_ENTRY], local, local) === null);
 ok('more than the cap resyncs',
     planDriftRepair(Array.from({length: DRIFT_REPAIR_MAX + 1}, (_, i) => `S${i}`), local, local) === null);
 

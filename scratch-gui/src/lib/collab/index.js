@@ -23,7 +23,7 @@ import {rulesStatus} from '../rules/status.js';
 import {createGameLink} from '../together2/session.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
-import {driftedTargets, projectHashes} from './hash.js';
+import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
 import {DRIFT_REPAIR_MAX, planDriftRepair, replaceBlocks} from './drift.js';
 import {showPortabilityNote} from '../../components/squiggle-only-notice';
 import {
@@ -801,6 +801,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         if (typeof project.json === 'string') {
             try {
                 uploaded = await uploadProject(project.json);
+                uploaded = Object.assign({}, uploaded, {hashes: sendableHashes(await projectHashes(project.json))});
             } catch (e) {
                 snapshotUploadFailed(e, cacheOnly);
                 return;

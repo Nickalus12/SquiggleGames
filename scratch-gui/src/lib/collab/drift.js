@@ -1,5 +1,5 @@
 import sb3 from 'scratch-vm/src/serialization/sb3.js';
-import {RUNTIME_ENTRY, canonical, targetPayload} from './hash.js';
+import {canonical, targetPayload} from './hash.js';
 
 const DRIFT_REPAIR_MAX = 3;
 
@@ -9,7 +9,7 @@ const byName = (project, name) => ((project && project.targets) || []).find(t =>
 
 const planDriftRepair = (off, localProject, remoteProject) => {
     if (!off.length) return [];
-    if (off.length > DRIFT_REPAIR_MAX || off.includes(RUNTIME_ENTRY)) return null;
+    if (off.length > DRIFT_REPAIR_MAX) return null;
     const steps = [];
     for (const name of off) {
         const local = byName(localProject, name);
