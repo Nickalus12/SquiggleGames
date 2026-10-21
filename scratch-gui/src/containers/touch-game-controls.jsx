@@ -6,7 +6,7 @@ import VM from 'scratch-vm';
 
 import TouchGameControlsComponent from '../components/touch-game-controls/touch-game-controls.jsx';
 import {keyboardData, listenedTouchKeys} from '../lib/touch-keys';
-import {setProjectUsesKeys, touchControlsVisible} from '../reducers/layout-mode';
+import {playerTouchControlsVisible, setProjectUsesKeys, touchControlsVisible} from '../reducers/layout-mode';
 
 const SCAN_DELAY = 500;
 
@@ -64,7 +64,7 @@ class TouchGameControls extends React.Component {
 
 TouchGameControls.propTypes = {
     className: PropTypes.string,
-    layout: PropTypes.oneOf(['bottom', 'sides', 'overlay']),
+    layout: PropTypes.oneOf(['bottom', 'sides', 'overlay', 'stage']),
     onSetProjectUsesKeys: PropTypes.func.isRequired,
     show: PropTypes.bool,
     visible: PropTypes.bool,
@@ -75,8 +75,10 @@ TouchGameControls.defaultProps = {
     show: true
 };
 
-const mapStateToProps = state => ({
-    visible: touchControlsVisible(state.scratchGui.layoutMode)
+const mapStateToProps = (state, ownProps) => ({
+    visible: ownProps.player ?
+        playerTouchControlsVisible(state.scratchGui.layoutMode) :
+        touchControlsVisible(state.scratchGui.layoutMode)
 });
 
 const mapDispatchToProps = dispatch => ({

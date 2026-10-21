@@ -9,10 +9,10 @@ const SET_MINI_STAGE = 'scratch-gui/layout-mode/SET_MINI_STAGE';
 const SET_TOUCH_CONTROLS = 'scratch-gui/layout-mode/SET_TOUCH_CONTROLS';
 const SET_PROJECT_USES_KEYS = 'scratch-gui/layout-mode/SET_PROJECT_USES_KEYS';
 
-const hasCoarsePointer = () => (
+const pointerMatches = kind => (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches
+    window.matchMedia(`(pointer: ${kind})`).matches
 );
 
 const initialState = {
@@ -25,7 +25,8 @@ const initialState = {
     miniStage: false,
     touchControls: null,
     projectUsesKeys: false,
-    coarsePointer: hasCoarsePointer()
+    coarsePointer: pointerMatches('coarse'),
+    finePointer: pointerMatches('fine')
 };
 
 const reducer = function (state, action) {
@@ -124,6 +125,12 @@ const touchControlsVisible = state => {
     return state.coarsePointer && state.projectUsesKeys;
 };
 
+const playerTouchControlsVisible = state => {
+    if (state.touchControls !== null) return state.touchControls;
+    if (!state.projectUsesKeys || state.finePointer) return false;
+    return state.coarsePointer || state.mode === LAYOUT_MODES.phone || state.mode === LAYOUT_MODES.tablet;
+};
+
 export {
     reducer as default,
     initialState as layoutModeInitialState,
@@ -135,5 +142,6 @@ export {
     setProjectUsesKeys,
     setTouchControls,
     setViewport,
+    playerTouchControlsVisible,
     touchControlsVisible
 };
