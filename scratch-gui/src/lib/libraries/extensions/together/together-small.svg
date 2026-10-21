@@ -1,6 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
-  <rect width="40" height="40" rx="8" fill="#9966ff"/>
-  <circle cx="13" cy="14" r="5" fill="#fff"/>
-  <circle cx="27" cy="14" r="5" fill="#fff"/>
-  <path d="M5.5 31c0-4.2 3.4-7.5 7.5-7.5h0c1.4 0 2.7.4 3.8 1.1C18 22.9 19.9 22 22 22h0c4.1 0 7.5 3.3 7.5 7.5V33H5.5v-2z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="Together">
+  <defs>
+    <linearGradient id="sq-ts-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b1f63"/>
+      <stop offset="1" stop-color="#150e30"/>
+    </linearGradient>
+    <linearGradient id="sq-ts-arc" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="30" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <g id="sq-ts-pad">
+      <circle cx="-4.6" cy="3.6" r="3.4"/>
+      <circle cx="4.6" cy="3.6" r="3.4"/>
+      <rect x="-8" y="-4.5" width="16" height="9" rx="4"/>
+    </g>
+  </defs>
+  <rect width="40" height="40" rx="8" fill="url(#sq-ts-bg)"/>
+  <path d="M10 17 Q20 4 30 17" fill="none" stroke="url(#sq-ts-arc)" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="20" cy="10.5" r="2" fill="#ffffff"/>
+  <g transform="translate(12.5 26) rotate(-12)">
+    <use xlink:href="#sq-ts-pad" href="#sq-ts-pad" fill="#f6f2ff"/>
+  </g>
+  <g transform="translate(27.5 26) rotate(12)">
+    <use xlink:href="#sq-ts-pad" href="#sq-ts-pad" fill="#f6f2ff"/>
+  </g>
 </svg>
