@@ -2,7 +2,7 @@
  * brief outbound queue so a blip doesn't drop block edits mid-drag. */
 
 // Lossy traffic — safe to drop under backpressure or while offline.
-const LOSSY = new Set(['cursor', 'presence', 'sprite-info']);
+const LOSSY = new Set(['cursor', 'presence', 'sprite-info', 'field', 'viewport']);
 // Reliable traffic is queued briefly across reconnects (block edits, snapshots…).
 const MAX_QUEUE = 80;
 const MAX_BUFFERED = 2 * 1024 * 1024; // ~2MB socket buffer → start dropping lossy
@@ -133,6 +133,9 @@ class CollabClient {
         this.freshJoin = false;
         this.resume = null;
         this._selfIds = new Set();
+        this._syncTarget = null;
+        this._reloading = false;
+        this._syncSent = null;
         this._received = 0;
         this._ackTimer = null;
     }
@@ -212,12 +215,15 @@ class CollabClient {
         if (typeof msg.rs !== 'number') return true;
         if (this.rs !== null && msg.rs <= this.rs) return false;
         this.rs = msg.rs;
+        if (this._syncSent === 'catching-up') this._emitSync();
         return !this._selfIds.has(msg.from);
     }
 
     _onWelcome (msg) {
         this.proto = typeof msg.proto === 'number' ? msg.proto : 1;
+        this._syncTarget = null;
         if (this.proto < 2) return;
+        if (msg.replay && !msg.behind && typeof msg.rs === 'number') this._syncTarget = msg.rs;
         if (typeof msg.resume === 'string') this.resume = msg.resume;
         if (typeof msg.id !== 'undefined') this._selfIds.add(msg.id);
         const snapSeq = msg.snap && typeof msg.snap.atSeq === 'number' ? msg.snap.atSeq : null;
@@ -268,6 +274,7 @@ class CollabClient {
             const wasConnected = this.connected;
             this.connected = false;
             if (wasConnected) this._emit('disconnected', {unconfirmed: this._takeUnconfirmed()});
+            this._emitSync();
             this._backoff = 1000;
             this._open();
             return;
@@ -299,6 +306,29 @@ class CollabClient {
 
     get generation () {
         return this._openGen;
+    }
+
+    get syncState () {
+        return {state: this._syncStateName(), pending: this._queue.length};
+    }
+
+    syncReloading (on) {
+        this._reloading = on === true;
+        this._emitSync();
+    }
+
+    _syncStateName () {
+        if (!this.connected) return 'offline';
+        if (this._reloading) return 'reloading';
+        if (this._syncTarget !== null && this.rs < this._syncTarget) return 'catching-up';
+        return 'synced';
+    }
+
+    _emitSync () {
+        const sync = this.syncState;
+        if (sync.state === this._syncSent) return;
+        this._syncSent = sync.state;
+        this._emit('sync-state', sync);
     }
 
     get holdingQueue () {
@@ -416,6 +446,7 @@ class CollabClient {
                 this._holding = this._queue.length > 0;
                 this._emit('welcome', msg);
                 if (this._holding) this.releaseQueue();
+                this._emitSync();
                 return;
             }
             if (RING_TYPES.has(msg.type) && !this._onRingFrame(msg)) return;
@@ -445,6 +476,7 @@ class CollabClient {
                     dropped
                 });
             }
+            this._emitSync();
             if (dropped) this._purgeOversized();
             if (code === 4010) this._emit('reload-needed', {code, reason});
             if (code === BAD_FRAME_CODE && this._badFrame(code, reason)) {

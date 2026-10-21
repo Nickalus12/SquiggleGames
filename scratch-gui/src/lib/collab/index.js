@@ -85,7 +85,7 @@ const state = {
     lastSpriteInfoSent: 0,
     pendingSpriteInfo: null, // trailing sprite-info so the final drag position always lands
     spriteInfoTimer: null,
-    lastPresence: {status: null, sprite: null, sentAt: 0},
+    lastPresence: {status: null, sprite: null, tab: null, sentAt: 0},
     appearance: {},
     lastSnapshotKey: null,
     snapshotRef: 0,
@@ -419,18 +419,22 @@ const applyEditability = () => {
     overlay.banner('You are watching this project. Your changes will not be saved.', {kind: 'busy'});
 };
 
+const PRESENCE_TABS = Object.freeze(['code', 'costumes', 'sounds']);
+const presenceTab = index => PRESENCE_TABS[index] || PRESENCE_TABS[0];
+
 // Send presence only when it actually changed (or as a 3s keepalive refresh).
 const sendPresence = fields => {
     if (!state.active) return;
     const now = Date.now();
     const next = {
         status: typeof fields.status === 'undefined' ? state.lastPresence.status : fields.status,
-        sprite: typeof fields.sprite === 'undefined' ? state.lastPresence.sprite : fields.sprite
+        sprite: typeof fields.sprite === 'undefined' ? state.lastPresence.sprite : fields.sprite,
+        tab: presenceTab(state.localTab)
     };
     const changed = next.status !== state.lastPresence.status || next.sprite !== state.lastPresence.sprite;
     if (!changed && now - state.lastPresence.sentAt < 3000) return;
     state.lastPresence = {...next, sentAt: now};
-    if (hasPeers()) client.send({type: 'presence', ...fields});
+    if (hasPeers()) client.send({type: 'presence', ...fields, tab: next.tab});
 };
 
 // -------------------------------------------------------------- utilities ---
@@ -1161,6 +1165,7 @@ const applySnapshot = async msg => {
 
     const keepTarget = editingTargetName();
     state.snapshotLoading = true;
+    client.syncReloading(true);
     let alreadyHave = false;
     if (msg._rescue) {
         try {
@@ -1240,6 +1245,7 @@ const applySnapshot = async msg => {
         // eslint-disable-next-line require-atomic-updates -- guarded by snapshotLoading
         state.snapshotLoading = false;
         state.applyingRemote--;
+        client.syncReloading(false);
     }
 
     // Block edits that raced the load were queued — replay on the state we just
@@ -2997,8 +3003,14 @@ const wireSocket = () => {
         }
         const unsent = state.offlineEdits;
         state.offlineEdits = false;
-        state.lastPresence = {status: null, sprite: null, sentAt: 0};
-        client.send({type: 'presence', sprite: editingTargetName(), status: 'here', ...state.appearance});
+        state.lastPresence = {status: null, sprite: null, tab: null, sentAt: 0};
+        client.send({
+            type: 'presence',
+            sprite: editingTargetName(),
+            status: 'here',
+            tab: presenceTab(currentTabIndex()),
+            ...state.appearance
+        });
         // Seed Together shared variables for late joiners / reconnects.
         state.roomGame = msg.game === true;
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
@@ -3145,6 +3157,7 @@ const wireSocket = () => {
             type: 'presence',
             sprite: state.lastPresence.sprite || editingTargetName(),
             status: state.lastPresence.status || 'here',
+            tab: presenceTab(state.localTab),
             ...state.appearance
         });
         netEmit('peer-joined', msg);
@@ -3281,6 +3294,7 @@ const setAppearance = ({color, style}) => {
         type: 'presence',
         sprite: state.lastPresence.sprite || editingTargetName(),
         status: state.lastPresence.status || 'here',
+        tab: presenceTab(state.localTab),
         ...state.appearance
     });
     if (state.snapshotHttp) {
