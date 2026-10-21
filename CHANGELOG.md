@@ -9,6 +9,80 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
+## 2.0.0 (2026-10-21)
+
+The editor for Squiggle 2.0, which now runs on Cloudflare. 210 commits since
+1.8.0, built by eight editor lanes.
+
+### Added
+
+- **Five new kits.** World builds big levels out of tiles and follows the
+  action with a camera. Scenes switches between levels, menus and cutscenes.
+  Animate makes sprites glide, bounce and play costume clips. Game Tools moves
+  toward a spot, rolls a chance and sends messages with data. 3D turns your
+  tile levels into a world you can walk through, and a sprite shows the
+  picture that matches the side you see it from, in eight views.
+- **Three game expansions that need Together:** Scores and Rounds, Teams and
+  Items, and Arena. Their rule blocks go on a Game Rules sprite and draw with
+  a gold edge. The game server that runs them stays switched off in this
+  release, so the blocks that connect a game to it are hidden. Turning it on
+  is what is next.
+- **The tile painter.** Paint tiles over the stage, zoom and pan the painter
+  on its own, and on a phone open it as a bottom sheet from the Tiles button.
+  A Scenes button in the stage header opens the scene strip, and on a phone
+  the scene sheet.
+- **Together's new look.** New card art, a "Together Room" badge on every
+  card that needs a room, filter pills for All, Multiplayer, Game World, FX and
+  UI, and Classic, and a short Together sheet the first time you add it.
+- **Room panel.** Who is in the room, your colour and shape, follow a friend,
+  invite, the room's status, history and the room's library. On a phone it is
+  the Room tab.
+- **Presence bar** over the stage with everyone's avatar, a count and the
+  quick phrase picker. Friends' rings, soft locks and typing carets show on the
+  blocks they are working on.
+- **Sync chip** that reads synced, syncing, reconnecting or offline.
+- **Keep my work.** After editing offline you choose whether your changes or
+  the room's win, and the editor tells you how many of your changes it kept.
+- **History** rows show who made a change and what it was, and a restore asks
+  first.
+- **Project checker.** A pill in the menu bar checks fifteen things in plain
+  words, with Show me and Fix it.
+- **Command palette** on Ctrl or Cmd+K for commands, blocks, variables,
+  sprites and the world, and **focus mode** on Ctrl or Cmd+Shift+F with a
+  floating stage you can drag.
+- **Night and Day themes** with an Auto choice that follows the device, a
+  keyboard reachable theme menu, and the icon set redrawn on a 24 grid.
+- **Game pad in the player.** On touch screens a game that listens for keys
+  gets arrow and WASD pads and up to four action buttons.
+- **A portability note.** Saving to your computer a project that uses
+  Squiggle blocks says that it runs on squigglegames.app.
+
+### Changed
+
+- The editor speaks room protocol 2: joins resume where they left off, edits
+  are acked, snapshots go over HTTP by sha, costumes and sounds go by file
+  hash, and tile edits travel as patches under the relay's frame size.
+- A drifted room repairs up to three sprites from the room's head instead of
+  reloading everyone.
+- The room socket dials `/ws/room/<slug>` on the 2.0 host.
+- Kits register through one registry (`src/lib/kits/`), and kits draw through
+  the world view, so text, effects, particles and health bars follow the
+  camera.
+- The phone block palette opens from a search icon in the top bar.
+- Chat keeps the last 50 lines and follows the Day and Night colours.
+
+### Fixed
+
+- A block theme no longer removes the gold edge from rule blocks.
+- Saves stop retrying on 401, 403 and 404 and say why.
+- Custom fonts load in rooms that use HTTP snapshots.
+- A long level's parallax backdrop wraps instead of running out of sky.
+- The Requires glyphs and the Coming Soon tag meet 3:1 contrast in Night and
+  Day.
+- A kit that fails to load shows a kid-safe note instead of a browser alert.
+- The closed phone menu sheet stays hidden whatever order the stylesheets load
+  in.
+
 ## 1.8.0 (2026-10-20)
 
 ### Added
