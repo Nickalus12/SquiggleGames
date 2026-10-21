@@ -43,6 +43,7 @@ import PhoneTabBar from '../phone-shell/phone-tab-bar.jsx';
 import PhoneSpriteRow from '../phone-shell/phone-sprite-row.jsx';
 import PhoneMiniStageButton from '../phone-shell/phone-mini-stage-button.jsx';
 import CollabPresence from '../menu-bar/collab-presence.jsx';
+import CheckerPill from '../checker-pill/index.jsx';
 
 import {STAGE_SIZE_MODES, FIXED_WIDTH, UNCONSTRAINED_NON_STAGE_WIDTH} from '../../lib/layout-constants';
 import {resolveStageSize} from '../../lib/screen-utils';
@@ -372,6 +373,7 @@ const GUIComponent = props => {
                     isTotallyNormal={isTotallyNormal}
                     logo={logo}
                     renderLogin={renderLogin}
+                    rightSlot={<CheckerPill inline />}
                     showComingSoon={showComingSoon}
                     showOpenFilePicker={showOpenFilePicker}
                     showSaveFilePicker={showSaveFilePicker}
