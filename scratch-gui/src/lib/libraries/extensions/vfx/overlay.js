@@ -263,4 +263,4 @@ const createOverlay = (runtime, options) => {
     return overlay;
 };
 
-export {createOverlay, cameraActive, seamFor, setFrameRequest};
+export {createOverlay, cameraActive, onStep, seamFor, setFrameRequest};

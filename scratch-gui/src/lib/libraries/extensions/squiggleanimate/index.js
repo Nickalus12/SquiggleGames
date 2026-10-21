@@ -138,6 +138,8 @@ class SquiggleAnimateBlocks {
         this.live = new Set();
         this.liveReady = false;
         this.detachTick = null;
+        this.cameraWrite = {x: NaN, y: NaN, zoom: NaN, hooked: false};
+        this.flushCamera = this.flushCamera.bind(this);
         this.tick = this.tick.bind(this);
         this.stepClip = this.stepClip.bind(this);
         this.clearHits = this.clearHits.bind(this);
@@ -301,9 +303,10 @@ class SquiggleAnimateBlocks {
         if (isCameraProp(prop)) {
             const camera = this.camera();
             if (!camera) return null;
-            if (prop === 'camera x') return [camera.state.x];
-            if (prop === 'camera y') return [camera.state.y];
-            if (prop === 'camera zoom') return [camera.state.zoom * 100];
+            const pending = this.cameraWrite;
+            if (prop === 'camera x') return [Number.isNaN(pending.x) ? camera.state.x : pending.x];
+            if (prop === 'camera y') return [Number.isNaN(pending.y) ? camera.state.y : pending.y];
+            if (prop === 'camera zoom') return [Number.isNaN(pending.zoom) ? camera.state.zoom * 100 : pending.zoom];
             return null;
         }
         if (target.isStage && ['x', 'y', 'xy', 'size', 'direction'].indexOf(prop) !== -1) return null;
@@ -332,11 +335,32 @@ class SquiggleAnimateBlocks {
         case 'brightness': target.setEffect('brightness', clamp(v, -100, 100)); return;
         case 'color': target.setEffect('color', v); return;
         }
+        if (!this.camera()) return;
+        const pending = this.cameraWrite;
+        if (prop === 'camera x') pending.x = v;
+        else if (prop === 'camera y') pending.y = v;
+        else if (prop === 'camera zoom') pending.zoom = v;
+        if (pending.hooked) return;
+        const seam = seamFor(this.runtime);
+        if (!seam) {
+            this.flushCamera();
+            return;
+        }
+        seam.onAfterExecute(this.flushCamera);
+        pending.hooked = true;
+    }
+
+    flushCamera () {
+        const pending = this.cameraWrite;
+        if (Number.isNaN(pending.x) && Number.isNaN(pending.y) && Number.isNaN(pending.zoom)) return;
         const camera = this.camera();
-        if (!camera) return;
-        if (prop === 'camera x') camera.set(v, camera.state.y);
-        else if (prop === 'camera y') camera.set(camera.state.x, v);
-        else if (prop === 'camera zoom') camera.setZoom(v);
+        if (camera) {
+            camera.setTarget(Number.isNaN(pending.x) ? null : pending.x, Number.isNaN(pending.y) ? null : pending.y,
+                Number.isNaN(pending.zoom) ? null : pending.zoom);
+        }
+        pending.x = NaN;
+        pending.y = NaN;
+        pending.zoom = NaN;
     }
 
     startTween (args, util) {

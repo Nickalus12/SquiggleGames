@@ -172,6 +172,28 @@ ok('camera properties appear once the World kit is loaded', ext.propMenu().index
 ext.startTween({PROP: 'camera zoom', V: 200, T: 0.5, EASE: 'linear'}, stageUtil);
 for (let i = 0; i < 15; i++) runtime._step();
 ok('camera zoom tweens through the world camera', near(world.camera.state.zoom, 2), world.camera.state.zoom);
+const used = [];
+['set', 'setZoom', 'setTarget'].forEach(name => {
+    const original = world.camera[name];
+    world.camera[name] = (...args) => {
+        used.push(name);
+        return original.apply(world.camera, args);
+    };
+});
+ext.startTween({PROP: 'camera x', V: 80, T: 0.5, EASE: 'linear'}, stageUtil);
+for (let i = 0; i < 3; i++) runtime._step();
+ok('camera tweens write through setTarget', used.length > 0 && used.every(name => name === 'setTarget'), used);
+const glide = world.camera.view(0.5).x;
+ok('a camera tween glides between steps', world.camera.state.from.x < glide && glide < world.camera.state.x,
+    {from: world.camera.state.from.x, glide, x: world.camera.state.x});
+ok('a camera read sees the value written this step', (() => {
+    ext.write(null, 'camera x', 33);
+    const seen = ext.read(null, 'camera x')[0];
+    ext.flushCamera();
+    return seen === 33 && world.camera.state.x === 33;
+})());
+for (let i = 0; i < 15; i++) runtime._step();
+ok('a camera x tween lands', near(world.camera.state.x, 80), world.camera.state.x);
 
 section('clips');
 ['walk1', 'walk2', 'walk3', 'walk4', 'idle'].forEach((name, i) => {

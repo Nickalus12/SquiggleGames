@@ -1,5 +1,5 @@
 import {peekWorld} from '../../../world/world.js';
-import {cameraActive, createOverlay} from './overlay.js';
+import {cameraActive, createOverlay, onStep} from './overlay.js';
 
 const menuIconURI = 'data:image/svg+xml;base64,' +
     'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0i' +
@@ -8,6 +8,7 @@ const menuIconURI = 'data:image/svg+xml;base64,' +
     'dmc+';
 
 const clamp01 = n => Math.max(0, Math.min(1, n));
+const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
 const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 const num = value => {
     const n = Number(value);
@@ -16,7 +17,7 @@ const num = value => {
 
 const idle = () => ({
     shake: {elapsed: 0, duration: 0, intensity: 0},
-    zoom: {elapsed: 0, duration: 0, amount: 0, camera: null, base: 1},
+    zoom: {elapsed: 0, duration: 0, amount: 0, camera: null, start: 0, applied: 1, written: null},
     tilt: {from: 0, to: 0, elapsed: 0, duration: 0, current: 0},
     flash: {r: 255, g: 255, b: 255, elapsed: 0, duration: 0},
     vignette: {elapsed: 0, duration: 0, intensity: 0}
@@ -27,7 +28,9 @@ class ThunderboltVFX {
         this.runtime = runtime;
         Object.assign(this, idle());
         this.transform = '';
+        this.clock = now;
         this.overlay = createOverlay(runtime, {zIndex: 11, frame: this.frame.bind(this)});
+        this.disposeStep = null;
         this.stageCanvas = this.overlay.stageCanvas;
         if (this.stageCanvas && this.stageCanvas.style) this.stageCanvas.style.transformOrigin = 'center center';
     }
@@ -46,13 +49,34 @@ class ThunderboltVFX {
 
     stepZoom (dt) {
         const zoom = this.zoom;
-        if (zoom.elapsed >= zoom.duration) return 1;
+        if (zoom.camera || zoom.elapsed >= zoom.duration) return 1;
         zoom.elapsed += dt;
         const progress = clamp01(zoom.elapsed / zoom.duration);
-        const factor = 1 + (zoom.amount * Math.sin(Math.PI * progress));
-        if (!zoom.camera) return factor;
-        zoom.camera.setZoom(zoom.base * (progress >= 1 ? 1 : factor) * 100);
-        return 1;
+        return 1 + (zoom.amount * Math.sin(Math.PI * progress));
+    }
+
+    applyPunch (factor) {
+        const zoom = this.zoom;
+        const camera = zoom.camera;
+        const current = camera.state.zoom;
+        const base = current === zoom.written ? current / zoom.applied : current;
+        camera.setTarget(null, null, base * factor * 100);
+        zoom.applied = factor;
+        zoom.written = camera.state.zoom;
+    }
+
+    stepPunch () {
+        const zoom = this.zoom;
+        if (!zoom.camera) return;
+        const progress = clamp01((this.clock() - zoom.start) / 1000 / zoom.duration);
+        this.applyPunch(progress >= 1 ? 1 : 1 + (zoom.amount * Math.sin(Math.PI * progress)));
+        if (progress >= 1) zoom.camera = null;
+    }
+
+    endPunch () {
+        if (!this.zoom.camera) return;
+        this.applyPunch(1);
+        this.zoom.camera = null;
     }
 
     frame (ctx, dt) {
@@ -66,7 +90,7 @@ class ThunderboltVFX {
             shakeY = ((Math.random() * 2) - 1) * this.shake.intensity * falloff;
             live = true;
         }
-        const zooming = this.zoom.elapsed < this.zoom.duration;
+        const zooming = !this.zoom.camera && this.zoom.elapsed < this.zoom.duration;
         const zoomScale = this.stepZoom(dt);
         live = live || zooming;
         if (this.tilt.elapsed < this.tilt.duration) {
@@ -203,11 +227,11 @@ class ThunderboltVFX {
     }
 
     startZoom (duration, amount) {
-        const previous = this.zoom;
-        if (previous.camera && previous.elapsed < previous.duration) previous.camera.setZoom(previous.base * 100);
+        this.endPunch();
         const camera = this.worldCamera();
-        this.zoom = {elapsed: 0, duration, amount, camera, base: camera ? camera.state.zoom : 1};
-        this.overlay.wake();
+        this.zoom = {elapsed: 0, duration, amount, camera, start: this.clock(), applied: 1, written: null};
+        if (camera && !this.disposeStep) this.disposeStep = onStep(this.runtime, this.stepPunch.bind(this));
+        if (!camera) this.overlay.wake();
     }
 
     startFlash (color, duration) {
@@ -256,8 +280,7 @@ class ThunderboltVFX {
     }
 
     resetCamera () {
-        const zoom = this.zoom;
-        if (zoom.camera && zoom.elapsed < zoom.duration) zoom.camera.setZoom(zoom.base * 100);
+        this.endPunch();
         const camera = this.worldCamera();
         if (camera) camera.shake(0, 0);
         Object.assign(this, idle());
