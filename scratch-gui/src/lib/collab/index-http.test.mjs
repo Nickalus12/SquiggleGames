@@ -1427,5 +1427,68 @@ await section('keep my work: a stale refusal with held edits asks', async () => 
     setKeepWorkHandler(null);
 });
 
+const onTab = async index => {
+    globalThis.document.querySelectorAll = selector => (/tablist/.test(selector) ?
+        [0, 1, 2].map(i => ({getAttribute: () => String(i === index)})) : []);
+    await settle(1500);
+};
+
+await section('keep my work: mine loads the head on the costumes tab', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    await onTab(1);
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {keep: moveBlock()});
+    k.back(12, snap);
+    await waitFor(() => k.asks.length === 1);
+    k.answer(MINE);
+    ok('the head loads without waiting for the tab', await waitFor(() => fx.has('Barn Owl')));
+    ok('the kept edits land on it', fx.named('Cat').blocks.getBlock('keep').x === 50 &&
+        k.toasts.some(t => /^💾 Kept 2 of 3 changes\./.test(t)), k.toasts);
+    await onTab(0);
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: theirs on the costumes tab still waits for the tab', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    await onTab(1);
+    k.back(12, await keepHead(fx, ['Cat', 'Owl'], {}));
+    await waitFor(() => k.asks.length === 1);
+    k.answer(THEIRS);
+    await settle(200);
+    ok('the head waits while painting', !fx.has('Owl') && k.calls.join() === 'hold,discard', k.calls);
+    await onTab(0);
+    ok('and loads when the tab changes', await waitFor(() => fx.has('Owl')));
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: mine replays held tilemap patches into the level', async () => {
+    const {createGrid, encodeLevel, getCell} = await import('../world/tilemap.js');
+    const {getWorld} = await import('../world/world.js');
+    const patch = (level, seq, value) => ({type: 'tilemap-patch', level, base: 0, seq, author: 'me',
+        palette: [{name: 'grass', flags: 0}], layers: {main: [[5, 6, value || 1, 2]]}});
+    const k = await keepSetup([patch('yard', 4), patch('cave', 5), patch('yard', 6, 9)]);
+    const {fx} = k;
+    const remote = JSON.parse(project(['Cat', 'Owl']));
+    const yard = createGrid({id: 'yard', name: 'Yard', cols: 16, rows: 16, v: 3, tiles: [{name: 'grass', flags: 0}]});
+    remote.extensionStorage = {squiggleworld: {format: 1, levels: [encodeLevel(yard)]}};
+    const text = JSON.stringify(remote);
+    const before = k.mark();
+    k.back(12, {sha: await publish(fx, text), size: text.length, version: 12, atSeq: 20, hashes: {}});
+    await waitFor(() => k.asks.length === 1);
+    k.answer(MINE);
+    ok('the head loads', await waitFor(() => fx.has('Owl')));
+    await settle(50);
+    const grid = getWorld(fx.vm.runtime).level('yard');
+    ok('the patch paints the level on the head', grid && getCell(grid, 'main', 6, 5) === 1 &&
+        getCell(grid, 'main', 7, 5) === 1, grid && grid.v);
+    const out = fx.sent.slice(before).filter(m => m && m.type === 'tilemap-patch');
+    ok('it goes out again based on the head level version', out.length === 1 && out[0].level === 'yard' &&
+        out[0].base === 3 && out[0].seq === 4, out);
+    ok('a patch for a level the head lacks or one the level refuses is skipped and counted',
+        k.toasts.some(t => /^💾 Kept 1 of 3 changes\./.test(t)), k.toasts);
+    setKeepWorkHandler(null);
+});
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
