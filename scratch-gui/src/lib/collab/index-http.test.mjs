@@ -1480,8 +1480,8 @@ await section('keep my work: mine replays held tilemap patches into the level', 
     ok('the head loads', await waitFor(() => fx.has('Owl')));
     await settle(50);
     const grid = getWorld(fx.vm.runtime).level('yard');
-    ok('the patch paints the level on the head', grid && getCell(grid, 'main', 6, 5) === 1 &&
-        getCell(grid, 'main', 7, 5) === 1, grid && grid.v);
+    ok('the patch paints the level on the head and bumps its version', grid && getCell(grid, 'main', 6, 5) === 1 &&
+        getCell(grid, 'main', 7, 5) === 1 && grid.v === 4, grid && grid.v);
     const out = fx.sent.slice(before).filter(m => m && m.type === 'tilemap-patch');
     ok('it goes out again based on the head level version', out.length === 1 && out[0].level === 'yard' &&
         out[0].base === 3 && out[0].seq === 4, out);

@@ -2733,9 +2733,9 @@ const ownVmActionFits = msg => {
 const replayTilemap = (msg, tiles) => {
     const grid = tiles.world.level(msg.level);
     if (!grid) return false;
-    const base = grid.v || 0;
-    if (!tiles.sync.apply(msg).ok) return false;
-    client.send(Object.assign({}, msg, {base}));
+    const rebased = Object.assign({}, msg, {base: grid.v || 0});
+    if (!tiles.sync.apply(rebased).ok) return false;
+    client.send(rebased);
     return true;
 };
 
