@@ -123,6 +123,7 @@ class CollabClient {
         this._silenceLimit = SILENCE_LIMIT_MS;
         this._lastSilenceAt = 0;
         this._holding = false;
+        this._keepHolding = false;
         this._cancelUnload = null;
         this.unloadGuard = null;
         // Set when the reliable queue had to drop something. Whoever is
@@ -335,12 +336,26 @@ class CollabClient {
         return this._holding;
     }
 
+    holdQueue () {
+        this._keepHolding = true;
+        this._holding = true;
+    }
+
+    takeQueue () {
+        const held = this._queue.filter(entry => entry.type !== 'snapshot').map(entry => JSON.parse(entry.data));
+        this._queue = [];
+        this._dropPaced();
+        return held;
+    }
+
     releaseQueue () {
+        this._keepHolding = false;
         this._holding = false;
         this._flushQueue();
     }
 
     discardQueue () {
+        this._keepHolding = false;
         this._holding = false;
         this._dropPaced();
         const dropped = this._queue.length;
@@ -443,9 +458,9 @@ class CollabClient {
                     } catch (e) { /* private mode */ }
                 }
                 this._confirmedGen = this._sentGen;
-                this._holding = this._queue.length > 0;
+                this._holding = this._queue.length > 0 || this._keepHolding;
                 this._emit('welcome', msg);
-                if (this._holding) this.releaseQueue();
+                if (this._holding && !this._keepHolding) this.releaseQueue();
                 this._emitSync();
                 return;
             }
@@ -788,6 +803,7 @@ class CollabClient {
         this._stopHeartbeat();
         this._dropPaced();
         this._queue = [];
+        this._keepHolding = false;
         this._openGen++;
         if (this.ws) {
             try {

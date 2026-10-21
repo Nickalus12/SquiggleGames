@@ -26,6 +26,7 @@ import {VOCAB_LOCK} from '../together2/net.js';
 import {lockedNames} from '../together2/vocab-lock.js';
 import {BAD_FRAME_TEXT, RELOAD_TEXT} from '../together2/texts.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
+import {MINE, askKeepWork} from './keep-work.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
 import {DRIFT_REPAIR_MAX, planDriftRepair} from './drift.js';
@@ -117,6 +118,7 @@ const state = {
     pendingSnapshotMsg: null, // deferred remote snapshot while locally painting
     snapshotLoading: false,
     queuedBlockEvents: [],
+    keepWork: null,
     // Orphan block-events (unknown sprite) held briefly until a snapshot lands.
     orphanBlockEvents: [],
     // Coalesce rapid block moves (drag) into one send per block id.
@@ -1115,6 +1117,16 @@ const loadSnapshotSource = async msg => {
     return json;
 };
 
+const replayQueuedEvents = () => {
+    const queued = state.queuedBlockEvents.splice(0);
+    const orphans = state.orphanBlockEvents.splice(0);
+    for (let i = 0; i < queued.length; i++) {
+        if (queued[i].type === 'kit-set') applyRemoteKitSet(queued[i]);
+        else applyBlockEvent(queued[i]);
+    }
+    for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
+};
+
 const applySnapshot = async msg => {
     if (!state.vm || !msg || !(msg.b64 || typeof msg.sha === 'string')) return;
     msg._key = snapshotKeyOf(msg);
@@ -1250,13 +1262,7 @@ const applySnapshot = async msg => {
 
     // Block edits that raced the load were queued — replay on the state we just
     // loaded (do this even if another snapshot is pending / paint-deferred).
-    const queued = state.queuedBlockEvents.splice(0);
-    const orphans = state.orphanBlockEvents.splice(0);
-    for (let i = 0; i < queued.length; i++) {
-        if (queued[i].type === 'kit-set') applyRemoteKitSet(queued[i]);
-        else applyBlockEvent(queued[i]);
-    }
-    for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
+    replayQueuedEvents();
 
     // A newer snapshot arrived while we were loading — apply it next (or
     // re-defer if the user is still on the costumes tab).
@@ -2109,7 +2115,7 @@ const nameClash = (kind, name, fromPeer) => {
 };
 
 const applyRemoteKitSet = msg => {
-    if (state.snapshotLoading) {
+    if (state.snapshotLoading || state.keepWork) {
         if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
         else requestResync('kit-set replay queue full');
         return;
@@ -2137,7 +2143,7 @@ const sendKitSet = change => {
 };
 
 const applyBlockEvent = msg => {
-    if (state.snapshotLoading) {
+    if (state.snapshotLoading || state.keepWork) {
         // Don't apply into a half-loaded project — replay after the load.
         if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
         else requestResync('block-event replay queue full');
@@ -2695,6 +2701,100 @@ installNetBridge();
 
 // ------------------------------------------------------------- wiring up ---
 
+const KEEP_FRAMES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-set']);
+const KEEP_SKIP_ACTIONS = new Set(['greenFlag', 'stopAll']);
+const KEEP_FREE_ACTIONS = new Set(['spriteAdd', 'reorderTarget', 'extensionAdd']);
+
+const ownBlockEventFits = msg => {
+    const target = findTargetByName(msg.target);
+    const e = msg.event || {};
+    if (!target) return false;
+    const has = id => !id || Boolean(target.blocks.getBlock(id));
+    if (e.type === 'var_rename' || e.type === 'var_delete') return Boolean(target.lookupVariableById(e.varId));
+    if (/^comment_(change|move|delete)$/.test(e.type)) return Boolean(target.comments[e.commentId]);
+    if (e.type === 'create') return true;
+    return has(e.blockId) && has(e.newParentId);
+};
+
+const ownVmActionFits = msg => {
+    if (KEEP_FREE_ACTIONS.has(msg.action)) return true;
+    const target = findTargetByName(msg.target);
+    if (!target) return false;
+    if (/^(duplicate|rename|delete)Sound$/.test(msg.action)) return resolveSound(target, msg) >= 0;
+    if (/^(duplicate|rename|delete)Costume$/.test(msg.action)) return resolveCostume(target, msg, msg.index) >= 0;
+    if (/^update(Svg|Bitmap)$/.test(msg.action)) return resolveCostume(target, msg, msg.costumeIndex) >= 0;
+    if (msg.action === 'reorderCostume') return resolveIndex(target.getCostumes(), msg.from, msg.ident) >= 0;
+    if (msg.action === 'reorderSound') return resolveIndex(target.getSounds(), msg.from, msg.ident) >= 0;
+    return true;
+};
+
+const replayOwn = msg => {
+    const self = overlay.self || {};
+    if (msg.type === 'block-event' && ownBlockEventFits(msg)) {
+        applyBlockEvent(msg);
+    } else if (msg.type === 'kit-set' && (!msg.targetId || findTargetByName(msg.targetId))) {
+        applyRemoteKitSet(msg);
+    } else if (msg.type === 'vm-action' && ownVmActionFits(msg)) {
+        applyVmAction(Object.assign({}, msg, {from: state.selfId, fromName: self.name, color: self.color}));
+    } else {
+        return false;
+    }
+    client.send(msg);
+    return true;
+};
+
+const keepMine = async head => {
+    const held = client.takeQueue();
+    if (head) await applySnapshot(head);
+    else replayQueuedEvents();
+    let kept = 0;
+    let total = 0;
+    for (const msg of held) {
+        if (msg.type === 'vm-action' && KEEP_SKIP_ACTIONS.has(msg.action)) continue;
+        if (!KEEP_FRAMES.has(msg.type)) {
+            client.send(msg);
+            continue;
+        }
+        total++;
+        if (replayOwn(msg)) kept++;
+    }
+    client.releaseQueue();
+    if (!total) return;
+    scheduleSnapshot(true);
+    overlay.toast(`💾 Kept ${kept} of ${total} changes. A copy of your version is in your library.`, '#2a9d8f');
+};
+
+const settleKeepWork = () => {
+    const ask = state.keepWork;
+    state.keepWork = null;
+    if (ask.answer === MINE && state.canEdit) return keepMine(ask.head);
+    client.discardQueue();
+    if (ask.head) return applySnapshot(ask.head);
+    replayQueuedEvents();
+};
+
+const keepWorkFor = head => {
+    const open = state.keepWork;
+    if (open) {
+        if (head) open.head = head;
+        if (open.answer && client.connected) settleKeepWork();
+        return;
+    }
+    const ask = {head, answer: null};
+    state.keepWork = ask;
+    state.rescueOnNextSnapshot = true;
+    client.holdQueue();
+    askKeepWork({pending: client.syncState.pending}).then(answer => {
+        ask.answer = answer;
+        if (state.keepWork === ask && client.connected) settleKeepWork();
+    });
+};
+
+const onSnapshot = msg => {
+    if (state.keepWork) state.keepWork.head = msg;
+    else applySnapshot(msg);
+};
+
 const onSnapshotRefused = msg => {
     const refused = msg && Array.isArray(msg.refs) ? msg.refs.concat(msg.ref) : null;
     state.unackedSnapshots = refused ?
@@ -2708,8 +2808,14 @@ const onSnapshotRefused = msg => {
     state.resetNextSnapshot = false;
     state.forceNextSnapshot = false;
     state.rescueOnNextSnapshot = true;
-    if (msg && ((typeof msg.b64 === 'string' && msg.b64) || typeof msg.sha === 'string')) {
-        applySnapshot({type: 'snapshot', b64: msg.b64, sha: msg.sha, version: msg.roomVersion, stale: true});
+    const head = msg && ((typeof msg.b64 === 'string' && msg.b64) || typeof msg.sha === 'string') ?
+        {type: 'snapshot', b64: msg.b64, sha: msg.sha, version: msg.roomVersion, stale: true} : null;
+    if (state.keepWork || (head && client.syncState.pending > 0)) {
+        keepWorkFor(head);
+        return;
+    }
+    if (head) {
+        applySnapshot(head);
         return;
     }
     const seen = state.snapshotsSeen;
@@ -2981,13 +3087,15 @@ const wireSocket = () => {
         }
         state.unackedSnapshots = [];
         if (isReconnect) state.recentPaint.clear();
-        if (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit) {
-            client.discardQueue();
-        } else {
-            client.releaseQueue();
-        }
+        const pointer = state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string' ?
+            Object.assign({type: 'snapshot', version: msg.version}, msg.snap) : null;
+        const keep = state.keepWork !== null ||
+            (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit);
+        if (!keep) client.releaseQueue();
         // First one in an empty room seeds it with the current project.
-        if (!msg.hasSnapshot && msg.peers.length <= 1) {
+        if (keep) {
+            keepWorkFor(pointer);
+        } else if (!msg.hasSnapshot && msg.peers.length <= 1) {
             sendSnapshotNow();
         } else if (isReconnect && state.offlineEdits && msg.peers.length <= 1) {
             // We kept editing through a connection blip and nobody else is in
@@ -3016,8 +3124,7 @@ const wireSocket = () => {
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
-        if (state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string') {
-            const pointer = Object.assign({type: 'snapshot', version: msg.version}, msg.snap);
+        if (pointer && !keep) {
             const freshReplay = msg.replay && client.freshJoin === true;
             if (!msg.replay || freshReplay || state.rescueOnNextSnapshot || state.skipNextSnapshot) {
                 applySnapshot(pointer);
@@ -3168,7 +3275,7 @@ const wireSocket = () => {
         overlay.toast(`${msg.name} left`, '#8a8fa3');
         netEmit('peer-left', msg);
     });
-    client.on('snapshot', applySnapshot);
+    client.on('snapshot', onSnapshot);
     client.on('snapshot-ack', msg => {
         const entry = ackSnapshot(msg);
         if (typeof msg.version === 'number' &&

@@ -1238,5 +1238,194 @@ await section('a masked spriteAdd from the room loads', async () => {
     ok('running it does not throw', threw === null, threw);
 });
 
+const {MINE, THEIRS, setKeepWorkHandler} = await import('./keep-work.js');
+
+const keepHead = async (fx, names, blocks) => {
+    const remote = JSON.parse(project(names));
+    Object.assign(remote.targets[1].blocks, blocks);
+    const text = JSON.stringify(remote);
+    return {sha: await publish(fx, text), size: text.length, version: 12, atSeq: 20, hashes: {}};
+};
+
+const keepSetup = async held => {
+    const fx = await fixture();
+    await welcome2(fx);
+    const calls = [];
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    Object.assign(fx.client, {
+        holdingQueue: true,
+        syncState: {state: 'synced', pending: held.length},
+        holdQueue: () => calls.push('hold'),
+        takeQueue: () => {
+            calls.push('take');
+            return held.splice(0);
+        },
+        discardQueue: () => {
+            calls.push('discard');
+            return held.splice(0).length;
+        },
+        releaseQueue: () => calls.push('release')
+    });
+    const asks = [];
+    let answer = null;
+    setKeepWorkHandler(details => {
+        asks.push(details);
+        return new Promise(resolve => {
+            answer = resolve;
+        });
+    });
+    const back = (version, snap, extra) => fx.emit('welcome', welcome(Object.assign({proto: 2, replay: true,
+        rs: 25, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version, snap}, extra)));
+    return {fx, calls, toasts, asks, back, answer: choice => answer(choice), mark: () => fx.sent.length};
+};
+
+const keepOps = () => [
+    {type: 'block-event', target: 'Cat', event: {type: 'move', blockId: 'keep', newCoordinate: '50,60'}},
+    {type: 'block-event', target: 'Cat', event: {type: 'change', blockId: 'gone', element: 'field',
+        name: 'STEPS', newValue: '5'}},
+    {type: 'vm-action', action: 'greenFlag'},
+    {type: 'vm-action', action: 'renameSprite', target: 'Owl', newName: 'Barn Owl'}
+];
+
+const ringSent = (fx, from) => fx.sent.slice(from).filter(m => m && /^(block-event|vm-action|kit-set)$/.test(m.type));
+
+await section('keep my work: mine replays the held edits on the head', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {keep: moveBlock()});
+    const before = k.mark();
+    k.back(12, snap);
+    ok('the sheet is asked once with the pending count', await waitFor(() => k.asks.length === 1) &&
+        k.asks[0].pending === 4, k.asks);
+    await settle(200);
+    ok('nothing is sent while the ask is open', ringSent(fx, before).length === 0 &&
+        !fx.sent.slice(before).some(m => m && /^(snapshot|save-project)$/.test(m.type)), fx.sent.slice(before));
+    ok('the queue stays held while the ask is open', k.calls.join() === 'hold', k.calls);
+    ok('the head waits for the answer', !fx.has('Owl'));
+    k.answer(MINE);
+    ok('the head loads', await waitFor(() => fx.has('Barn Owl')));
+    const after = fx.sent.slice(before);
+    const save = after.findIndex(m => m && m.type === 'save-project');
+    const move = after.findIndex(m => m && m.type === 'block-event' && m.event.blockId === 'keep');
+    ok('a copy of the offline version goes to the library first', save >= 0 && move > save, after);
+    ok('the kept edit applies to our own VM', fx.named('Cat').blocks.getBlock('keep').x === 50,
+        fx.named('Cat').blocks.getBlock('keep'));
+    ok('kept edits go out again after the head', ringSent(fx, before).map(m => m.action || m.event.blockId)
+        .join() === 'keep,renameSprite', ringSent(fx, before));
+    ok('an edit to a block the head deleted is skipped', !after.some(m => m && m.event && m.event.blockId === 'gone'));
+    ok('a green flag pressed offline is not replayed', !after.some(m => m && m.action === 'greenFlag'));
+    ok('the queue is taken, then released', k.calls.join() === 'hold,take,release', k.calls);
+    ok('the toast counts what was kept', k.toasts.includes(
+        '💾 Kept 2 of 3 changes. A copy of your version is in your library.'), k.toasts);
+    const frames = fx.snapshots().length;
+    globalThis.window.requestIdleCallback = fn => fn();
+    ok('a snapshot follows', await waitFor(() => fx.snapshots().length > frames, 25000));
+    const frame = fx.snapshots()[fx.snapshots().length - 1];
+    ok('it is based on the head version and only refreshes the room copy', frame && frame.basedOn === 12 &&
+        frame.cacheOnly === true, frame);
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: theirs drops the queue and keeps the rescue', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {keep: moveBlock()});
+    const before = k.mark();
+    k.back(12, snap);
+    await waitFor(() => k.asks.length === 1);
+    fx.emit('block-event', {type: 'block-event', target: 'Cat', from: 'pal',
+        event: {type: 'move', blockId: 'keep', newCoordinate: '70,80'}});
+    const newer = await keepHead(fx, ['Cat', 'Fox'], {keep: moveBlock()});
+    fx.emit('snapshot', Object.assign({type: 'snapshot'}, newer, {version: 13}));
+    await settle(200);
+    ok('a snapshot during the ask waits too', !fx.has('Fox') && !fx.has('Owl'));
+    k.answer(THEIRS);
+    ok('the newest head loads', await waitFor(() => fx.has('Fox')));
+    await settle(50);
+    ok('the older head never loads', !fx.has('Owl'));
+    ok('the queue is dropped', k.calls.join() === 'hold,discard', k.calls);
+    ok('a copy of the offline version still goes to the library',
+        fx.sent.slice(before).some(m => m && m.type === 'save-project'));
+    ok('none of the held edits go out', ringSent(fx, before).length === 0, ringSent(fx, before));
+    ok('a peer edit that came during the ask lands on the head', fx.named('Cat').blocks.getBlock('keep').x === 70);
+    ok('no kept toast', !k.toasts.some(t => /Kept/.test(t)), k.toasts);
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: no sheet is the same as before', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    setKeepWorkHandler(null);
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {});
+    const before = k.mark();
+    k.back(12, snap);
+    ok('the head loads', await waitFor(() => fx.has('Owl')));
+    await settle(50);
+    ok('the queue is dropped', k.calls.join() === 'hold,discard', k.calls);
+    ok('the offline version is rescued', fx.sent.slice(before).some(m => m && m.type === 'save-project'));
+    ok('nothing held goes out', ringSent(fx, before).length === 0, ringSent(fx, before));
+});
+
+await section('keep my work: a second welcome joins the open ask', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    const first = await keepHead(fx, ['Cat', 'Owl'], {});
+    const second = Object.assign(await keepHead(fx, ['Cat', 'Eel'], {}), {version: 14});
+    k.back(12, first);
+    await waitFor(() => k.asks.length === 1);
+    k.back(14, second);
+    await settle(50);
+    ok('one ask', k.asks.length === 1, k.asks.length);
+    fx.client.connected = false;
+    k.answer(THEIRS);
+    await settle(200);
+    ok('an answer while offline waits for the next welcome', k.calls.join() === 'hold' && !fx.has('Eel'), k.calls);
+    fx.client.connected = true;
+    k.back(14, second);
+    ok('the next welcome applies it to the newest head', await waitFor(() => fx.has('Eel')));
+    await settle(50);
+    ok('still one ask and one drop', k.asks.length === 1 && k.calls.join() === 'hold,discard', k.calls);
+    ok('the older head never loads', !fx.has('Owl'));
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: viewers and empty rooms never ask', async () => {
+    const k = await keepSetup(keepOps());
+    const {fx} = k;
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {});
+    k.back(12, snap, {canEdit: false, role: 'viewer'});
+    await settle(200);
+    ok('a viewer is not asked', k.asks.length === 0 && !k.calls.includes('hold'), k.calls);
+    const alone = await keepSetup(keepOps());
+    alone.back(12, await keepHead(alone.fx, ['Cat', 'Owl'], {}), {peers: [{id: 'me'}]});
+    await settle(200);
+    ok('alone in the room is not asked', alone.asks.length === 0 && alone.calls.join() === 'release', alone.calls);
+    setKeepWorkHandler(null);
+});
+
+await section('keep my work: a stale refusal with held edits asks', async () => {
+    const k = await keepSetup([
+        {type: 'block-event', target: 'Cat', event: {type: 'move', blockId: 'keep', newCoordinate: '5,6'}}
+    ]);
+    const {fx} = k;
+    const snap = await keepHead(fx, ['Cat', 'Owl'], {keep: moveBlock()});
+    fx.emit('snapshot-refused', {reason: 'stale', ref: 97, sha: snap.sha, roomVersion: 12});
+    ok('the sheet is asked', await waitFor(() => k.asks.length === 1) && k.asks[0].pending === 1, k.asks);
+    ok('the head waits', !fx.has('Owl'));
+    const before = k.mark();
+    k.answer(MINE);
+    ok('the head loads', await waitFor(() => fx.has('Owl')));
+    await settle(50);
+    ok('the held edit applies and goes out', fx.named('Cat').blocks.getBlock('keep').x === 5 &&
+        ringSent(fx, before).length === 1, ringSent(fx, before));
+    ok('the toast counts it', k.toasts.some(t => /^💾 Kept 1 of 1 changes\./.test(t)), k.toasts);
+    fx.client.syncState = {state: 'synced', pending: 0};
+    fx.emit('snapshot-refused', {reason: 'stale', ref: 96, sha: snap.sha, roomVersion: 13});
+    await settle(50);
+    ok('with nothing held it does not ask', k.asks.length === 1, k.asks.length);
+    setKeepWorkHandler(null);
+});
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

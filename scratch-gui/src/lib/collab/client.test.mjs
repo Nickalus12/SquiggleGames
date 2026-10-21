@@ -316,6 +316,73 @@ await section('the queue at the welcome', () => {
     client.disconnect();
 });
 
+await section('a queue held for an answer', () => {
+    const {client, connect, last} = setup();
+    const edit = id => client.send({type: 'block-event', target: 'Sprite1', event: {type: 'move', blockId: id}});
+    const edits = sock => sock.sent.map(d => JSON.parse(d)).filter(m => m.type === 'block-event')
+        .map(m => m.event.blockId)
+        .join();
+    let ws = connect();
+    const drop = () => {
+        ws.readyState = 3;
+        ws.onclose({code: 1006, reason: ''});
+    };
+    const reopen = () => {
+        client._clearReconnect();
+        client._open();
+        ws = last();
+        ws.open();
+        ws.message({type: 'welcome', id: 'u1', color: '#fff'});
+    };
+    edit('a');
+    client.send({type: 'snapshot', b64: 'AA==', basedOn: 1});
+    ws.open();
+    const holdOnce = () => client.holdQueue();
+    client.on('welcome', holdOnce);
+    ws.message({type: 'welcome', id: 'u1', color: '#fff'});
+    client.handlers.welcome.splice(client.handlers.welcome.indexOf(holdOnce), 1);
+    ok('a held queue does not flush after the welcome', edits(ws) === '', sentTypes(ws));
+    client.send({type: 'vm-action', action: 'renameSprite', target: 'Sprite1', newName: 'Cat'});
+    ok('a reliable send while held waits', !sentTypes(ws).includes('vm-action') && client.holdingQueue === true,
+        sentTypes(ws));
+    drop();
+    ok('the queue survives the close', client._queue.length === 3, client._queue.length);
+    reopen();
+    ok('the next welcome keeps holding', client.holdingQueue === true && edits(ws) === '', sentTypes(ws));
+    const held = client.takeQueue();
+    ok('take returns the held frames without the snapshot', held.map(m => m.type).join() ===
+        'block-event,vm-action' && held[0].event.blockId === 'a', held);
+    ok('take empties the queue and still holds', client._queue.length === 0 && client.holdingQueue === true);
+    drop();
+    reopen();
+    edit('b');
+    ok('an empty held queue still holds at the next welcome', edits(ws) === '' && client.holdingQueue === true,
+        sentTypes(ws));
+    client.releaseQueue();
+    ok('release sends what was queued after the take', edits(ws) === 'b' && client.holdingQueue === false,
+        sentTypes(ws));
+    drop();
+    edit('c');
+    reopen();
+    ok('a released hold is gone at the next welcome', edits(ws) === 'c', sentTypes(ws));
+    client.holdQueue();
+    client.discardQueue();
+    edit('d');
+    ok('discard ends the hold', edits(ws) === 'c,d', sentTypes(ws));
+    drop();
+    edit('e');
+    reopen();
+    ok('a discarded hold is gone at the next welcome', edits(ws) === 'e', sentTypes(ws));
+    client.holdQueue();
+    client.disconnect();
+    ws = connect();
+    edit('f');
+    ws.open();
+    ws.message({type: 'welcome', id: 'u1', color: '#fff'});
+    ok('leaving ends the hold', edits(ws) === 'f', sentTypes(ws));
+    client.disconnect();
+});
+
 await section('leaving with a save in flight', async () => {
     const {client, clock, fresh} = setup();
     let ws = fresh();
