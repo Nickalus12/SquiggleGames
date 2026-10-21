@@ -156,5 +156,30 @@ ok('when together blocks exist the stock path saves the mark and the seam leaves
     usedJson.targets.find(target => target.name === 'Game Rules').extensionStorage.together.role === 'rules' &&
     usedJson.extensions.indexOf('together') !== -1);
 
+section('addSprite keeps project storage (sb3.js deserialize assigns runtime.extensionStorage from a sprite3)');
+const rulesUpload = sprite('Rules Two', 3, {visible: false, extensionStorage: {together: {role: 'rules', v: 1}}});
+const stockHost = await load(project());
+stockHost.runtime.extensionStorage.squiggleworld = {format: 1, levels: []};
+await stockHost.addSprite(JSON.stringify(rulesUpload));
+ok('stock addSprite loses project storage and shares the sprite object (the bug)',
+    !stockHost.runtime.extensionStorage.squiggleworld &&
+    stockHost.runtime.extensionStorage === named(stockHost, 'Rules Two').extensionStorage);
+const host = await load(project());
+installProjectSeam(host);
+host.runtime.extensionStorage.squiggleworld = {format: 1, levels: []};
+await host.addSprite(JSON.stringify(rulesUpload));
+ok('with the seam the project storage survives addSprite',
+    host.runtime.extensionStorage.squiggleworld && host.runtime.extensionStorage.squiggleworld.format === 1);
+ok('the added sprite keeps its mark in its own object',
+    isRulesTarget(named(host, 'Rules Two')) && named(host, 'Rules Two').extensionStorage !== host.runtime.extensionStorage);
+let rejected = false;
+try {
+    await host.addSprite('not a sprite');
+} catch (e) {
+    rejected = true;
+}
+ok('a failed addSprite still rejects and keeps project storage',
+    rejected && host.runtime.extensionStorage.squiggleworld.format === 1);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -82,6 +82,21 @@ const installProjectSeam = vm => {
         }
         return stringify(obj);
     };
+    const addSprite = vm.addSprite;
+    vm.addSprite = function (input) {
+        const runtime = this.runtime;
+        const before = runtime.extensionStorage;
+        const restore = () => {
+            if (runtime.extensionStorage !== before) runtime.extensionStorage = before;
+        };
+        return Promise.resolve(addSprite.call(this, input)).then(result => {
+            restore();
+            return result;
+        }, error => {
+            restore();
+            throw error;
+        });
+    };
     return vm;
 };
 
