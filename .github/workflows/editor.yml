@@ -41,7 +41,7 @@ jobs:
         working-directory: scratch-gui
 
       - name: World seams, kits and Together 2
-        run: for t in src/lib/world/*.test.mjs src/lib/kits/*.test.mjs src/lib/together2/*.test.mjs; do [ -e "$t" ] || continue; node "$t" || exit 1; done
+        run: for t in src/lib/world/*.test.mjs src/lib/kits/*.test.mjs src/lib/together2/*.test.mjs src/lib/rules/*.test.mjs src/lib/checker/*.test.mjs src/lib/checker/rules/*.test.mjs src/components/*/*.test.mjs src/lib/libraries/extensions/squiggle*/*.test.mjs; do [ -e "$t" ] || continue; node "$t" || exit 1; done
         working-directory: scratch-gui
 
       - name: Build
