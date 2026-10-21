@@ -153,6 +153,9 @@ class Overlay {
         setInterval(() => this._pollLocal(), 100);
         this._wire();
         this.exposeFollow();
+        import('../../components/presence-bar/mount.jsx')
+            .then(mod => mod.installPresenceBar({overlay: this}))
+            .catch(e => console.error('[collab] presence bar', e));
     }
 
     _wire () {
