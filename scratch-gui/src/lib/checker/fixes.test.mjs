@@ -1,6 +1,8 @@
 import {harness} from './fixtures/load.mjs';
 
-const {createFixer, copyStack, escapeXml, receiverXml, waitXml, GLOW_MS} = await import('./fixes.js');
+const {
+    createFixer, copyStack, outOfRulesTarget, spotBelow, escapeXml, receiverXml, waitXml, GLOW_MS
+} = await import('./fixes.js');
 const {ok, done} = harness();
 
 const makeWorld = () => {
@@ -23,6 +25,11 @@ const makeWorld = () => {
                 log.push(['dispose', id, heal, group]);
                 blocks.delete(id);
             },
+            getParent: () => null,
+            getNextBlock: () => null,
+            inputList: [],
+            getInput: () => null,
+            outputConnection: null,
             previousConnection: {id},
             nextConnection: {connect: other => log.push(['connect', id, other.id, group])}
         }, extra);
@@ -50,21 +57,43 @@ const makeWorld = () => {
         Xml: {
             textToDom: text => ({firstChild: {text}}),
             domToBlock: dom => {
+                if (dom.saved) {
+                    const restored = block(dom.id);
+                    log.push(['restore', dom.id, dom.childNodes.map(child => child.nodeName).join(), group]);
+                    return restored;
+                }
                 const created = block(`new${++made}`);
                 log.push(['create', created.id, dom.text, group]);
                 return created;
-            }
+            },
+            blockToDom: from => ({
+                saved: true,
+                id: from.id,
+                childNodes: [{nodeName: 'value'}, {nodeName: 'NEXT'}],
+                removeChild (child) {
+                    this.childNodes = this.childNodes.filter(entry => entry !== child);
+                }
+            })
         }
     };
+    const vmBlocks = (targetId, map) => ({
+        _blocks: map,
+        getScripts: () => Object.keys(map).filter(id => map[id].topLevel),
+        getBlock: id => map[id],
+        deleteBlock: id => {
+            log.push(['deleteCopy', targetId, id]);
+            delete map[id];
+        }
+    });
     const targets = {
-        cat: {id: 'cat', blocks: {_blocks: {
+        cat: {id: 'cat', blocks: vmBlocks('cat', {
             top: {id: 'top', opcode: 'together_setRule', next: 'n2', parent: null, inputs: {}, fields: {},
                 topLevel: true, x: 5, y: 6},
             n2: {id: 'n2', opcode: 'motion_movesteps', next: null, parent: 'top', inputs: {}, fields: {}, topLevel: false},
             other: {id: 'other', opcode: 'motion_turnright', next: null, parent: null, inputs: {}, fields: {},
                 topLevel: true}
-        }}},
-        rules: {id: 'rules', isOriginal: true, blocks: {_blocks: {
+        })},
+        rules: {id: 'rules', isOriginal: true, blocks: vmBlocks('rules', {
             ruleHat: {id: 'ruleHat', opcode: 'together_ruleWhenGameStarts', next: 'say', parent: null, inputs: {},
                 fields: {}, topLevel: true, x: 1, y: 2},
             say: {id: 'say', opcode: 'looks_say', next: 'tail', parent: 'ruleHat', inputs: {
@@ -74,8 +103,8 @@ const makeWorld = () => {
                 topLevel: false},
             tail: {id: 'tail', opcode: 'together_setRule', next: null, parent: 'say', inputs: {}, fields: {},
                 topLevel: false}
-        }}},
-        stage: {id: 'stage', isStage: true, blocks: {_blocks: {}}}
+        })},
+        stage: {id: 'stage', isStage: true, blocks: vmBlocks('stage', {})}
     };
     targets.cat.isOriginal = true;
     const vm = {
@@ -92,6 +121,9 @@ const makeWorld = () => {
         },
         shareBlocksToTarget: (list, to, from) => {
             shared.push(list);
+            list.forEach(entry => {
+                targets[to].blocks._blocks[`copy-${entry.id}`] = Object.assign({}, entry, {id: `copy-${entry.id}`});
+            });
             log.push(['share', list.map(entry => entry.id), to, from]);
             return Promise.resolve();
         }
@@ -165,6 +197,13 @@ ok('delete loose blocks disposes every stack whole in one group', result &&
     !has(world.log, ['cleanUp']) && world.groups.join() === 'true,false');
 
 world = makeWorld();
+world.block('snapped', {getParent: () => ({id: 'hat'})});
+world.block('still');
+result = await world.fixer.applyFix({fix: 'delete-loose', fixData: {targetId: 'cat', blockIds: ['snapped', 'still']}});
+ok('a stack snapped into a script since the check is left alone', result &&
+    !world.log.some(row => row[0] === 'dispose' && row[1] === 'snapped') && has(world.log, ['dispose', 'still', false, true]));
+
+world = makeWorld();
 result = await world.fixer.applyFix({fix: 'delete-variable', fixData: {targetId: 'stage', variableId: 'v1'}});
 ok('delete it removes the variable through the workspace', result && has(world.log, ['deleteVariable', 'v1']) &&
     !world.log.some(row => row[0] === 'edit'));
@@ -176,9 +215,42 @@ result = await world.fixer.applyFix({fix: 'move-to-rules',
 ok('move it copies the whole stack to Game Rules, then deletes the original', result &&
     has(world.log, ['share', ['top', 'n2'], 'rules', 'cat']) && has(world.log, ['dispose', 'top', false, true]) &&
     world.log.findIndex(row => row[0] === 'share') < world.log.findIndex(row => row[0] === 'dispose'));
+ok('the moved stack lands below the lowest script in Game Rules', world.shared[0][0].x === 1 &&
+    world.shared[0][0].y === 2 + (3 * 56) + 48, world.shared[0][0]);
+ok('a top stack move says Moved and offers Undo', result.notice === 'moved' && typeof result.undo === 'function');
+let undone = await result.undo();
+ok('Undo deletes the copy in Game Rules and puts the stack back where it was', undone === true &&
+    has(world.log, ['deleteCopy', 'rules', 'copy-top']) && has(world.log, ['restore', 'top', 'value,NEXT', true]) &&
+    !world.targets.rules.blocks._blocks['copy-top']);
 
 world = makeWorld();
-world.block('n2');
+world.block('top', {xy: {x: 30, y: 40}});
+result = await world.fixer.applyFix({fix: 'move-to-rules',
+    fixData: {targetId: 'cat', blockId: 'top', rulesTargetId: 'rules'}});
+await result.undo();
+ok('a restored top stack goes back to its spot', world.blocks.get('top').xy.x === 30 && world.blocks.get('top').xy.y === 40);
+
+world = makeWorld();
+world.block('top');
+result = await world.fixer.applyFix({fix: 'move-to-rules',
+    fixData: {targetId: 'cat', blockId: 'top', rulesTargetId: 'rules'}});
+world.block('top');
+undone = await result.undo();
+ok('Undo after Ctrl+Z already put it back only removes the copy', undone === true &&
+    has(world.log, ['deleteCopy', 'rules', 'copy-top']) && !world.log.some(row => row[0] === 'restore'));
+
+world = makeWorld();
+world.block('top', {dispose () {
+    throw new Error('stuck');
+}});
+result = await world.fixer.applyFix({fix: 'move-to-rules',
+    fixData: {targetId: 'cat', blockId: 'top', rulesTargetId: 'rules'}});
+ok('a delete that throws removes the copy so the script is not doubled', result === false &&
+    has(world.log, ['deleteCopy', 'rules', 'copy-top']) && world.groups.join() === 'true,false');
+
+world = makeWorld();
+const parentTop = world.block('top', {getNextBlock: () => world.blocks.get('n2')});
+world.block('n2', {getParent: () => parentTop});
 result = await world.fixer.applyFix({fix: 'move-to-rules',
     fixData: {targetId: 'cat', blockId: 'n2', rulesTargetId: 'rules'}});
 ok('move it unplugs a nested gold block and heals the stack it sat in', result &&
@@ -186,14 +258,27 @@ ok('move it unplugs a nested gold block and heals the stack it sat in', result &
     world.shared[0][0].topLevel === true && world.shared[0][0].parent === null && world.shared[0][0].next === null);
 ok('the source blocks are not touched by the copy', world.targets.cat.blocks._blocks.n2.parent === 'top' &&
     world.targets.cat.blocks._blocks.n2.topLevel === false);
+ok('a nested block lands hatless, so the toast says to attach it', result.notice === 'moved-hatless');
+undone = await result.undo();
+ok('Undo plugs a nested block back under the block it sat below, without the blocks after it', undone === true &&
+    has(world.log, ['deleteCopy', 'rules', 'copy-n2']) && has(world.log, ['restore', 'n2', 'value', true]) &&
+    has(world.log, ['connect', 'top', 'n2', true]));
 
 world = makeWorld();
-world.block('say');
+const holder = world.block('ruleHat', {
+    inputList: [{name: 'SUBSTACK', connection: {targetBlock: () => world.blocks.get('say')}}],
+    getInput: name => ({connection: {connect: other => world.log.push(['connectInput', name, other.id])}})
+});
+world.block('say', {getParent: () => holder});
 world.vm.editingTarget = world.targets.cat;
 result = await world.fixer.applyFix({fix: 'move-out', fixData: {targetId: 'rules', blockId: 'say'}});
 ok('move it takes a device-only block out of Game Rules to the sprite you were editing', result &&
     has(world.log, ['edit', 'rules']) && has(world.log, ['share', ['say', 'text'], 'cat', 'rules']) &&
     has(world.log, ['dispose', 'say', true, true]));
+ok('move out says Moved and offers Undo', result.notice === 'moved' && typeof result.undo === 'function');
+undone = await result.undo();
+ok('Undo removes the copy from the sprite and plugs the block back into its input in Game Rules', undone === true &&
+    has(world.log, ['deleteCopy', 'cat', 'copy-say']) && has(world.log, ['connectInput', 'SUBSTACK', 'say']));
 
 world = makeWorld();
 world.block('say');
@@ -216,6 +301,36 @@ const nestedCopy = copyStack(rulesBlocks, 'say');
 ok('a nested block copies with its inputs and without the blocks under it',
     nestedCopy.map(entry => entry.id).join() === 'say,text' && nestedCopy[0].x === 0 && nestedCopy[0].topLevel);
 ok('a missing block copies nothing', copyStack(rulesBlocks, 'nope').length === 0);
+const looped = {
+    p: {id: 'p', next: 'rep', parent: null, inputs: {}, topLevel: true, x: 10, y: 20},
+    rep: {id: 'rep', opcode: 'control_repeat', next: 'after', parent: 'p', topLevel: false, inputs: {
+        TIMES: {block: 'num', shadow: 'num'}, SUBSTACK: {block: 'a', shadow: null}
+    }},
+    num: {id: 'num', next: null, parent: 'rep', inputs: {}, shadow: true, topLevel: false},
+    a: {id: 'a', next: 'b', parent: 'rep', inputs: {}, topLevel: false},
+    b: {id: 'b', next: null, parent: 'a', inputs: {}, topLevel: false},
+    after: {id: 'after', next: null, parent: 'rep', inputs: {}, topLevel: false}
+};
+ok('a nested repeat copies its whole substack chain and not the block below it',
+    copyStack(looped, 'rep').map(entry => entry.id).sort()
+        .join() === 'a,b,num,rep');
+ok('rows count the substack and its arm', spotBelow(looped).y === 20 + (6 * 56) + 48 && spotBelow(looped).x === 10);
+ok('an empty sprite takes the move at the top left', spotBelow({}).x === 0 && spotBelow({}).y === 0);
+
+const sprites = {
+    stage: {id: 'stage', isStage: true},
+    rules: {id: 'rules'},
+    cat: {id: 'cat'},
+    clone: {id: 'clone', isOriginal: false},
+    dog: {id: 'dog'}
+};
+const order = [sprites.stage, sprites.rules, sprites.clone, sprites.cat, sprites.dog];
+ok('move out goes to the sprite you were editing', outOfRulesTarget(order, sprites.dog, 'rules') === 'dog');
+ok('editing the Stage sends it to the first other sprite, not the Stage', outOfRulesTarget(order, sprites.stage, 'rules') ===
+    'cat');
+ok('editing Game Rules skips it and clones', outOfRulesTarget(order, sprites.rules, 'rules') === 'cat');
+ok('with only the Stage and Game Rules there is nowhere to go',
+    outOfRulesTarget([sprites.stage, sprites.rules], sprites.stage, 'rules') === null);
 
 world = makeWorld();
 result = await world.fixer.applyFix({fix: 'create-scene', fixData: {name: 'Boss'}});

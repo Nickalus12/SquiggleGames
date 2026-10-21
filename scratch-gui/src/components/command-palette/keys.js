@@ -3,6 +3,11 @@ const PALETTE_EVENT = 'sq-command-palette';
 const isPaletteKey = event => (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
     (event.key === 'k' || event.key === 'K');
 
+const paletteKeyAction = (event, open) => {
+    if (!event || event.repeat || !isPaletteKey(event)) return null;
+    return open ? 'close' : 'open';
+};
+
 const paletteEventAction = (event, open) => {
     const detail = event && event.detail;
     if (detail && detail.open === false) return open ? 'close' : null;
@@ -24,5 +29,6 @@ export {
     PALETTE_EVENT,
     isPaletteKey,
     listenForPaletteEvent,
-    paletteEventAction
+    paletteEventAction,
+    paletteKeyAction
 };

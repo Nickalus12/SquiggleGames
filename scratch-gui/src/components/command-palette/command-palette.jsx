@@ -6,23 +6,13 @@ import {injectIntl, intlShape} from 'react-intl';
 
 import SqIcon from '../sq-icon/sq-icon.jsx';
 import {prepare, search} from './fuzzy';
-import {groupResults} from './sources';
+import {firstItems, groupResults} from './sources';
 import {kindMessages, uiMessages} from './messages';
 import styles from './command-palette.css';
 
 const LIMIT = 60;
-const EMPTY_CAPS = Object.freeze({command: 20, checker: 5, sprite: 8, myblock: 5, scene: 5, level: 5, peer: 5});
 const LISTBOX_ID = 'sq-palette-listbox';
 const optionId = index => `sq-palette-option-${index}`;
-
-const firstItems = prepared => {
-    const used = {};
-    return prepared.filter(entry => {
-        const cap = EMPTY_CAPS[entry.kind] || 0;
-        used[entry.kind] = (used[entry.kind] || 0) + 1;
-        return used[entry.kind] <= cap;
-    });
-};
 
 class CommandPalette extends React.Component {
     constructor (props) {

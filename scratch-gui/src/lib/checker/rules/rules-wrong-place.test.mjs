@@ -22,6 +22,12 @@ const say = by('unsupported').find(entry => entry.blockId === 'say');
 ok('a device-only block in Game Rules can be moved out', say.fix === 'move-out' &&
     say.fixData.targetId === 'rules' && say.fixData.blockId === 'say');
 ok('a disallowed field value has no move', by('unsupported').find(entry => entry.blockId === 'stopall').fix === null);
+const rulesOnly = rulesWrongPlace(Object.assign({}, cases.places, {
+    targets: cases.places.targets.filter(target => target.id !== 'cat')
+}));
+const stranded = rulesOnly.find(entry => entry.code === 'rules-unsupported' && entry.blockId === 'say');
+ok('with no other sprite to move it to, move out is not offered', stranded && stranded.fix === null &&
+    stranded.fixData === null);
 ok('a stage variable in Game Rules is global-var', by('global-var').map(entry => entry.blockId).join() === 'glob');
 const names = by('name');
 ok('an unknown game value name is reported', names.length === 1 && names[0].blockId === 'badname' &&

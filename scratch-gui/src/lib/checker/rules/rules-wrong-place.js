@@ -7,7 +7,8 @@ import {
     inputBlock,
     item,
     menuValue,
-    rulesTarget
+    rulesTarget,
+    spriteTargets
 } from '../model.js';
 
 const RULE = 'rules-wrong-place';
@@ -121,13 +122,14 @@ const rulesWrongPlace = model => {
     if (!rules) return items;
 
     const mark = rules.mark || null;
+    const canMoveOut = spriteTargets(model).some(target => target !== rules);
     for (const block of blockList(rules)) {
         if (block.shadow) continue;
         if (!allowed.has(block.opcode)) {
             add(rules, 'unsupported', {
                 blockId: block.id,
-                fix: 'move-out',
-                fixData: {targetId: rules.id, blockId: block.id}
+                fix: canMoveOut ? 'move-out' : null,
+                fixData: canMoveOut ? {targetId: rules.id, blockId: block.id} : null
             });
             continue;
         }

@@ -92,7 +92,7 @@ class CheckerPanel extends React.Component {
         );
     }
     render () {
-        const {checked, id, intl, items, notice, onClose} = this.props;
+        const {checked, id, intl, items, notice, onClose, onUndo} = this.props;
         const title = intl.formatMessage(messages.title);
         const headingId = `${id}-title`;
         return (
@@ -124,13 +124,24 @@ class CheckerPanel extends React.Component {
                         />
                     </button>
                 </div>
-                <p
-                    aria-live="polite"
-                    className={notice ? styles.notice : styles.srOnly}
-                    role="status"
-                >
-                    {notice}
-                </p>
+                <div className={notice ? styles.noticeRow : null}>
+                    <p
+                        aria-live="polite"
+                        className={notice ? styles.notice : styles.srOnly}
+                        role="status"
+                    >
+                        {notice}
+                    </p>
+                    {notice && onUndo ? (
+                        <button
+                            className={styles.action}
+                            onClick={onUndo}
+                            type="button"
+                        >
+                            {intl.formatMessage(messages.undo)}
+                        </button>
+                    ) : null}
+                </div>
                 <div className={styles.scroll}>
                     {!checked || !items.length ? (
                         <p className={styles.empty}>
@@ -171,6 +182,7 @@ CheckerPanel.propTypes = {
     onClose: PropTypes.func.isRequired,
     onFix: PropTypes.func.isRequired,
     onShowMe: PropTypes.func.isRequired,
+    onUndo: PropTypes.func,
     targetName: PropTypes.func.isRequired
 };
 

@@ -124,6 +124,14 @@ const buildContext = (runtime, options) => {
     );
 };
 
+const safeSnapshot = target => {
+    try {
+        return snapshotTarget(target);
+    } catch (e) {
+        return null;
+    }
+};
+
 const safeRule = (rule, model) => {
     try {
         const found = rule(model);
@@ -188,7 +196,8 @@ const createChecker = options => {
         const targets = runtime.targets.filter(target => target.isOriginal !== false);
         const model = Object.assign(buildContext(runtime, opts), {targets: []});
         const units = targets.map(target => () => {
-            model.targets.push(snapshotTarget(target));
+            const snapshot = safeSnapshot(target);
+            if (snapshot) model.targets.push(snapshot);
         });
         const items = [];
         (options.rules || RULES).forEach(rule => units.push(() => {

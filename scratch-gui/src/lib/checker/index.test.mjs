@@ -214,6 +214,34 @@ while (c2.runSlice()) {
 }
 ok('a throwing rule does not stop the run', Array.isArray(guarded) && guarded.length === 2 &&
     guarded.every(entry => entry.rule === 'steady'), guarded);
+const c3 = clock();
+let odd = null;
+const oddChecker = createChecker({
+    vm: makeVm([
+        makeTarget('stage', 'Stage'),
+        makeTarget('bad', 'Bad', null, {getCostumes: () => {
+            throw new Error('odd target');
+        }}),
+        makeTarget('cat3', 'Cat', loose)
+    ]),
+    win: null,
+    now: c3.now,
+    setTimer: c3.setTimer,
+    clearTimer: c3.clearTimer,
+    scheduler: c3.scheduler,
+    isPhone: () => false,
+    rules: [steady],
+    onResult: items => {
+        odd = items;
+    }
+});
+oddChecker.runNow();
+while (c3.runSlice()) {
+    c3.advance(0);
+}
+ok('a target the snapshot cannot read is skipped and the run still reports', Array.isArray(odd) &&
+    odd.map(entry => entry.targetId).sort()
+        .join() === 'cat3,stage', odd);
 let schemaCalls = 0;
 const once = buildContext(makeVm([]).runtime, {win: null, getRulesSchema: () => {
     schemaCalls++;

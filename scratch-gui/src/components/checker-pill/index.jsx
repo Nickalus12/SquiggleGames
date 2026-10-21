@@ -27,6 +27,7 @@ class CheckerPillContainer extends React.Component {
             'handleClose',
             'handleShowMe',
             'handleFix',
+            'handleUndo',
             'handleDocumentDown',
             'canFix',
             'targetName',
@@ -40,6 +41,7 @@ class CheckerPillContainer extends React.Component {
             busyKey: null,
             hidden: [],
             notice: '',
+            undo: null,
             host: null
         };
     }
@@ -63,7 +65,7 @@ class CheckerPillContainer extends React.Component {
         document.removeEventListener('touchstart', this.handleDocumentDown, true);
     }
     openFromRequest () {
-        this.setState({open: true, notice: ''});
+        this.setState({open: true, notice: '', undo: null});
         this.props.onOpened();
     }
     start (vm) {
@@ -99,15 +101,15 @@ class CheckerPillContainer extends React.Component {
         this.props.onItems(items);
     }
     handleToggle () {
-        this.setState(state => ({open: !state.open, notice: ''}));
+        this.setState(state => ({open: !state.open, notice: '', undo: null}));
     }
     handleClose (returnFocus) {
-        this.setState({open: false, notice: ''});
+        this.setState({open: false, notice: '', undo: null});
         if (returnFocus && this.button) this.button.focus();
     }
     handleDocumentDown (event) {
         if (!this.state.open || !this.wrap || this.wrap.contains(event.target)) return;
-        this.setState({open: false, notice: ''});
+        this.setState({open: false, notice: '', undo: null});
     }
     canFix (entry) {
         return !!(this.fixer && this.fixer.canFix(entry));
@@ -115,24 +117,40 @@ class CheckerPillContainer extends React.Component {
     handleShowMe (entry) {
         if (!this.fixer) return;
         this.setState({busyKey: entry.key});
-        this.fixer.showMe(entry).then(found => {
-            this.setState({
-                busyKey: null,
-                notice: found ? '' : this.props.intl.formatMessage(messages.notFound)
+        this.fixer.showMe(entry).catch(() => false)
+            .then(found => {
+                this.setState({
+                    busyKey: null,
+                    notice: found ? '' : this.props.intl.formatMessage(messages.notFound)
+                });
             });
-        });
     }
     handleFix (entry) {
         if (!this.fixer) return;
-        this.setState({busyKey: entry.key});
-        this.fixer.applyFix(entry).then(done => {
-            this.setState(state => ({
-                busyKey: null,
-                hidden: done ? state.hidden.concat(entry.key) : state.hidden,
-                notice: this.props.intl.formatMessage(done ? fixedMessage(entry.fix) : messages.fixFailed)
-            }));
-            if (done && this.checker) this.checker.schedule();
-        });
+        this.setState({busyKey: entry.key, undo: null});
+        this.fixer.applyFix(entry).catch(() => false)
+            .then(result => {
+                const done = !!result;
+                this.setState(state => ({
+                    busyKey: null,
+                    hidden: done ? state.hidden.concat(entry.key) : state.hidden,
+                    notice: this.props.intl.formatMessage(done ? fixedMessage(entry.fix, result) : messages.fixFailed),
+                    undo: result && typeof result.undo === 'function' ? result.undo : null
+                }));
+                if (done && this.checker) this.checker.schedule();
+            });
+    }
+    handleUndo () {
+        const undo = this.state.undo;
+        if (typeof undo !== 'function') return;
+        this.setState({undo: null});
+        Promise.resolve()
+            .then(undo)
+            .catch(() => false)
+            .then(done => {
+                this.setState({notice: this.props.intl.formatMessage(done ? messages.undone : messages.undoFailed)});
+                if (this.checker) this.checker.schedule();
+            });
     }
     targetName (targetId) {
         const target = targetId && this.props.vm && this.props.vm.runtime.getTargetById(targetId);
@@ -175,6 +193,7 @@ class CheckerPillContainer extends React.Component {
                             onClose={this.handleClose}
                             onFix={this.handleFix}
                             onShowMe={this.handleShowMe}
+                            onUndo={this.state.undo ? this.handleUndo : null}
                             targetName={this.targetName}
                         />
                     </React.Suspense>

@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom';
 import {injectIntl, intlShape} from 'react-intl';
 import {connect} from 'react-redux';
 
-import {isPaletteKey, listenForPaletteEvent} from './keys.js';
+import {listenForPaletteEvent, paletteKeyAction} from './keys.js';
 import {uiMessages} from './messages';
 import {createFixer} from '../../lib/checker/fixes.js';
 import {getOutlineWorkspace} from '../../lib/annotations/workspace-ref.js';
@@ -98,17 +98,19 @@ class CommandPaletteContainer extends React.Component {
         loadSources().then(sources => {
             if (this.unmounted || !this.props.open) return;
             this.setState({items: sources.buildItems(env)});
-        }, error => {
-            if (this.unmounted || !this.props.open) return;
-            this.props.onError(error);
-            this.setState({items: []});
-        });
+        })
+            .catch(error => {
+                if (this.unmounted || !this.props.open) return;
+                this.props.onError(error);
+                this.setState({items: []});
+            });
     }
     handleKeyDown (event) {
-        if (!isPaletteKey(event) || event.repeat) return;
+        const action = paletteKeyAction(event, this.props.open);
+        if (!action) return;
         event.preventDefault();
         event.stopPropagation();
-        if (this.props.open) {
+        if (action === 'close') {
             this.handleClose();
             return;
         }

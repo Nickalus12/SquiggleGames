@@ -120,11 +120,30 @@ const checkerItems = env => (env.checkerItems || []).map(entry => ({
     run: () => env.showMe(entry)
 }));
 
+const categoryFinder = flyout => {
+    const marks = (Array.isArray(flyout.categoryScrollPositions) ? flyout.categoryScrollPositions : [])
+        .filter(mark => mark && typeof mark.categoryName === 'string' && Number.isFinite(mark.position))
+        .sort((a, b) => a.position - b.position);
+    const axis = flyout.horizontalLayout_ ? 'x' : 'y';
+    return block => {
+        const at = call(() => block.getRelativeToSurfaceXY()[axis], null);
+        let name = '';
+        if (!Number.isFinite(at)) return name;
+        for (const mark of marks) {
+            if (mark.position > at) break;
+            name = mark.categoryName;
+        }
+        return name;
+    };
+};
+
 const blockItems = env => {
     const {workspace} = env;
     const flyout = workspace && call(() => workspace.getFlyout(), null);
     const flyoutWorkspace = flyout && call(() => flyout.getWorkspace(), null);
     if (!flyoutWorkspace) return [];
+    const categoryOf = categoryFinder(flyout);
+    const insertText = env.intl.formatMessage(uiMessages.insert);
     const seen = new Set();
     const out = [];
     flyoutWorkspace.getTopBlocks(true).forEach(block => {
@@ -138,7 +157,7 @@ const blockItems = env => {
             kind: 'block',
             label,
             keywords: [block.type.split('_')[0]],
-            detail: env.intl.formatMessage(uiMessages.insert),
+            detail: categoryOf(block) || insertText,
             run: () => insertDom(env, env.ScratchBlocks.Xml.blockToDom(block, true))
         });
     });
@@ -269,6 +288,19 @@ const buildItems = env => {
     return out;
 };
 
+const EMPTY_CAPS = Object.freeze({
+    command: 20, checker: 5, block: Infinity, sprite: 8, myblock: 5, scene: 5, level: 5, peer: 5
+});
+
+const firstItems = items => {
+    const used = {};
+    return items.filter(entry => {
+        const cap = EMPTY_CAPS[entry.kind] || 0;
+        used[entry.kind] = (used[entry.kind] || 0) + 1;
+        return used[entry.kind] <= cap;
+    });
+};
+
 const groupResults = results => {
     const groups = [];
     const byKind = new Map();
@@ -288,6 +320,7 @@ export {
     readableProccode,
     insertDom,
     buildItems,
+    firstItems,
     groupResults,
     commandItems,
     checkerItems,

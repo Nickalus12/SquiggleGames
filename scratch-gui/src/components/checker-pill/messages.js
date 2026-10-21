@@ -51,6 +51,31 @@ const messages = defineMessages({
         defaultMessage: 'Deleted. Undo brings them back.',
         description: 'Announced after the checker deleted loose blocks'
     },
+    moved: {
+        id: 'sq.checker.moved',
+        defaultMessage: 'Moved.',
+        description: 'Announced after the checker moved blocks to another sprite'
+    },
+    movedHatless: {
+        id: 'sq.checker.movedHatless',
+        defaultMessage: 'Moved. Attach it to a hat block in Game Rules.',
+        description: 'Announced after the checker moved a block out of a script into Game Rules'
+    },
+    undo: {
+        id: 'sq.checker.undo',
+        defaultMessage: 'Undo',
+        description: 'Button that puts moved blocks back'
+    },
+    undone: {
+        id: 'sq.checker.undone',
+        defaultMessage: 'Put back.',
+        description: 'Announced after Undo put moved blocks back'
+    },
+    undoFailed: {
+        id: 'sq.checker.undoFailed',
+        defaultMessage: 'That could not be put back.',
+        description: 'Announced when Undo could not put moved blocks back'
+    },
     fixFailed: {
         id: 'sq.checker.fixFailed',
         defaultMessage: 'That one could not be fixed here. Try Show me.',
@@ -74,8 +99,12 @@ const messages = defineMessages({
 });
 
 const FIXED = Object.freeze({'delete-loose': 'fixedLoose'});
+const NOTICES = Object.freeze({'moved': 'moved', 'moved-hatless': 'movedHatless'});
 
-const fixedMessage = fix => messages[(fix && FIXED[fix]) || 'fixed'];
+const fixedMessage = (fix, result) => {
+    const notice = result && NOTICES[result.notice];
+    return messages[notice || (fix && FIXED[fix]) || 'fixed'];
+};
 
 export {fixedMessage};
 export default messages;

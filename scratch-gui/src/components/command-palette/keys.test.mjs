@@ -1,6 +1,7 @@
 process.removeAllListeners('warning');
 
-const {PALETTE_EVENT, isPaletteKey, listenForPaletteEvent, paletteEventAction} = await import('./keys.js');
+const {PALETTE_EVENT, isPaletteKey, listenForPaletteEvent, paletteEventAction, paletteKeyAction} = await import(
+    './keys.js');
 
 let pass = 0;
 let fail = 0;
@@ -16,6 +17,12 @@ ok('cmd K', isPaletteKey({metaKey: true, key: 'K'}));
 ok('plain k is not', !isPaletteKey({key: 'k'}));
 ok('ctrl shift k is not', !isPaletteKey({ctrlKey: true, shiftKey: true, key: 'K'}));
 ok('ctrl alt k is not', !isPaletteKey({ctrlKey: true, altKey: true, key: 'k'}));
+
+console.log('paletteKeyAction');
+ok('ctrl k opens a closed palette', paletteKeyAction({ctrlKey: true, key: 'k'}, false) === 'open');
+ok('ctrl k on an open palette closes it the Escape way', paletteKeyAction({ctrlKey: true, key: 'k'}, true) === 'close');
+ok('a held key does nothing', paletteKeyAction({ctrlKey: true, key: 'k', repeat: true}, true) === null);
+ok('other keys do nothing', paletteKeyAction({key: 'k'}, true) === null && paletteKeyAction(null, false) === null);
 
 console.log('paletteEventAction');
 const phone = open => ({detail: {open, source: 'phone'}});

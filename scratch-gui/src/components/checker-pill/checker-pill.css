@@ -173,11 +173,19 @@
     outline-offset: 2px;
 }
 
-.notice {
-    margin: 0;
-    padding: var(--sq-space-2, 8px) var(--sq-space-4, 16px);
+.notice-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    padding-right: var(--sq-space-3, 12px);
     border-bottom: 1px solid var(--sq-line);
     background: var(--sq-raised);
+}
+
+.notice {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: var(--sq-space-2, 8px) var(--sq-space-4, 16px);
     color: var(--sq-text);
     font-size: var(--sq-text-xs, 12px);
 }

@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const IntlMessageFormat = require('intl-messageformat');
 const {
-    KIND_ORDER, readableProccode, insertDom, buildItems, groupResults,
+    KIND_ORDER, readableProccode, insertDom, buildItems, firstItems, groupResults,
     commandItems, checkerItems, myBlockItems, variableItems, spriteItems, worldItems, peerItems, blockItems
 } = await import('./sources.js');
 const {prepare, search} = await import('./fuzzy.js');
@@ -94,12 +94,15 @@ const makeWorkspace = () => {
         setScale: log('setScale')
     };
     const flyoutBlocks = [
-        makeBlock({type: 'motion_movesteps'}, null),
-        makeBlock({type: 'motion_movesteps'}, null),
-        makeBlock({type: 'looks_say', toString: () => 'say (Hello!)'}, null),
+        makeBlock({type: 'motion_movesteps', y: 40}, null),
+        makeBlock({type: 'motion_movesteps', y: 90}, null),
+        makeBlock({type: 'looks_say', toString: () => 'say (Hello!)', y: 600}, null),
         makeBlock({type: 'math_number', isShadow: () => true}, null)
     ];
-    workspace.getFlyout = () => ({getWorkspace: () => ({getTopBlocks: () => flyoutBlocks})});
+    workspace.getFlyout = () => ({
+        categoryScrollPositions: [{categoryName: 'Looks', position: 500}, {categoryName: 'Motion', position: 0}],
+        getWorkspace: () => ({getTopBlocks: () => flyoutBlocks})
+    });
     return workspace;
 };
 
@@ -183,6 +186,17 @@ console.log('checkerItems');
     ok('run shows the item', last()[0] === 'showMe' && last()[1] === entry);
 }
 
+console.log('firstItems');
+{
+    const many = kind => Array.from({length: 300}, (unused, index) => ({id: `${kind}:${index}`, kind}));
+    const first = firstItems([].concat(many('command'), many('block'), many('variable'), many('sprite')));
+    const count = kind => first.filter(entry => entry.kind === kind).length;
+    ok('an empty query lists every toolbox block so phones can browse', count('block') === 300 &&
+        first.filter(entry => entry.kind === 'block').map(entry => entry.id).join() ===
+        many('block').map(entry => entry.id).join());
+    ok('other kinds keep their caps', count('command') === 20 && count('sprite') === 8 && count('variable') === 0);
+}
+
 console.log('blockItems');
 {
     const env = makeEnv();
@@ -190,6 +204,12 @@ console.log('blockItems');
     ok('dedupes and skips shadows', items.length === 2, items.map(entry => entry.label));
     ok('label from toString', items[0].label === 'move (10) steps');
     ok('category keyword', items[0].keywords[0] === 'motion');
+    ok('the toolbox category is the detail, in flyout order', items[0].detail === 'Motion' &&
+        items[1].detail === 'Looks');
+    const plain = makeEnv();
+    const flat = [makeBlock({type: 'looks_say', toString: () => 'say (Hi)'}, null)];
+    plain.workspace.getFlyout = () => ({getWorkspace: () => ({getTopBlocks: () => flat})});
+    ok('no category labels falls back to Add block', blockItems(plain)[0].detail === 'Add block');
     items[1].run();
     ok('insert builds dom from the flyout block', env.ScratchBlocks.made.type === 'looks_say');
     ok('no flyout gives nothing', blockItems(makeEnv({workspace: {getFlyout: () => null}})).length === 0);

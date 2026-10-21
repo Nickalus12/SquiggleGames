@@ -74,6 +74,10 @@ ok('delete loose blocks says undo brings them back', fixLabel(intl, item('x', 'x
     'Delete loose blocks' && intl.formatMessage(fixedMessage('delete-loose')) === 'Deleted. Undo brings them back.');
 ok('other fixes use the plain fixed words', fixedMessage('add-wait') === pillMessages.fixed &&
     fixedMessage(null) === pillMessages.fixed);
+ok('a move says Moved and a nested move into Game Rules says to attach it to a hat',
+    fixedMessage('move-to-rules', {notice: 'moved'}) === pillMessages.moved &&
+    intl.formatMessage(fixedMessage('move-to-rules', {notice: 'moved-hatless'})) ===
+    'Moved. Attach it to a hat block in Game Rules.' && fixedMessage('move-out', true) === pillMessages.fixed);
 ok('no em dashes in any words', [itemMessages, rulesErrorMessages, limitMessages, fixMessages, pillMessages].every(table =>
     Object.keys(table).every(key => table[key].defaultMessage.indexOf(String.fromCharCode(0x2014)) === -1)));
 done();
