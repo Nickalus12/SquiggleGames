@@ -280,6 +280,10 @@
     }
 }
 
+:root[data-sq-focus="on"] .menu-bar:not(.phone-sheet) .focus-extra {
+    display: none;
+}
+
 .menu-item-link {
     color: inherit;
     text-decoration: none;
