@@ -1801,8 +1801,10 @@ const drainOrphans = () => {
 const applySpriteAdd = msg => {
     const prevEditing = state.vm.editingTarget;
     const before = new Set(state.vm.runtime.targets.map(t => t.id));
+    const projectStorage = state.vm.runtime.extensionStorage;
     state.installingRemote++;
     state.vm.addSprite(new Uint8Array(bufferFromB64(msg.sprite))).then(() => {
+        state.vm.runtime.extensionStorage = projectStorage;
         state.installingRemote--;
         rebuildTargetIndex();
         if (prevEditing && state.vm.runtime.targets.includes(prevEditing)) {
