@@ -52,7 +52,7 @@ const client = noopObject({
     connected: true,
     generation: 1,
     holdingQueue: false,
-    session: {name: 'Tester', room: 'blue fox'},
+    session: {name: 'Tester', room: 'blue fox', url: 'wss://sq.test'},
     on: (type, cb) => listeners.set(type, cb),
     send: msg => {
         sent.push(msg);
@@ -110,6 +110,25 @@ globalThis.document = noopObject({
     hidden: false, addEventListener: noop, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null
 });
 globalThis.localStorage = {getItem: () => null, setItem: noop};
+const gameSockets = [];
+globalThis.WebSocket = class {
+    constructor (url) {
+        this.url = url;
+        this.sent = [];
+        this.closed = null;
+        gameSockets.push(this);
+    }
+    send (text) {
+        this.sent.push(JSON.parse(text));
+    }
+    close (code) {
+        this.closed = code;
+        this.onclose({code});
+    }
+    deliver (msg) {
+        this.onmessage({data: JSON.stringify(msg)});
+    }
+};
 globalThis.location = {port: '', hostname: 'sq.test', search: '', hash: ''};
 
 const stage = extra => Object.assign({
@@ -493,6 +512,57 @@ section('the green flag puts the rules');
     ok('the url names the room', calls.some(c => c.method === 'PUT' && c.url === 'https://sq.test/api/rooms/blue%20fox/rules'));
     ok('the project is stamped after the PUT', await waitFor(() => vm.runtime.extensionStorage.together &&
         vm.runtime.extensionStorage.together.rulesHash === put.hash));
+}
+
+section('the green flag opens the game socket');
+{
+    const net = globalThis.window.SquiggleNet;
+    ok('the rules start opens the room game socket', await waitFor(() => gameSockets.length === 1) &&
+        gameSockets[0].url === 'wss://sq.test/ws/room/blue%20fox/game', gameSockets.map(g => g.url));
+    const ws = gameSockets[0];
+    ws.onopen();
+    ok('it joins with proto 2', ws.sent[0] && ws.sent[0].type === 'join' && ws.sent[0].proto === 2, ws.sent);
+    ok('the bridge reports the game', net.inGame === true);
+    ws.deliver({type: 'welcome', slot: 1, ack: 0});
+    ok('the bridge reports the slot', net.slot === 1);
+    const ticks = [];
+    const games = [];
+    const offTick = net.onTick(tick => ticks.push(tick));
+    const offGame = net.on('game', msg => games.push(msg));
+    ws.deliver({type: 'tick', t: 1, kf: 1, v: {score: 2}, y: {names: {2: 'Pal'}}, a: {2: [10, 0, 90, 0, 1, 0]},
+        e: [{n: 'hi', v: 'x', f: 2}, {n: 'go', v: '', f: 0}]});
+    ok('ticks reach onTick subscribers', ticks.length === 1 && ticks[0].v.score === 2);
+    ok('a player message in a tick arrives as a game message with the sender name',
+        games.length === 1 && games[0].name === 'hi' && games[0].fromName === 'Pal' && games[0].from === 2, games);
+    ws.deliver({type: 'rules-status', hash: 'abc', ok: true, phase: 'compile', errors: []});
+    const {rulesStatus} = await import('../rules/status.js');
+    ok('rules-status lands in the status store', rulesStatus.get().compile.hash === 'abc');
+    const relayed = sent.length;
+    net.send({type: 'game', action: 'msg', name: 'jump', value: '1'});
+    const ins = () => ws.sent.filter(m => m.type === 'in');
+    ok('a Together message goes over the game socket while in a game',
+        sent.length === relayed && ins().some(m => (m.g || []).some(op => op.action === 'msg' && op.name === 'jump')),
+        ins());
+    ok('tell the game goes out as input', net.sendInput({g: {action: 'input', name: 'left', value: ''}}) === true);
+    const fox = vm.runtime.targets.find(t => t.isOriginal && !t.isStage && !t.extensionStorage.together);
+    fox.setXY(0, 0);
+    ws.deliver({type: 'tick', t: 2, c: [100, 0, 1]});
+    ok('a correction over 30 px snaps the own sprite', fox.x === 100, fox.x);
+    vm.runtime.emit('AFTER_EXECUTE');
+    await new Promise(resolve => setTimeout(resolve, 60));
+    vm.runtime.emit('AFTER_EXECUTE');
+    const last = ins().pop();
+    ok('the own sprite goes out with the new cid', last && last.a && last.a[0] === 100 && last.cid === 1, last);
+    const toasts = [];
+    overlay.toast = text => toasts.push(text);
+    emit('game-started', {type: 'game-started', name: 'Pal'});
+    ok('a game started by someone else is not announced while in it', toasts.length === 0);
+    vm.runtime.emit('PROJECT_STOP_ALL');
+    ok('stop closes the game socket', ws.closed === 1000 && net.inGame === false);
+    emit('game-started', {type: 'game-started', name: 'Pal'});
+    ok('otherwise it says how to join', toasts.length === 1 && /Pal started a test game/.test(toasts[0]), toasts);
+    offTick();
+    offGame();
 }
 
 section('game setup changes travel as kit-set');

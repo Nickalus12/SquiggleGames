@@ -1,0 +1,57 @@
+process.removeAllListeners('warning');
+
+const {ok, section, done} = await import('./harness.test-util.mjs');
+const {avatarOf, createAvatarLayer, findPlayerSprite, renderedDirection} = await import('./session.js');
+
+const sprite = (name, extra) => Object.assign({
+    name, isOriginal: true, isStage: false, extensionStorage: {}, x: 0, y: 0, direction: 90, size: 100,
+    visible: true, currentCostume: 0, rotationStyle: 'all around',
+    sprite: {costumes: [{skinId: 11}, {skinId: 12}]}
+}, extra);
+
+section('the own sprite');
+{
+    const rules = sprite('Rules', {extensionStorage: {together: {role: 'rules', v: 1}}});
+    const cat = sprite('Cat');
+    const hero = sprite('Hero', {extensionStorage: {together: {role: 'player'}}});
+    const stage = {isOriginal: true, isStage: true, extensionStorage: {}};
+    ok('a sprite marked player wins', findPlayerSprite({targets: [stage, rules, cat, hero]}) === hero);
+    ok('else the first sprite that is not Game Rules', findPlayerSprite({targets: [stage, rules, cat]}) === cat);
+    ok('Game Rules alone is nobody', findPlayerSprite({targets: [stage, rules]}) === null);
+}
+
+section('the avatar frame');
+{
+    const a = avatarOf(sprite('Cat', {x: 10.3, y: -4.8, direction: 44.6, currentCostume: 1, visible: false}), 2);
+    ok('x and y at half pixels, direction in degrees, costume, flags, level', a.join() === '10.5,-5,45,1,0,2', a);
+}
+
+section('others are drawn without clones');
+{
+    const calls = [];
+    const renderer = new Proxy({}, {get: (target, key) => (...args) => {
+        calls.push([key].concat(args));
+        return key === 'createDrawable' ? 7 : undefined;
+    }});
+    const layer = createAvatarLayer({renderer});
+    const source = sprite('Cat');
+    layer.draw('3', [20, 30, -90, 1, 1, 0], source);
+    ok('one drawable in the sprite layer', calls[0][0] === 'createDrawable' && calls[0][1] === 'sprite');
+    ok('it wears the costume by index', calls.some(c => c[0] === 'updateDrawableSkinId' && c[2] === 12));
+    ok('it stands where the tick says', calls.some(c => c[0] === 'updateDrawablePosition' && c[2].join() === '20,30'));
+    layer.draw('3', [21, 30, -90, 9, 0, 0], source);
+    ok('the drawable is reused', calls.filter(c => c[0] === 'createDrawable').length === 1);
+    ok('a costume past the end clamps', calls.filter(c => c[0] === 'updateDrawableSkinId').pop()[2] === 12);
+    ok('the visible flag hides it', calls.filter(c => c[0] === 'updateDrawableVisible').pop()[2] === false);
+    layer.remove('3');
+    ok('removing destroys it', calls.some(c => c[0] === 'destroyDrawable' && c[1] === 7) && layer.slots().length === 0);
+    ok('no renderer draws nothing', (createAvatarLayer({}).draw('1', [0, 0, 90, 0, 1, 0], source), true));
+}
+
+section('rotation styles');
+ok('all around turns', renderedDirection('all around', -45, 100).direction === -45);
+ok('left-right flips', renderedDirection('left-right', -45, 100).scale[0] === -100 &&
+    renderedDirection('left-right', -45, 100).direction === 90);
+ok('don\'t rotate stays at 90', renderedDirection('don\'t rotate', 10, 50).direction === 90);
+
+done();

@@ -247,6 +247,15 @@ ok('errors carry kid text and a message id', status.get().compile.errors[0].text
 status.apply({hash: 'h', ok: true, phase: 'run', errors: [{code: 'too-much', n: 3}]});
 ok('run errors keep the compile result', status.blocking() && status.get().run.errors[0].n === 3);
 ok('unknown codes fall back to plain words', parseRulesStatus({errors: [{code: 'zzz'}]}).errors[0].text.length > 0);
+{
+    const {errorText} = await import('./status.js');
+    ok('a limit names its max and what it limits',
+        errorText('limit', {limit: 'timers', max: 4}, 1) === 'Game Rules can have at most 4 timers. Remove some.',
+        errorText('limit', {limit: 'timers', max: 4}, 1));
+    ok('an unknown limit falls back to plain words', !/\{/.test(errorText('limit', {limit: 'zzz', max: 4}, 1)));
+    ok('repeats are counted', /Happened 3 times\.$/.test(errorText('deferred', null, 3)));
+    ok('one time says nothing extra', errorText('deferred', null, 1) === 'The game was busy, so this rule ran a moment late.');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

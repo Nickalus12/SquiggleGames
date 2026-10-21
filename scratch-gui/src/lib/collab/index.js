@@ -19,6 +19,8 @@ import overlay from './overlay';
 import paintMerge from './paint-merge';
 import {installProjectSeam, isRulesTarget} from './project-seam.js';
 import {createRulesUploader} from '../rules/package.js';
+import {rulesStatus} from '../rules/status.js';
+import {createGameLink} from '../together2/session.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes} from './hash.js';
@@ -678,9 +680,49 @@ const rulesEdited = () => {
     if (uploader) uploader.edited();
 };
 
+const GAME_STARTED_TEXT = 'started a test game. Press the green flag to join.';
+
+const hasRuleScripts = () => {
+    const target = state.vm && state.vm.runtime.targets.find(t => t.isOriginal && isRulesTarget(t));
+    return !!target && Object.keys(target.blocks._blocks).length > 0;
+};
+
+const gameLink = () => {
+    if (!state.httpSnapshots || !state.snapshotHttpRoom || !state.vm || !client.session) return null;
+    if (!state.gameLink || state.gameLinkRoom !== state.snapshotHttpRoom) {
+        if (state.gameLink) state.gameLink.stop();
+        state.gameLink = createGameLink({
+            vm: state.vm,
+            base: client.session.url,
+            slug: state.snapshotHttpRoom,
+            WebSocketImpl: typeof WebSocket === 'undefined' ? null : WebSocket,
+            onRulesStatus: msg => rulesStatus.apply(msg),
+            onGameMessage: msg => netEmit('game', msg),
+            onEnded: msg => netEmit('game-ended', msg),
+            onClosed: msg => {
+                netEmit('game-ended', msg);
+                if (msg && msg.reason === 'reload') overlay.toast(`🔄 ${RELOAD_TEXT}`, '#f0912b');
+                else if (msg && msg.reason !== 'stopped') log.warn('[collab] game socket closed', msg.code);
+            }
+        });
+        state.gameLink.onTick(tick => netEmit('tick', tick));
+        state.gameLinkRoom = state.snapshotHttpRoom;
+    }
+    return state.gameLink;
+};
+
+const stopGame = () => {
+    if (state.gameLink) state.gameLink.stop();
+};
+
 const rulesGameStart = () => {
     const uploader = canWrite() && rulesUploader();
-    if (uploader) uploader.sendNow();
+    const sent = uploader ? uploader.sendNow() : Promise.resolve(null);
+    if (!state.active || !state.httpSnapshots || !hasRuleScripts()) return sent;
+    return sent.then(() => {
+        const link = state.active && gameLink();
+        if (link) link.start();
+    });
 };
 
 const zipProject = async () => {
@@ -1656,6 +1698,7 @@ const wrapVm = vm => {
     };
 
     vm.runtime.on('PROJECT_START', rulesGameStart);
+    vm.runtime.on('PROJECT_STOP_ALL', stopGame);
     vm.runtime.on(KIT_SET_EVENT, sendKitSet);
     vm.runtime.on('PROJECT_RUN_START', () => {
         state.projectRunning = true;
@@ -2010,6 +2053,7 @@ const endSession = text => {
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
     if (state.rulesUploader) state.rulesUploader.dispose();
+    stopGame();
     overlay.setConnected(false);
     applyEditability();
 };
@@ -2544,7 +2588,23 @@ const installNetBridge = () => {
                 const key = String(orEmpty(msg.name));
                 if (key) cachedGameVars[key] = orEmpty(msg.value);
             }
+            if (state.gameLink && state.gameLink.relay(msg)) return;
             client.send(msg);
+        },
+        sendInput (input) {
+            return !!(state.gameLink && state.gameLink.sendInput(input));
+        },
+        onTick (cb) {
+            return this.on('tick', cb);
+        },
+        get inGame () {
+            return !!(state.gameLink && state.gameLink.inGame);
+        },
+        get slot () {
+            return state.gameLink ? state.gameLink.slot : null;
+        },
+        get rtt () {
+            return state.gameLink ? state.gameLink.rtt : null;
         },
         on (type, cb) {
             if (typeof cb !== 'function') return () => {};
@@ -3043,6 +3103,11 @@ const wireSocket = () => {
             if (key) cachedGameVars[key] = orEmpty(msg.value);
         }
         netEmit('game', msg);
+    });
+    client.on('game-started', msg => {
+        if (state.gameLink && state.gameLink.inGame) return;
+        const who = msg && typeof msg.name === 'string' && msg.name ? msg.name : 'Someone';
+        overlay.toast(`▶ ${who} ${GAME_STARTED_TEXT}`, '#6d4ae0');
     });
 };
 
