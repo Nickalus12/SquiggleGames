@@ -131,7 +131,7 @@ class Overlay {
             try {
                 cb();
             } catch (e) {
-                this._subscribers.delete(cb);
+                console.error('[collab] presence view error', e);
             }
         }
     }
@@ -203,6 +203,10 @@ class Overlay {
         if (ok) {
             const p = this.peers.get(id);
             if (p && p.view) this._applyView(p.view);
+            else if (p && p.sprite) {
+                const tab = TABS.indexOf(p.tab) === -1 ? 'code' : p.tab;
+                this._applyView({targetId: p.sprite, tab, x: null, y: null});
+            }
         }
         return ok;
     }
@@ -492,7 +496,7 @@ class Overlay {
     }
 
     _pollView (workspace, targetId) {
-        if (!workspace || !targetId) return;
+        if (!workspace || !targetId || !this._viewGate.ready()) return;
         let view = null;
         try {
             const metrics = workspace.getMetrics();
@@ -512,7 +516,6 @@ class Overlay {
         const last = this._local.view;
         if (!view || (last && last.targetId === view.targetId && last.tab === view.tab &&
             last.x === view.x && last.y === view.y && last.zoom === view.zoom)) return;
-        if (!this._viewGate.ready()) return;
         this._local.view = view;
         this._send(Object.assign({type: 'viewport'}, view));
     }
