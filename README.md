@@ -1,12 +1,15 @@
 # Squiggle
 
-**Make a Scratch-style project with a friend, in the same editor, at the same time.**
+**Squiggle is a free place where kids make games together.**
 
-Squiggle is a [TurboWarp](https://turbowarp.org) fork (itself built on
-[Scratch](https://scratch.mit.edu)) with a multiplayer client built in. Open a
-room, invite someone, and every block you snap, sprite you drag and stroke you
-paint shows up on their screen as you do it. Then hit the green flag and play
-the game you built together.
+You build with blocks, like Scratch, but your friends are in the same game with
+you, live. Share a room code, make something, press play.
+
+This repository is the Squiggle editor: a [TurboWarp](https://turbowarp.org)
+fork (itself built on [Scratch](https://scratch.mit.edu)) with a multiplayer
+client built in. Open a room, invite someone, and every block you snap, sprite
+you drag and stroke you paint shows up on their screen as you do it. Then hit
+the green flag and play the game you built together.
 
 <p align="center">
   <a href="https://squigglegames.app"><b>Play now</b></a> ·
@@ -41,10 +44,18 @@ the game you built together.
 |---|---|
 | **Build together, live** | Blocks, sprites, costumes, sounds, paint strokes and green-flag runs replay on everyone's screen. Each player has a cursor and a name tag, so you can see who is working where. |
 | **Make multiplayer games** | The **Together** extension adds shared variables and game messages that travel between running projects, so two players can race, chase or keep score across screens. See [docs/TOGETHER.md](./docs/TOGETHER.md). |
+| **Add game rules** | Three expansions build on Together: **Scores and Rounds**, **Teams and Items** and **Arena**. Their gold-edged rule blocks go on one Game Rules sprite and run on the game server, which stays switched off in 2.0. See [docs/GAME-RULES.md](./docs/GAME-RULES.md). |
+| **Build a world** | **World** builds big levels out of tiles with a camera and a tile painter, **Scenes** switches between levels, menus and cutscenes, and **3D** turns a tile level into a world you can walk through. |
+| **Make it move** | **Animate** adds glides, bounces and costume clips. **Game Tools** moves toward a spot, rolls a chance and sends messages with data. |
+| **Check your project** | A checker in the menu bar finds problems in plain words, with Show me and Fix it. Ctrl or Cmd+K opens a command palette, and focus mode floats the stage. |
 | **Talk in the room** | A chat panel lives next to the editor. Younger players and guests get a set of quick phrases instead of a keyboard, and anyone can report a line in plain words. |
-| **Use a phone or tablet** | On a small screen the editor becomes one pane at a time with tabs along the bottom, and games get on-screen arrow and space keys. |
+| **Use a phone or tablet** | On a small screen the editor becomes one pane at a time with tabs along the bottom, the tile painter opens as a sheet, and games get an on-screen pad and action buttons. See [docs/PHONE.md](./docs/PHONE.md). |
+| **Night or Day** | The editor comes in a dark Night theme and a light Day theme, or Auto to follow your device. |
 | **Share it** | Publish to [Explore](https://squigglegames.app/explore), and anyone can play your project full screen at `/play`, no account needed. |
-| **Take it with you** | Projects are plain `.sb3` files. Download one and it opens in Scratch or TurboWarp. |
+| **Take it with you** | Projects are plain `.sb3` files. A project without Squiggle blocks opens in Scratch or TurboWarp. A 2.0 project that uses Squiggle blocks runs on squigglegames.app; Save to your computer still works and is the way to keep a backup. |
+
+A card in the extension library with a **Together Room** badge under Requires
+only does something in a room.
 
 ## How it fits together
 
@@ -57,15 +68,21 @@ flowchart LR
     gui --- collab
     gui --- together
   end
-  server[("Squiggle server<br/>rooms, accounts, moderation,<br/>publishing, Explore<br/>(separate, proprietary)")]
+  server[("Squiggle service on Cloudflare<br/>rooms, accounts, moderation,<br/>publishing, Explore, game rules<br/>(separate, proprietary)")]
   collab <-->|"WebSocket + HTTP"| server
   together <-->|"via the room socket"| server
 ```
 
+The hosted service runs on Cloudflare: Workers serve the pages, the editor and
+the API, and each room lives in a Durable Object placed near the players who
+opened it. Accounts, projects and files are kept in Cloudflare's database and
+storage.
+
 Every browser runs the project on its own. Motion is computed locally on each
 side and only the values a project explicitly shares travel between players.
 That is deliberate: it keeps two copies of the same script from fighting each
-other.
+other. Game Rules are the exception: they run once on the game server for the
+whole room.
 
 This repository is **the editor only**, the part that runs in your browser. It
 is GPL-3.0 because it derives from TurboWarp. The server it talks to is a
@@ -80,7 +97,13 @@ separate program and is not in this repository; see [License](#license).
 | `scratch-gui/src/components/collab-chat/` | The room chat panel, quick phrases, report sheet and the Messages button |
 | `scratch-gui/src/components/phone-shell/` | The phone layout: top bar, bottom tabs, sprite row, mini stage |
 | `scratch-gui/src/lib/libraries/extensions/together/` | The Together extension |
-| `docs/TOGETHER.md` | How to build a multiplayer game with Together |
+| `scratch-gui/src/lib/libraries/extensions/squiggle*/` | The kits (`squiggleworld`, `squigglescenes`, `squiggleanimate`, `squiggletools`, `squiggle3d`) and the expansions (`squigglescores`, `squiggleteams`, `squigglearena`) |
+| `scratch-gui/src/lib/kits/` | The kit registry and the one file that loads the built-in kits |
+| `scratch-gui/src/lib/world/` | The world view: tiles, camera, scenes, collision, the tile painter core and the 3D view |
+| `scratch-gui/src/lib/rules/` | Game Rules: the rule blocks, the Game Rules sprite, Game setup and the schema shared with the server |
+| `scratch-gui/src/lib/together2/` | The game client: the game socket, prediction, interpolation and the device blocks |
+| `scratch-gui/src/lib/checker/` | The project checker and its rules |
+| `docs/` | Guides for players and contributors; start at [docs/README.md](./docs/README.md) |
 | `tools/demo-video/` | Tooling for the demo video |
 
 ## Run it
