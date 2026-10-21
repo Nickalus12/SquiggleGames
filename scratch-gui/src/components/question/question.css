@@ -14,7 +14,7 @@
 .question-label {
     font-size: 0.75rem;
     font-weight: bold;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     color: $text-primary-default;
     padding-bottom: $space;
 }

@@ -17,6 +17,30 @@ import showLogin from './login';
 import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
+import {installProjectSeam, isRulesTarget} from './project-seam.js';
+import {createRulesUploader} from '../rules/package.js';
+import {rulesStatus} from '../rules/status.js';
+import {gameServerReady} from '../rules/flags.js';
+import {createGameLink} from '../together2/session.js';
+import {VOCAB_LOCK} from '../together2/net.js';
+import {lockedNames} from '../together2/vocab-lock.js';
+import {BAD_FRAME_TEXT, RELOAD_TEXT} from '../together2/texts.js';
+import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
+import {MINE, askKeepWork} from './keep-work.js';
+import {getWorld} from '../world/world.js';
+import {createTilemapSync} from '../world/tilemap-sync.js';
+import log from '../log';
+import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
+import {DRIFT_REPAIR_MAX, planDriftRepair} from './drift.js';
+import {showPortabilityNote} from '../../components/squiggle-only-notice';
+import {
+    MD5EXT,
+    attachAssetStore,
+    createSnapshotHttp,
+    projectAssets,
+    sha256Hex,
+    snapshotFrame
+} from './snapshot-http.js';
 
 /*
  * Small preferences that belong to the person rather than the project, kept
@@ -64,12 +88,19 @@ const state = {
     lastSpriteInfoSent: 0,
     pendingSpriteInfo: null, // trailing sprite-info so the final drag position always lands
     spriteInfoTimer: null,
-    lastPresence: {status: null, sprite: null, sentAt: 0},
-    lastSnapshotB64: null, // dedup — skip re-broadcasting identical project state
+    lastPresence: {status: null, sprite: null, tab: null, sentAt: 0},
+    appearance: {},
+    lastSnapshotKey: null,
     snapshotRef: 0,
     unackedSnapshots: [],
-    sentSnapshotB64: null,
+    sentSnapshotKey: null,
     sentSnapshotGen: -1,
+    httpSnapshots: false,
+    snapshotHttp: null,
+    snapshotHttpRoom: null,
+    snapshotShaKeys: new Map(),
+    snapshotRetries: 0,
+    snapshotBlocked: false,
     urgentSnapshot: false,
     snapshotPromise: null,
     ended: false,
@@ -78,6 +109,7 @@ const state = {
     sentSpriteAdds: [],
     heldSpriteEvents: [],
     rescuedB64: null,
+    rescuedKey: null,
     rescueTimes: [],
     bitmapChain: Promise.resolve(),
     snapshotsSeen: 0,
@@ -88,6 +120,7 @@ const state = {
     pendingSnapshotMsg: null, // deferred remote snapshot while locally painting
     snapshotLoading: false,
     queuedBlockEvents: [],
+    keepWork: null,
     // Orphan block-events (unknown sprite) held briefly until a snapshot lands.
     orphanBlockEvents: [],
     // Coalesce rapid block moves (drag) into one send per block id.
@@ -133,7 +166,10 @@ const state = {
     // Smooth motion is the default, but it is the person's call — some
     // projects (pen art, 3D, anything that teleports sprites) look worse for
     // it, and a laggy one gets slower without looking smoother.
-    wantInterpolation: readPref(INTERPOLATION_KEY, true)
+    wantInterpolation: readPref(INTERPOLATION_KEY, true),
+    lockedRoom: false,
+    lockWarned: new Set(),
+    lockScanTimer: null
 };
 
 // Set by gui.jsx so collab can drive the project title box and the settings UI.
@@ -209,6 +245,53 @@ const rememberSpriteAdd = (name, sprite) => {
         .filter(entry => now - entry.at < SPRITE_ADD_MEMORY_MS)
         .slice(-4)
         .concat({at: now, name, sprite});
+};
+
+const exportAddedSprite = target => {
+    if (!state.httpSnapshots || !state.snapshotHttp) {
+        return state.vm.exportSprite(target.id, 'base64').then(b64 => ({sprite: b64}));
+    }
+    return state.snapshotHttp.uploadAssets(projectAssets({runtime: {targets: [target]}}))
+        .then(() => ({sprite: state.vm.toJSON(target.id), format: 'json'}));
+};
+
+const SPRITE_ADD_MAX_BYTES = 1024 * 1024;
+
+const frameBytes = frame => new TextEncoder().encode(JSON.stringify(frame)).length;
+
+const md5extOf = (asset, dataFormat) => `${asset.assetId}.${dataFormat}`.toLowerCase();
+
+const sendAssetAction = (msg, asset, dataFormat) => {
+    if (!state.httpSnapshots || !state.snapshotHttp) {
+        client.send(Object.assign(msg, {data: b64FromBuffer(asset.data)}));
+        return;
+    }
+    const md5ext = md5extOf(asset, dataFormat);
+    if (!MD5EXT.test(md5ext)) {
+        scheduleSnapshot(false);
+        return;
+    }
+    state.snapshotHttp.uploadAssets([{md5ext, dataFormat, data: asset.data}])
+        .then(() => client.send(Object.assign(msg, {md5ext})), e => {
+            log.error('[collab] asset upload failed', e && e.code, e && e.status);
+            scheduleSnapshot(false);
+        });
+};
+
+const remoteAsset = (msg, assetType, fmt) => {
+    const storage = state.vm.runtime.storage;
+    if (typeof msg.data === 'string') {
+        const bytes = new Uint8Array(bufferFromB64(msg.data));
+        return Promise.resolve(storage.createAsset(assetType, fmt, bytes, null, true));
+    }
+    if (typeof msg.md5ext !== 'string' || !MD5EXT.test(msg.md5ext)) {
+        return Promise.reject(new Error('asset action without data or md5ext'));
+    }
+    const [assetId, ext] = msg.md5ext.split('.');
+    return Promise.resolve(storage.load(assetType, assetId, ext)).then(asset => {
+        if (!asset) throw new Error(`asset ${msg.md5ext} not found`);
+        return asset;
+    });
 };
 
 const sendBlockEvent = msg => {
@@ -306,6 +389,7 @@ const projectFileName = () => {
 
 const downloadCurrentProject = () => {
     if (!state.vm) return;
+    showPortabilityNote(state.vm);
     state.vm.saveProjectSb3().then(blob => saveFile(blob, projectFileName()), () => {
         overlay.toast('⚠️ Could not make the download. Try File → Save to your computer', '#e8386d');
     });
@@ -339,18 +423,22 @@ const applyEditability = () => {
     overlay.banner('You are watching this project. Your changes will not be saved.', {kind: 'busy'});
 };
 
+const PRESENCE_TABS = Object.freeze(['code', 'costumes', 'sounds']);
+const presenceTab = index => PRESENCE_TABS[index] || PRESENCE_TABS[0];
+
 // Send presence only when it actually changed (or as a 3s keepalive refresh).
 const sendPresence = fields => {
     if (!state.active) return;
     const now = Date.now();
     const next = {
         status: typeof fields.status === 'undefined' ? state.lastPresence.status : fields.status,
-        sprite: typeof fields.sprite === 'undefined' ? state.lastPresence.sprite : fields.sprite
+        sprite: typeof fields.sprite === 'undefined' ? state.lastPresence.sprite : fields.sprite,
+        tab: presenceTab(state.localTab)
     };
     const changed = next.status !== state.lastPresence.status || next.sprite !== state.lastPresence.sprite;
     if (!changed && now - state.lastPresence.sentAt < 3000) return;
     state.lastPresence = {...next, sentAt: now};
-    if (hasPeers()) client.send({type: 'presence', ...fields});
+    if (hasPeers()) client.send({type: 'presence', ...fields, tab: next.tab});
 };
 
 // -------------------------------------------------------------- utilities ---
@@ -534,7 +622,7 @@ const ackSnapshot = msg => {
     if (at < 0) return null;
     const entry = list[at];
     state.unackedSnapshots = list.slice(at + 1);
-    state.lastSnapshotB64 = entry.b64;
+    state.lastSnapshotKey = entry.key;
     return entry;
 };
 
@@ -542,8 +630,174 @@ const hasUnsavedEdits = () => !!(state.snapshotTimer || state.snapshotInFlight |
     typeof state.deferredSnapshot === 'boolean' || state.offlineEdits ||
     state.unackedSnapshots.some(entry => !entry.cacheOnly));
 
+const SNAPSHOT_SHA_MEMORY = 16;
+const SNAPSHOT_RETRY_BASE_MS = 2000;
+const SNAPSHOT_RETRY_MAX_MS = 60000;
+
+const rememberSnapshotSha = (sha, key) => {
+    const keys = state.snapshotShaKeys;
+    keys.delete(sha);
+    keys.set(sha, key);
+    while (keys.size > SNAPSHOT_SHA_MEMORY) keys.delete(keys.keys().next().value);
+};
+
+const snapshotUploaded = (sha, key) => {
+    state.snapshotRetries = 0;
+    rememberSnapshotSha(sha, key);
+};
+
+const snapshotFetched = (msg, key) => {
+    msg._key = key;
+    rememberSnapshotSha(msg.sha, key);
+};
+
+const snapshotDone = () => {
+    state.snapshotInFlight = false;
+    if (typeof state.snapshotAgain !== 'undefined') {
+        const again = state.snapshotAgain;
+        delete state.snapshotAgain;
+        scheduleSnapshot(again);
+    }
+};
+
+const snapshotKeyOf = msg => {
+    if (msg.b64) return msg.b64;
+    return state.snapshotShaKeys.get(msg.sha) || msg.sha;
+};
+
+const useHttpSnapshots = (on, room) => {
+    state.httpSnapshots = on === true;
+    if (!state.httpSnapshots) return;
+    if (!state.snapshotHttp || state.snapshotHttpRoom !== room) {
+        state.snapshotHttp = createSnapshotHttp({slug: room, base: showLogin.apiBase()});
+        state.snapshotHttpRoom = room;
+        state.snapshotShaKeys.clear();
+    }
+    if (state.vm && state.vm.runtime) attachAssetStore(state.vm.runtime.storage, state.snapshotHttp);
+};
+
+const rulesUploader = () => {
+    if (!state.httpSnapshots || !state.snapshotHttpRoom || !state.vm) return null;
+    if (!state.rulesUploader || state.rulesUploaderRoom !== state.snapshotHttpRoom) {
+        if (state.rulesUploader) state.rulesUploader.dispose();
+        state.rulesUploader = createRulesUploader({
+            vm: state.vm,
+            slug: state.snapshotHttpRoom,
+            base: showLogin.apiBase(),
+            canEdit: canWrite
+        });
+        state.rulesUploaderRoom = state.snapshotHttpRoom;
+    }
+    return state.rulesUploader;
+};
+
+const rulesEdited = () => {
+    if (!state.gameLink || !state.gameLink.inGame) return;
+    const uploader = canWrite() && rulesUploader();
+    if (uploader) uploader.edited();
+};
+
+const GAME_STARTED_TEXT = 'started a test game. Press the green flag to join.';
+
+const hasRuleScripts = () => {
+    const target = state.vm && state.vm.runtime.targets.find(t => t.isOriginal && isRulesTarget(t));
+    return !!target && Object.keys(target.blocks._blocks).length > 0;
+};
+
+const gameLink = () => {
+    if (!gameServerReady() || state.snapshotLoading) return null;
+    if (!state.httpSnapshots || !state.snapshotHttpRoom || !state.vm || !client.session) return null;
+    if (!state.gameLink || state.gameLinkRoom !== state.snapshotHttpRoom) {
+        if (state.gameLink) state.gameLink.stop();
+        state.gameLink = createGameLink({
+            vm: state.vm,
+            base: client.session.url,
+            slug: state.snapshotHttpRoom,
+            WebSocketImpl: typeof WebSocket === 'undefined' ? null : WebSocket,
+            onRulesStatus: msg => rulesStatus.apply(msg),
+            onGameMessage: msg => netEmit('game', msg),
+            onEnded: msg => netEmit('game-ended', msg),
+            onClosed: msg => {
+                netEmit('game-ended', msg);
+                if (msg && msg.reason === 'reload') overlay.toast(`🔄 ${RELOAD_TEXT}`, '#f0912b');
+                else if (msg && msg.reason === 'bad-frame') {
+                    log.warn('[collab] game socket bad-frame close', state.gameLink && state.gameLink.badFrames);
+                    if (msg.final) endBadFrame();
+                } else if (msg && msg.reason !== 'stopped') log.warn('[collab] game socket closed', msg.code);
+            }
+        });
+        state.gameLink.onTick((tick, result) => netEmit('tick', tick, result));
+        state.gameLinkRoom = state.snapshotHttpRoom;
+    }
+    return state.gameLink;
+};
+
+const stopGame = () => {
+    if (state.gameLink) state.gameLink.stop();
+};
+
+const rulesGameStart = () => {
+    if (state.snapshotLoading) return Promise.resolve(null);
+    const uploader = canWrite() && rulesUploader();
+    const sent = uploader ? uploader.sendNow() : Promise.resolve(null);
+    const joins = state.active && state.httpSnapshots && hasRuleScripts() && (state.canEdit || state.roomGame);
+    return sent
+        .then(() => {
+            const link = joins && state.active && gameLink();
+            if (link) link.start();
+        })
+        .catch(() => null);
+};
+
+const zipProject = async () => {
+    try {
+        return await state.vm.saveProjectSb3('base64');
+    } catch (e) {
+        const out = await state.vm.saveProjectSb3();
+        return typeof out.arrayBuffer === 'function' ? blobToB64(out) : b64FromBuffer(out);
+    }
+};
+
+const readProject = async () => {
+    if (state.httpSnapshots && state.snapshotHttp) {
+        const json = state.vm.toJSON();
+        return {json, key: await sha256Hex(json)};
+    }
+    const b64 = await zipProject();
+    return {b64, key: b64};
+};
+
+const uploadProject = json => state.snapshotHttp.upload(state.vm, json);
+
+const retrySnapshotLater = cacheOnly => {
+    const wait = Math.min(SNAPSHOT_RETRY_MAX_MS, SNAPSHOT_RETRY_BASE_MS * (2 ** state.snapshotRetries));
+    state.snapshotRetries++;
+    if (state.canEdit) state.offlineEdits = true;
+    setTimeout(() => {
+        if (state.active) scheduleSnapshot(cacheOnly === true);
+    }, wait);
+};
+
+const snapshotUploadFailed = (e, cacheOnly) => {
+    if (e && (e.code === 'project-too-big' || e.code === 'asset-too-big' || e.status === 413)) {
+        if (state.canEdit) state.offlineEdits = true;
+        overlay.banner(TOO_BIG_TEXT, {kind: 'update'});
+        return;
+    }
+    log.error('[collab] snapshot upload failed', e && e.code, e && e.status);
+    const blocked = e && (SAVE_BLOCKED_TEXT[e.status] || SAVE_BLOCKED_TEXT[e.code]);
+    if (blocked) {
+        if (state.canEdit) state.offlineEdits = true;
+        if (!state.snapshotBlocked) overlay.banner(blocked, {kind: 'update'});
+        state.snapshotBlocked = true;
+        return;
+    }
+    retrySnapshotLater(cacheOnly);
+};
+
 const zipAndSendSnapshot = async cacheOnly => {
-    if (!state.active || state.applyingRemote || !state.vm) return;
+    if (!state.active || state.applyingRemote || !state.vm || state.snapshotBlocked) return;
+    installProjectSeam(state.vm);
     // One zip at a time — overlapping saveProjectSb3 janks the editor hard.
     if (state.snapshotInFlight) {
         // false = full relay must win over a queued cacheOnly.
@@ -557,52 +811,47 @@ const zipAndSendSnapshot = async cacheOnly => {
         // what peers already received live.
         flushBlockMoves();
         if (cacheOnly === true) state.lastCacheSnapAt = Date.now();
-        // Ask JSZip for base64 directly — skips the blob -> FileReader -> b64
-        // copy chain (one less multi-MB pass on the main thread per snapshot).
-        let b64;
-        try {
-            b64 = await state.vm.saveProjectSb3('base64');
-        } catch (e) {
-            const out = await state.vm.saveProjectSb3();
-            b64 = typeof out.arrayBuffer === 'function' ?
-                await blobToB64(out) :
-                b64FromBuffer(out);
-        }
+        const project = await readProject();
+        const key = project.key;
         // Drop if we went inactive / started applying remote mid-zip.
         if (!state.active || state.applyingRemote) return;
         const force = state.forceNextSnapshot === true;
         const reset = cacheOnly !== true && state.resetNextSnapshot === true;
-        if (!force && !reset && b64 === state.lastSnapshotB64) return; // nothing actually changed
-        if (!force && !reset && cacheOnly === true && b64 === state.sentSnapshotB64 &&
+        if (!force && !reset && key === state.lastSnapshotKey) return;
+        if (!force && !reset && cacheOnly === true && key === state.sentSnapshotKey &&
             state.sentSnapshotGen === client.generation) return;
+        const basedOn = state.roomVersion;
+        let uploaded = null;
+        if (typeof project.json === 'string') {
+            try {
+                uploaded = await uploadProject(project.json);
+                uploaded = Object.assign({}, uploaded, {hashes: sendableHashes(await projectHashes(project.json))});
+            } catch (e) {
+                snapshotUploadFailed(e, cacheOnly);
+                return;
+            }
+            snapshotUploaded(uploaded.sha, key);
+            if (!state.active || state.applyingRemote) return;
+        }
         state.forceNextSnapshot = false;
         if (reset) state.resetNextSnapshot = false;
         const ref = ++state.snapshotRef;
-        state.unackedSnapshots.push({ref, b64, cacheOnly: cacheOnly === true});
+        state.unackedSnapshots.push({ref, key, sha: uploaded && uploaded.sha, cacheOnly: cacheOnly === true});
         if (state.unackedSnapshots.length > 8) state.unackedSnapshots.shift();
-        state.sentSnapshotB64 = b64;
+        state.sentSnapshotKey = key;
         state.sentSnapshotGen = client.generation;
         const urgent = state.urgentSnapshot === true;
         state.urgentSnapshot = false;
-        client.send({
-            type: 'snapshot',
-            b64,
-            ref,
-            cacheOnly: cacheOnly === true,
-            basedOn: state.roomVersion,
-            force,
-            reset
-        }, urgent);
+        const fields = {ref, cacheOnly: cacheOnly === true, basedOn, force, reset};
+        fields.atSeq = typeof client.rs === 'number' ? client.rs : 0;
+        client.send(uploaded ?
+            snapshotFrame(Object.assign(fields, uploaded)) :
+            Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
     } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] snapshot failed', e);
+        if (e && e.code === 'no-crypto') snapshotUploadFailed(e, cacheOnly);
+        else log.error('[collab] snapshot failed', e && e.code);
     } finally {
-        state.snapshotInFlight = false;
-        if (typeof state.snapshotAgain !== 'undefined') {
-            const again = state.snapshotAgain;
-            delete state.snapshotAgain;
-            scheduleSnapshot(again);
-        }
+        snapshotDone();
     }
 };
 
@@ -776,28 +1025,68 @@ const offerRescueDownload = b64 => {
     });
 };
 
-const rescueLocalProject = async (why, incomingB64) => {
+const claimRescue = () => {
+    const now = Date.now();
+    state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
+    if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) return false;
+    state.rescueTimes.push(now);
+    return true;
+};
+
+const rescueName = () => `Rescued: ${state.appliedTitle || 'project'} (${new Date().toLocaleString()})`;
+
+const downloadRescue = key => zipProject().then(b64 => {
+    offerRescueDownload(b64);
+    state.rescuedKey = key;
+    return key;
+});
+
+const savedRescue = (key, why) => {
+    state.rescuedKey = key;
+    overlay.toast(`💾 Your unsaved changes were saved to your library (${why})`, '#f0912b');
+    return key;
+};
+
+const rescueHttpProject = async (why, incomingKey) => {
+    const json = state.vm.toJSON();
+    const key = await sha256Hex(json);
+    if (key === incomingKey || key === state.rescuedKey) return key;
+    if (!claimRescue()) return downloadRescue(key);
+    let uploaded;
+    try {
+        uploaded = await state.snapshotHttp.upload(state.vm, json);
+    } catch (e) {
+        return downloadRescue(key);
+    }
+    const sent = client.send({type: 'save-project', sha: uploaded.sha, name: rescueName(), quiet: true});
+    return sent ? savedRescue(key, why) : downloadRescue(key);
+};
+
+const rescueLocalProject = async (why, incomingKey) => {
     if (!state.vm || !state.canEdit) return null;
+    if (state.httpSnapshots) {
+        try {
+            return await rescueHttpProject(why, incomingKey);
+        } catch (e) {
+            log.error('[collab] rescue save failed', e);
+            return null;
+        }
+    }
     let b64;
     try {
         b64 = await state.vm.saveProjectSb3('base64');
     } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] rescue save failed', e);
+        log.error('[collab] rescue save failed', e);
         return null;
     }
-    if (b64 === incomingB64 || b64 === state.rescuedB64) return b64;
-    const now = Date.now();
-    state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
-    if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) {
+    if (b64 === incomingKey || b64 === state.rescuedB64) return b64;
+    if (!claimRescue()) {
         offerRescueDownload(b64);
         return b64;
     }
-    state.rescueTimes.push(now);
-    const when = new Date().toLocaleString();
     const sent = client.send({
         type: 'save-project',
-        name: `Rescued: ${state.appliedTitle || 'project'} (${when})`,
+        name: rescueName(),
         b64,
         quiet: true
     });
@@ -822,8 +1111,28 @@ const forceNextApply = () => {
     state.forceApplyNextSnapshot = true;
 };
 
+const loadSnapshotSource = async msg => {
+    if (msg.b64) return bufferFromB64(msg.b64);
+    if (!state.snapshotHttp) throw new Error('snapshot by sha without http snapshots');
+    const json = await state.snapshotHttp.fetchProject(msg.sha);
+    snapshotFetched(msg, await sha256Hex(json));
+    return json;
+};
+
+const replayQueuedEvents = () => {
+    const queued = state.queuedBlockEvents.splice(0);
+    const orphans = state.orphanBlockEvents.splice(0);
+    for (let i = 0; i < queued.length; i++) {
+        if (queued[i].type === 'kit-set') applyRemoteKitSet(queued[i]);
+        else applyBlockEvent(queued[i]);
+    }
+    for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
+};
+
 const applySnapshot = async msg => {
-    if (!state.vm || !msg || !msg.b64) return;
+    if (!state.vm || !msg || !(msg.b64 || typeof msg.sha === 'string')) return;
+    msg._key = snapshotKeyOf(msg);
+    installProjectSeam(state.vm);
     state.snapshotsSeen++;
     // This snapshot is about to overwrite edits of ours that never reached the
     // room. Keep a copy first — silently discarding someone's work is the one
@@ -850,14 +1159,14 @@ const applySnapshot = async msg => {
         msg._force = true;
     }
     if (!msg._force && !msg._rescue &&
-        (msg.b64 === state.lastSnapshotB64 || msg.b64 === state.sentSnapshotB64)) {
-        state.lastSnapshotB64 = msg.b64;
+        (msg._key === state.lastSnapshotKey || msg._key === state.sentSnapshotKey)) {
+        state.lastSnapshotKey = msg._key;
         if (typeof msg.version === 'number') state.roomVersion = msg.version;
         return;
     }
     // Never yank the project while the user is mid-paint — hold the newest
     // snapshot and apply it when they leave the costumes tab.
-    if (state.localTab === 1) {
+    if (state.localTab === 1 && !msg._now) {
         state.pendingSnapshotMsg = carrySnapshotFlags(state.pendingSnapshotMsg, msg);
         return;
     }
@@ -870,10 +1179,11 @@ const applySnapshot = async msg => {
 
     const keepTarget = editingTargetName();
     state.snapshotLoading = true;
+    client.syncReloading(true);
     let alreadyHave = false;
     if (msg._rescue) {
         try {
-            alreadyHave = await rescueLocalProject(msg._rescue, msg.b64) === msg.b64;
+            alreadyHave = await rescueLocalProject(msg._rescue, msg._key) === msg._key;
         } catch (e) {
             alreadyHave = false;
         }
@@ -889,13 +1199,13 @@ const applySnapshot = async msg => {
         }
     }
     try {
-        if (!alreadyHave) await state.vm.loadProject(bufferFromB64(msg.b64));
+        if (!alreadyHave) await state.vm.loadProject(await loadSnapshotSource(msg));
         // Only mark applied after a successful load — failed loads must retry.
         // Assigned after an await, but not a race: `snapshotLoading` above is
         // set before the await and gates every other entry to this function, so
         // nothing else can be inside the load.
         // eslint-disable-next-line require-atomic-updates -- guarded by snapshotLoading
-        state.lastSnapshotB64 = msg.b64;
+        state.lastSnapshotKey = msg._key;
         // The version, though, has other writers — `snapshot-ack` can land
         // while we load, and it is newer than the snapshot we started with.
         // Never move backwards, or the next send is `basedOn` a stale version
@@ -931,27 +1241,30 @@ const applySnapshot = async msg => {
          * say so, so a half-loaded editor is a visible, self-correcting state
          * rather than a silent one.
          */
-        // eslint-disable-next-line no-console
-        console.error('[collab] failed to apply snapshot', e);
-        overlay.toast('⚠️ Could not load the project, retrying', '#f0912b');
-        forceNextApply();
-        // Declared below, like the rest of the mutually-referring handlers here.
-        // eslint-disable-next-line no-use-before-define
-        requestResync('snapshot load failed');
+        if (e && e.code === 'no-gunzip') {
+            log.warn('[collab] no DecompressionStream');
+            overlay.banner(OLD_BROWSER_TEXT, {kind: 'update'});
+        } else {
+            // eslint-disable-next-line no-console
+            console.error('[collab] failed to apply snapshot', e);
+            overlay.toast('⚠️ Could not load the project, retrying', '#f0912b');
+            forceNextApply();
+            // Declared below, like the rest of the mutually-referring handlers here.
+            // eslint-disable-next-line no-use-before-define
+            requestResync('snapshot load failed');
+        }
     } finally {
         // Same gate: this function is the only writer of snapshotLoading, and
         // it cannot be re-entered while the flag is up.
         // eslint-disable-next-line require-atomic-updates -- guarded by snapshotLoading
         state.snapshotLoading = false;
         state.applyingRemote--;
+        client.syncReloading(false);
     }
 
     // Block edits that raced the load were queued — replay on the state we just
     // loaded (do this even if another snapshot is pending / paint-deferred).
-    const queued = state.queuedBlockEvents.splice(0);
-    const orphans = state.orphanBlockEvents.splice(0);
-    for (let i = 0; i < queued.length; i++) applyBlockEvent(queued[i]);
-    for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
+    replayQueuedEvents();
 
     // A newer snapshot arrived while we were loading — apply it next (or
     // re-defer if the user is still on the costumes tab).
@@ -1034,9 +1347,15 @@ const wrapVm = vm => {
                         claimName('sprite', name);
                         if (hasPeers()) {
                             state.exportingSprites.add(name);
-                            vm.exportSprite(t.id, 'base64').then(b64 => {
-                                client.send({type: 'vm-action', action: 'spriteAdd', sprite: b64, name});
-                                rememberSpriteAdd(name, b64);
+                            exportAddedSprite(t).then(out => {
+                                const frame = Object.assign({type: 'vm-action', action: 'spriteAdd', name}, out);
+                                if (state.httpSnapshots && frameBytes(frame) > SPRITE_ADD_MAX_BYTES) {
+                                    releaseSpriteEvents(name);
+                                    scheduleSnapshot(false);
+                                    return;
+                                }
+                                client.send(frame);
+                                rememberSpriteAdd(name, out.sprite);
                                 releaseSpriteEvents(name);
                             }, () => {
                                 releaseSpriteEvents(name);
@@ -1083,20 +1402,20 @@ const wrapVm = vm => {
                         (optTargetId ? targetNameById(optTargetId) : editingTargetName());
                     const asset = costumeObject && costumeObject.asset;
                     if (targetName && asset && asset.data && hasPeers()) {
-                        client.send({
+                        const dataFormat = costumeObject.dataFormat || asset.dataFormat;
+                        sendAssetAction({
                             type: 'vm-action',
                             action: 'costumeAdd',
                             target: targetName,
                             version: typeof fixedVersion === 'number' ? fixedVersion : optVersion,
                             costume: {
                                 name: costumeObject.name,
-                                dataFormat: costumeObject.dataFormat || asset.dataFormat,
+                                dataFormat,
                                 bitmapResolution: costumeObject.bitmapResolution,
                                 rotationCenterX: costumeObject.rotationCenterX,
                                 rotationCenterY: costumeObject.rotationCenterY
-                            },
-                            data: b64FromBuffer(asset.data)
-                        });
+                            }
+                        }, asset, dataFormat);
                     }
                     scheduleSnapshot(true);
                 }, () => {});
@@ -1118,16 +1437,13 @@ const wrapVm = vm => {
                 const targetName = optTargetId ? targetNameById(optTargetId) : editingTargetName();
                 const asset = soundObject && soundObject.asset;
                 if (targetName && asset && asset.data && hasPeers()) {
-                    client.send({
+                    const dataFormat = soundObject.dataFormat || asset.dataFormat;
+                    sendAssetAction({
                         type: 'vm-action',
                         action: 'soundAdd',
                         target: targetName,
-                        sound: {
-                            name: soundObject.name,
-                            dataFormat: soundObject.dataFormat || asset.dataFormat
-                        },
-                        data: b64FromBuffer(asset.data)
-                    });
+                        sound: {name: soundObject.name, dataFormat}
+                    }, asset, dataFormat);
                 }
                 scheduleSnapshot(true);
             }, () => {});
@@ -1417,6 +1733,9 @@ const wrapVm = vm => {
         return result;
     };
 
+    vm.runtime.on('PROJECT_START', rulesGameStart);
+    vm.runtime.on('PROJECT_STOP_ALL', stopGame);
+    vm.runtime.on(KIT_SET_EVENT, sendKitSet);
     vm.runtime.on('PROJECT_RUN_START', () => {
         state.projectRunning = true;
         if (state.active && !state.applyingRemote) sendPresence({status: '▶ playing'});
@@ -1427,8 +1746,16 @@ const wrapVm = vm => {
     });
 
     vm.runtime.on('PROJECT_LOADED', rebuildTargetIndex);
-    vm.runtime.on('EXTENSION_ADDED', () => {
-        if (canWrite() && !state.installingRemote && !state.snapshotLoading) scheduleSnapshot(false);
+    vm.runtime.on('PROJECT_CHANGED', scheduleLockScan);
+    vm.runtime.on('EXTENSION_ADDED', info => {
+        if (!canWrite() || state.installingRemote || state.snapshotLoading) return;
+        const id = info && info.id;
+        if (!state.httpSnapshots || !id || !vm.extensionManager.isBuiltinExtension(id)) {
+            scheduleSnapshot(false);
+            return;
+        }
+        if (hasPeers()) client.send({type: 'vm-action', action: 'extensionAdd', id});
+        scheduleSnapshot(true);
     });
 };
 
@@ -1500,6 +1827,7 @@ const onWorkspaceEvent = e => {
     } catch (err) {
         return;
     }
+    if (isRulesTarget(state.vm.editingTarget)) rulesEdited();
     // Dragging a stack fires dozens of move events — keep only the latest per block.
     if (e.type === 'move' && json.blockId) {
         state.pendingBlockMoves.set(json.blockId, {type: 'block-event', target, event: json});
@@ -1593,6 +1921,82 @@ const requestResync = why => {
     console.warn('[collab] dropped relayed edits, resyncing:', why);
 };
 
+const spritesBelow = target => {
+    if (typeof target.getLayerOrder !== 'function') return null;
+    const layer = target.getLayerOrder();
+    if (typeof layer !== 'number') return null;
+    return state.vm.runtime.targets.filter(t => t !== target && t.isOriginal && !t.isStage &&
+        typeof t.getLayerOrder === 'function' && t.getLayerOrder() < layer).length;
+};
+
+const replaceDriftedTarget = async (local, remote) => {
+    const vm = state.vm;
+    const id = local.id;
+    const index = vm.runtime.targets.indexOf(local);
+    const below = spritesBelow(local);
+    const prevEditing = vm.editingTarget;
+    const before = new Set(vm.runtime.targets.map(t => t.id));
+    let adding;
+    state.applyingRemote++;
+    state.installingRemote++;
+    try {
+        vm.deleteSprite(id);
+        adding = vm.addSprite(JSON.stringify(remote));
+    } finally {
+        state.applyingRemote--;
+    }
+    try {
+        await adding;
+    } finally {
+        state.installingRemote--;
+    }
+    const added = vm.runtime.targets.find(t => t.isOriginal && !t.isStage && !before.has(t.id));
+    if (!added) throw new Error('drift repair lost the target');
+    added.id = id;
+    rebuildTargetIndex();
+    state.applyingRemote++;
+    try {
+        const at = vm.runtime.targets.indexOf(added);
+        if (index >= 0 && at !== index && typeof vm.reorderTarget === 'function') vm.reorderTarget(at, index);
+        if (below !== null && typeof added.goToBack === 'function') {
+            added.goToBack();
+            added.goForwardLayers(below);
+        }
+        const editing = prevEditing === local ? added : prevEditing;
+        if (editing && vm.runtime.targets.includes(editing)) vm.setEditingTarget(editing.id);
+    } finally {
+        state.applyingRemote--;
+    }
+};
+
+const repairDrift = async (pointer, off) => {
+    const text = await state.snapshotHttp.fetchProject(pointer.sha);
+    const steps = planDriftRepair(off, JSON.parse(state.vm.toJSON()), JSON.parse(text));
+    if (!steps) throw new Error('drift too wide to repair');
+    for (const step of steps) {
+        const local = findTargetByName(step.name);
+        if (!local) throw new Error('drift target gone');
+        await replaceDriftedTarget(local, step.remote);
+    }
+    return steps.length;
+};
+
+const checkDrift = pointer => {
+    if (!state.vm || !pointer.hashes || typeof pointer.hashes !== 'object') return Promise.resolve();
+    return projectHashes(state.vm.toJSON()).then(local => {
+        const off = driftedTargets(local, pointer.hashes);
+        if (!off.length) return null;
+        if (off.length > DRIFT_REPAIR_MAX || !state.snapshotHttp) {
+            requestResync(`drift in ${off.length} of ${Object.keys(local).length}`);
+            return null;
+        }
+        return repairDrift(pointer, off).catch(e => {
+            log.warn('[collab] drift repair failed', off.length, e && e.message);
+            requestResync('drift repair failed');
+        });
+    }, () => requestResync('drift check failed'));
+};
+
 // A tab left open for a day would otherwise only learn about a deploy by
 // reconnecting. Cheap enough at this interval to just ask.
 const VERSION_POLL_MS = 5 * 60 * 1000;
@@ -1683,8 +2087,17 @@ const endSession = text => {
     }
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
+    if (state.rulesUploader) state.rulesUploader.dispose();
+    stopGame();
     overlay.setConnected(false);
     applyEditability();
+};
+
+const endBadFrame = () => {
+    if (state.ended) return;
+    client.disconnect();
+    endSession(BAD_FRAME_TEXT);
+    overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
 };
 
 // ------------------------------------------------- incoming: application ---
@@ -1703,8 +2116,36 @@ const nameClash = (kind, name, fromPeer) => {
     }, 3000);
 };
 
+const applyRemoteKitSet = msg => {
+    if (state.snapshotLoading || state.keepWork) {
+        if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
+        else requestResync('kit-set replay queue full');
+        return;
+    }
+    if (!applyKitSet(state.vm.runtime, msg, findTargetByName)) {
+        log.warn('[collab] kit-set not applied', msg && msg.scope, msg && msg.ext);
+    }
+};
+
+const sendKitSet = change => {
+    if (!canWrite() || !state.httpSnapshots || !change) return;
+    const frame = kitSetFrame({
+        scope: change.scope,
+        targetId: change.target && typeof change.target.getName === 'function' ? change.target.getName() : null,
+        ext: change.ext,
+        path: change.path,
+        value: change.value
+    });
+    if (!frame || !fitsKitSet(frame)) {
+        scheduleSnapshot(false);
+        return;
+    }
+    client.send(frame);
+    scheduleSnapshot(true);
+};
+
 const applyBlockEvent = msg => {
-    if (state.snapshotLoading) {
+    if (state.snapshotLoading || state.keepWork) {
         // Don't apply into a half-loaded project — replay after the load.
         if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
         else requestResync('block-event replay queue full');
@@ -1793,13 +2234,28 @@ const drainOrphans = () => {
     for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
 };
 
+const applyExtensionAdd = id => {
+    const manager = state.vm.extensionManager;
+    if (typeof id !== 'string' || !manager.isBuiltinExtension(id) || manager.isExtensionLoaded(id)) return;
+    state.installingRemote++;
+    try {
+        manager.loadExtensionIdSync(id);
+    } catch (e) {
+        log.error('[collab] extension add failed', id, e);
+    } finally {
+        state.installingRemote--;
+    }
+};
+
 // Install a relayed .sprite3 without yanking the local user off their sprite
 // (vm.addSprite switches editingTarget to the new sprite).
 const applySpriteAdd = msg => {
     const prevEditing = state.vm.editingTarget;
     const before = new Set(state.vm.runtime.targets.map(t => t.id));
+    installProjectSeam(state.vm);
     state.installingRemote++;
-    state.vm.addSprite(new Uint8Array(bufferFromB64(msg.sprite))).then(() => {
+    const input = msg.format === 'json' ? msg.sprite : new Uint8Array(bufferFromB64(msg.sprite));
+    state.vm.addSprite(input).then(() => {
         state.installingRemote--;
         rebuildTargetIndex();
         if (prevEditing && state.vm.runtime.targets.includes(prevEditing)) {
@@ -1822,16 +2278,17 @@ const applyCostumeAdd = msg => {
     const storage = state.vm.runtime.storage;
     const fmt = (msg.costume && msg.costume.dataFormat) || 'png';
     const assetType = fmt === 'svg' ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
-    const asset = storage.createAsset(assetType, fmt, new Uint8Array(bufferFromB64(msg.data)), null, true);
-    const costumeObj = Object.assign({}, msg.costume, {
-        asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
-    });
     // addCostume selects the new costume on the target's OWNER — only relevant
     // if this user is editing the same sprite, which matches solo behavior.
-    state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version).catch(e => {
-        // eslint-disable-next-line no-console
-        console.error('[collab] costume install failed', e);
-    });
+    remoteAsset(msg, assetType, fmt).then(asset => {
+        const costumeObj = Object.assign({}, msg.costume, {
+            asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
+        });
+        return state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version);
+    })
+        .catch(e => {
+            log.error('[collab] costume install failed', e);
+        });
 };
 
 const applySoundAdd = msg => {
@@ -1840,14 +2297,15 @@ const applySoundAdd = msg => {
     const storage = state.vm.runtime.storage;
     const fmt = (msg.sound && msg.sound.dataFormat) || 'wav';
     const assetType = fmt === 'mp3' ? storage.AssetType.SoundMP3 : storage.AssetType.SoundWav;
-    const asset = storage.createAsset(assetType, fmt, new Uint8Array(bufferFromB64(msg.data)), null, true);
-    const soundObj = Object.assign({}, msg.sound, {
-        asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
-    });
-    Promise.resolve(state.vm.addSound(soundObj, target.id)).catch(e => {
-        // eslint-disable-next-line no-console
-        console.error('[collab] sound install failed', e);
-    });
+    remoteAsset(msg, assetType, fmt).then(asset => {
+        const soundObj = Object.assign({}, msg.sound, {
+            asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
+        });
+        return state.vm.addSound(soundObj, target.id);
+    })
+        .catch(e => {
+            log.error('[collab] sound install failed', e);
+        });
 };
 
 const applyRemoteDuplicate = (target, index, isSound) => {
@@ -1916,6 +2374,8 @@ const applyVmAction = msg => {
                     state.vm.editingTarget = prev;
                 }
             }
+        } else if (msg.action === 'extensionAdd') {
+            applyExtensionAdd(msg.id);
         } else if (msg.action === 'spriteAdd') {
             applySpriteAdd(msg);
         } else if (msg.action === 'spriteDelete') {
@@ -2138,12 +2598,12 @@ const rebuildPeerCache = () => {
     cachedPeerNamesStr = cachedPeerNames.join(', ');
 };
 
-const netEmit = (type, msg) => {
+const netEmit = (type, msg, extra) => {
     const list = netHandlers[type];
     if (!list || !list.length) return;
     for (let i = 0; i < list.length; i++) {
         try {
-            list[i](msg);
+            list[i](msg, extra);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[collab] SquiggleNet handler error', type, e);
@@ -2164,7 +2624,32 @@ const installNetBridge = () => {
                 const key = String(orEmpty(msg.name));
                 if (key) cachedGameVars[key] = orEmpty(msg.value);
             }
+            if (state.gameLink && state.gameLink.relay(msg)) return;
             client.send(msg);
+        },
+        sendInput (input) {
+            return !!(state.gameLink && state.gameLink.sendInput(input));
+        },
+        onTick (cb) {
+            return this.on('tick', cb);
+        },
+        get inGame () {
+            return !!(state.gameLink && state.gameLink.inGame);
+        },
+        get slot () {
+            return state.gameLink ? state.gameLink.slot : null;
+        },
+        get rtt () {
+            return state.gameLink ? state.gameLink.rtt : null;
+        },
+        get mode () {
+            return state.gameLink ? state.gameLink.mode : null;
+        },
+        get tickHz () {
+            return state.gameLink ? state.gameLink.tickHz : null;
+        },
+        get game () {
+            return state.gameLink ? state.gameLink.game : null;
         },
         on (type, cb) {
             if (typeof cb !== 'function') return () => {};
@@ -2218,12 +2703,119 @@ installNetBridge();
 
 // ------------------------------------------------------------- wiring up ---
 
+const KEEP_FRAMES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-set']);
+const KEEP_SKIP_ACTIONS = new Set(['greenFlag', 'stopAll']);
+const KEEP_FREE_ACTIONS = new Set(['spriteAdd', 'reorderTarget', 'extensionAdd']);
+
+const ownBlockEventFits = msg => {
+    const target = findTargetByName(msg.target);
+    const e = msg.event || {};
+    if (!target) return false;
+    const has = id => !id || Boolean(target.blocks.getBlock(id));
+    if (e.type === 'var_rename' || e.type === 'var_delete') return Boolean(target.lookupVariableById(e.varId));
+    if (/^comment_(change|move|delete)$/.test(e.type)) return Boolean(target.comments[e.commentId]);
+    if (e.type === 'create') return true;
+    return has(e.blockId) && has(e.newParentId);
+};
+
+const ownVmActionFits = msg => {
+    if (KEEP_FREE_ACTIONS.has(msg.action)) return true;
+    const target = findTargetByName(msg.target);
+    if (!target) return false;
+    if (/^(duplicate|rename|delete)Sound$/.test(msg.action)) return resolveSound(target, msg) >= 0;
+    if (/^(duplicate|rename|delete)Costume$/.test(msg.action)) return resolveCostume(target, msg, msg.index) >= 0;
+    if (/^update(Svg|Bitmap)$/.test(msg.action)) return resolveCostume(target, msg, msg.costumeIndex) >= 0;
+    if (msg.action === 'reorderCostume') return resolveIndex(target.getCostumes(), msg.from, msg.ident) >= 0;
+    if (msg.action === 'reorderSound') return resolveIndex(target.getSounds(), msg.from, msg.ident) >= 0;
+    return true;
+};
+
+const replayTilemap = (msg, tiles) => {
+    const grid = tiles.world.level(msg.level);
+    if (!grid) return false;
+    const rebased = Object.assign({}, msg, {base: grid.v || 0});
+    if (!tiles.sync.apply(rebased).ok) return false;
+    client.send(rebased);
+    return true;
+};
+
+const replayOwn = (msg, tiles) => {
+    const self = overlay.self || {};
+    if (msg.type === 'tilemap-patch') return replayTilemap(msg, tiles);
+    if (msg.type === 'block-event' && ownBlockEventFits(msg)) {
+        applyBlockEvent(msg);
+    } else if (msg.type === 'kit-set' && (!msg.targetId || findTargetByName(msg.targetId))) {
+        applyRemoteKitSet(msg);
+    } else if (msg.type === 'vm-action' && ownVmActionFits(msg)) {
+        applyVmAction(Object.assign({}, msg, {from: state.selfId, fromName: self.name, color: self.color}));
+    } else {
+        return false;
+    }
+    client.send(msg);
+    return true;
+};
+
+const keepMine = async head => {
+    const held = client.takeQueue();
+    if (head) await applySnapshot(Object.assign(head, {_now: true}));
+    else replayQueuedEvents();
+    const world = held.some(msg => msg.type === 'tilemap-patch') ? getWorld(state.vm.runtime) : null;
+    const tiles = world && {world, sync: createTilemapSync({world, send: () => null})};
+    let kept = 0;
+    let total = 0;
+    for (const msg of held) {
+        if (msg.type === 'vm-action' && KEEP_SKIP_ACTIONS.has(msg.action)) continue;
+        if (!KEEP_FRAMES.has(msg.type)) {
+            client.send(msg);
+            continue;
+        }
+        total++;
+        if (replayOwn(msg, tiles)) kept++;
+    }
+    if (tiles) tiles.sync.dispose();
+    client.releaseQueue();
+    if (!total) return;
+    scheduleSnapshot(true);
+    overlay.toast(`💾 Kept ${kept} of ${total} changes. A copy of your version is in your library.`, '#2a9d8f');
+};
+
+const settleKeepWork = () => {
+    const ask = state.keepWork;
+    state.keepWork = null;
+    if (ask.answer === MINE && state.canEdit) return keepMine(ask.head);
+    client.discardQueue();
+    if (ask.head) return applySnapshot(ask.head);
+    replayQueuedEvents();
+};
+
+const keepWorkFor = head => {
+    const open = state.keepWork;
+    if (open) {
+        if (head) open.head = head;
+        if (open.answer && client.connected) settleKeepWork();
+        return;
+    }
+    const ask = {head, answer: null};
+    state.keepWork = ask;
+    state.rescueOnNextSnapshot = true;
+    client.holdQueue();
+    askKeepWork({pending: client.syncState.pending}).then(answer => {
+        ask.answer = answer;
+        if (state.keepWork === ask && client.connected) settleKeepWork();
+    });
+};
+
+const onSnapshot = msg => {
+    if (state.keepWork) state.keepWork.head = msg;
+    else applySnapshot(msg);
+};
+
 const onSnapshotRefused = msg => {
     const refused = msg && Array.isArray(msg.refs) ? msg.refs.concat(msg.ref) : null;
     state.unackedSnapshots = refused ?
         state.unackedSnapshots.filter(entry => !refused.includes(entry.ref)) :
         [];
-    state.sentSnapshotB64 = null;
+    state.sentSnapshotKey = null;
     if (msg && msg.reason !== 'host-only' && typeof msg.message === 'string' && msg.message) {
         overlay.toast(`🔒 ${msg.message}`, '#e8386d');
     }
@@ -2231,8 +2823,14 @@ const onSnapshotRefused = msg => {
     state.resetNextSnapshot = false;
     state.forceNextSnapshot = false;
     state.rescueOnNextSnapshot = true;
-    if (msg && typeof msg.b64 === 'string' && msg.b64) {
-        applySnapshot({type: 'snapshot', b64: msg.b64, version: msg.roomVersion, stale: true});
+    const head = msg && ((typeof msg.b64 === 'string' && msg.b64) || typeof msg.sha === 'string') ?
+        {type: 'snapshot', b64: msg.b64, sha: msg.sha, version: msg.roomVersion, stale: true} : null;
+    if (state.keepWork || (head && client.syncState.pending > 0)) {
+        keepWorkFor(head);
+        return;
+    }
+    if (head) {
+        applySnapshot(head);
         return;
     }
     const seen = state.snapshotsSeen;
@@ -2246,14 +2844,18 @@ const onSnapshotRefused = msg => {
 
 const renameMaskedAsset = (m, list, rename) => {
     const asset = m.action === 'costumeAdd' ? m.costume : m.sound;
-    if (!asset || typeof asset.name !== 'string' || typeof m.data !== 'string') return;
+    const hasRef = typeof m.data === 'string' || typeof m.md5ext === 'string';
+    if (!asset || typeof asset.name !== 'string' || !hasRef) return;
     const target = findTargetByName(m.target);
     if (!target) return;
     const items = list(target);
     for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i];
         if (item.name === asset.name || !item.asset || !item.asset.data) continue;
-        if (b64FromBuffer(item.asset.data) !== m.data) continue;
+        const same = typeof m.md5ext === 'string' ?
+            md5extOf(item.asset, item.asset.dataFormat) === m.md5ext :
+            b64FromBuffer(item.asset.data) === m.data;
+        if (!same) continue;
         state.applyingRemote++;
         try {
             rename(target, i, asset.name);
@@ -2300,7 +2902,8 @@ const applyMaskedVmAction = m => {
 
 const applyModerated = msg => {
     if (!msg) return;
-    overlay.toast(`🧹 ${moderated.moderatedText(msg)}`, '#f0912b');
+    const locked = msg.of === 'game' && msg.reason === 'locked';
+    overlay.toast(`🧹 ${locked ? GAME_LOCKED_TEXT : refusalText(msg.category)}`, '#f0912b');
     const m = msg.masked && typeof msg.masked === 'object' ? msg.masked : null;
     if (m && m.type === 'block-event') {
         for (const event of moderated.maskedBlockEvents(m)) applyBlockEvent(event);
@@ -2320,7 +2923,14 @@ const applyModerated = msg => {
     if (canWrite() && changedProject) scheduleSnapshot(true);
 };
 
+const OLD_BROWSER_TEXT = 'This browser is too old to open this room. Try a newer browser.';
 const TOO_BIG_TEXT = 'This project is too big to save. Delete a few costumes or sounds to fix it.';
+const SAVE_BLOCKED_TEXT = {
+    '401': 'You are signed out, so this room cannot save. Sign in again to keep saving.',
+    '403': 'You cannot save in this room now. Download a copy to keep your work.',
+    '404': 'This room is gone, so it cannot save. Download a copy to keep your work.',
+    'no-crypto': 'This browser cannot save to rooms. Try a newer browser, or download a copy to keep your work.'
+};
 
 const retryAfterTooLarge = dropped => {
     const type = dropped ? dropped.type : 'snapshot';
@@ -2337,7 +2947,7 @@ const retryAfterTooLarge = dropped => {
     const lost = state.unackedSnapshots.filter(entry => !dropped || entry.ref === dropped.ref);
     if (!dropped && !lost.length) return;
     state.unackedSnapshots = state.unackedSnapshots.filter(entry => !lost.includes(entry));
-    state.sentSnapshotB64 = null;
+    state.sentSnapshotKey = null;
     scheduleSnapshot(lost.length > 0 && lost.every(entry => entry.cacheOnly));
 };
 
@@ -2355,9 +2965,50 @@ const onFrameRefused = msg => {
 const CLOSE_TEXT = {
     1008: 'Lots of changes at once, so the room asked for a short pause. Reconnecting…',
     1009: 'That was too much to send in one go. Reconnecting…',
+    1012: 'Squiggle restarted. Reconnecting…',
+    1013: 'The connection is running slow. Reconnecting…',
     4008: 'The connection is running slow. Reconnecting…'
 };
+const GAME_LOCKED_TEXT = 'That game message was not sent. While a guest or younger player is here, ' +
+    `names and words must be ${VOCAB_LOCK.text} letters or fewer with no ${VOCAB_LOCK.digitRun} numbers in a row.`;
+const REFUSAL_TEXTS = Object.freeze({
+    profanity: 'That was not sent because it had words that are not allowed here.',
+    hate: 'That was not sent because it could hurt someone. Try kinder words.',
+    contact: 'That was not sent because it looked like contact details. Keep phone numbers and addresses private.',
+    link: 'That was not sent because links are not allowed here.',
+    spam: 'That was not sent because it looked like spam.',
+    noise: 'That was not sent because it looked like random letters.',
+    language: 'That was not sent because it had words this room does not allow.',
+    strict: 'That was not sent because this room only allows simple words right now.',
+    empty: 'That was not sent because it was empty.'
+});
+const REFUSAL_DEFAULT = 'That was not sent because it had words that are not allowed here.';
+const refusalText = category => (typeof category === 'string' &&
+    Object.prototype.hasOwnProperty.call(REFUSAL_TEXTS, category) ? REFUSAL_TEXTS[category] : REFUSAL_DEFAULT);
+const LOCK_SCAN_MS = 600;
+const lockNameText = found => {
+    const shown = found.name.length > 40 ? `${found.name.slice(0, 40)}…` : found.name;
+    const why = found.reason === 'long' ?
+        `is longer than ${VOCAB_LOCK.text} letters` :
+        `has ${VOCAB_LOCK.digitRun} numbers in a row`;
+    return `The game name "${shown}" ${why}, so the room will not send it while a guest or younger player is here.`;
+};
+const scanLockedNames = () => {
+    state.lockScanTimer = null;
+    if (!state.active || !state.lockedRoom || !state.vm) return;
+    for (const found of lockedNames(state.vm.runtime)) {
+        if (state.lockWarned.has(found.name)) continue;
+        state.lockWarned.add(found.name);
+        overlay.toast(`✋ ${lockNameText(found)}`, '#f0912b');
+    }
+};
+const scheduleLockScan = () => {
+    if (!state.active || state.lockScanTimer) return;
+    state.lockScanTimer = setTimeout(scanLockedNames, LOCK_SCAN_MS);
+};
 const GAME_REFUSED_TEXT = 'That game message has words that are not allowed here.';
+const TITLE_REFUSED_TEXT = 'That room name was not saved. Try a different name.';
+const TITLE_OWNER_TEXT = 'Only the room owner can rename this room.';
 
 const applyRole = (role, canEditFlag) => {
     if (typeof role !== 'string' || !role) return;
@@ -2400,6 +3051,7 @@ const wireSocket = () => {
         state.everConnected = true;
         state.active = true;
         state.ended = false;
+        state.snapshotBlocked = false;
         startHousekeeping();
         overlay.setConnected(true);
         state.selfId = msg.id;
@@ -2417,6 +3069,7 @@ const wireSocket = () => {
         overlay.setPeers(msg.peers, msg.id);
         overlay.setProjects(msg.projects);
         applyRoomTitle(msg.title || msg.room);
+        useHttpSnapshots(msg.proto >= 2, msg.room);
         /*
          * First welcome records the build this tab is running against; every
          * later one compares. Reconnecting into a server that has been deployed
@@ -2449,13 +3102,15 @@ const wireSocket = () => {
         }
         state.unackedSnapshots = [];
         if (isReconnect) state.recentPaint.clear();
-        if (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit) {
-            client.discardQueue();
-        } else {
-            client.releaseQueue();
-        }
+        const pointer = state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string' ?
+            Object.assign({type: 'snapshot', version: msg.version}, msg.snap) : null;
+        const keep = state.keepWork !== null ||
+            (isReconnect && state.offlineEdits && msg.peers.length > 1 && state.canEdit);
+        if (!keep) client.releaseQueue();
         // First one in an empty room seeds it with the current project.
-        if (!msg.hasSnapshot && msg.peers.length <= 1) {
+        if (keep) {
+            keepWorkFor(pointer);
+        } else if (!msg.hasSnapshot && msg.peers.length <= 1) {
             sendSnapshotNow();
         } else if (isReconnect && state.offlineEdits && msg.peers.length <= 1) {
             // We kept editing through a connection blip and nobody else is in
@@ -2469,13 +3124,27 @@ const wireSocket = () => {
             // It gets copied into our library first rather than dropped.
             state.rescueOnNextSnapshot = true;
         }
+        const unsent = state.offlineEdits;
         state.offlineEdits = false;
-        state.lastPresence = {status: null, sprite: null, sentAt: 0};
-        client.send({type: 'presence', sprite: editingTargetName(), status: 'here'});
+        state.lastPresence = {status: null, sprite: null, tab: null, sentAt: 0};
+        client.send({
+            type: 'presence',
+            sprite: editingTargetName(),
+            status: 'here',
+            tab: presenceTab(currentTabIndex()),
+            ...state.appearance
+        });
         // Seed Together shared variables for late joiners / reconnects.
+        state.roomGame = msg.game === true;
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
+        if (pointer && !keep) {
+            const freshReplay = msg.replay && client.freshJoin === true;
+            if (!msg.replay || freshReplay || state.rescueOnNextSnapshot || state.skipNextSnapshot) {
+                applySnapshot(pointer);
+            } else if (!unsent && client.rs === msg.snap.atSeq) checkDrift(pointer);
+        }
     });
     client.on('disconnected', msg => {
         if (msg && msg.unconfirmed && state.canEdit) state.offlineEdits = true;
@@ -2527,7 +3196,21 @@ const wireSocket = () => {
      * makes, and `bad-snapshot`, which means the project is no longer being
      * saved at all. Both of those end in lost work, and both were silent.
      */
+    client.on('reload-needed', () => {
+        endSession(RELOAD_TEXT);
+        overlay.toast('🔄 Reload the page to get the new Squiggle', '#f0912b');
+    });
+    client.on('bad-frame', msg => {
+        log.warn('[collab] bad-frame close', msg && msg.count);
+        if (msg && msg.final) endBadFrame();
+    });
+    client.on('room-chat-config', msg => {
+        state.lockedRoom = client.proto >= 2 && !!msg &&
+            (typeof msg.locked === 'boolean' ? msg.locked : msg.mode === 'quick');
+        scheduleLockScan();
+    });
     client.on('error', msg => {
+        if (msg.error === 'reload-needed') return;
         if (msg.error === 'session-replaced') {
             client.disconnect();
             endSession('This room is open in another tab, so this one stopped saving. ' +
@@ -2595,7 +3278,9 @@ const wireSocket = () => {
         client.send({
             type: 'presence',
             sprite: state.lastPresence.sprite || editingTargetName(),
-            status: state.lastPresence.status || 'here'
+            status: state.lastPresence.status || 'here',
+            tab: presenceTab(state.localTab),
+            ...state.appearance
         });
         netEmit('peer-joined', msg);
     });
@@ -2605,7 +3290,7 @@ const wireSocket = () => {
         overlay.toast(`${msg.name} left`, '#8a8fa3');
         netEmit('peer-left', msg);
     });
-    client.on('snapshot', applySnapshot);
+    client.on('snapshot', onSnapshot);
     client.on('snapshot-ack', msg => {
         const entry = ackSnapshot(msg);
         if (typeof msg.version === 'number' &&
@@ -2624,6 +3309,7 @@ const wireSocket = () => {
     client.on('block-event', applyBlockEvent);
     client.on('sprite-info', applySpriteInfo);
     client.on('vm-action', applyVmAction);
+    client.on('kit-set', applyRemoteKitSet);
     client.on('presence', msg => overlay.setPeerPresence(msg.from, msg));
     client.on('cursor', msg => overlay.setPeerCursor(
         msg.from,
@@ -2636,6 +3322,15 @@ const wireSocket = () => {
             if (key) cachedGameVars[key] = orEmpty(msg.value);
         }
         netEmit('game', msg);
+    });
+    client.on('game-ended', () => {
+        state.roomGame = false;
+    });
+    client.on('game-started', msg => {
+        state.roomGame = true;
+        if (state.gameLink && state.gameLink.inGame) return;
+        const who = msg && typeof msg.name === 'string' && msg.name ? msg.name : 'Someone';
+        overlay.toast(`▶ ${who} ${GAME_STARTED_TEXT}`, '#6d4ae0');
     });
 };
 
@@ -2714,11 +3409,20 @@ const detachWorkspace = () => {
     state.ScratchBlocks = null;
 };
 
-// Appearance changes go over the socket so peers repaint immediately; the
-// server persists them to the account.
 const setAppearance = ({color, style}) => {
     if (!state.active) return false;
-    client.send({type: 'appearance', color, cursor: style});
+    state.appearance = {color, cursor: style};
+    client.send({
+        type: 'presence',
+        sprite: state.lastPresence.sprite || editingTargetName(),
+        status: state.lastPresence.status || 'here',
+        tab: presenceTab(state.localTab),
+        ...state.appearance
+    });
+    if (state.snapshotHttp) {
+        state.snapshotHttp.patchMe({color, cursor: style})
+            .catch(e => log.warn('[collab] appearance not saved', e && e.status));
+    }
     return true;
 };
 
@@ -2734,14 +3438,18 @@ const applyRoomTitle = title => {
     }
 };
 
-// Renaming the project renames the room. Owner-gated on the server.
 const setRoomTitle = title => {
     const clean = String(title || '')
         .trim()
         .slice(0, 60);
-    if (!state.active || !clean || clean === state.appliedTitle) return;
+    if (!state.active || !clean || clean === state.appliedTitle || !state.snapshotHttp) return;
+    const previous = state.appliedTitle;
     state.appliedTitle = clean;
-    client.send({type: 'set-room-title', title: clean});
+    state.snapshotHttp.patchRoom({title: clean}).catch(e => {
+        if (state.appliedTitle === clean) state.appliedTitle = previous;
+        log.warn('[collab] room title not saved', e && e.status);
+        overlay.toast(`✏️ ${e && e.status === 403 ? TITLE_OWNER_TEXT : TITLE_REFUSED_TEXT}`, '#8a8fa3');
+    });
 };
 
 export default {

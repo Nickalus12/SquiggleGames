@@ -1,0 +1,12 @@
+{
+    "world": {
+        "worldMode": true,
+        "targets": [{"id": "pen", "name": "Pen", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"id": "down", "op": "pen_penDown"}, {"op": "pen_stamp"}, {"op": "pen_clear"}]
+        ]}]
+    },
+    "flat": {
+        "worldMode": false,
+        "targets": [{"name": "Pen", "scripts": [[{"op": "event_whenflagclicked"}, {"op": "pen_penDown"}]]}]
+    }
+}

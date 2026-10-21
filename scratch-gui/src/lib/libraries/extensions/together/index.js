@@ -2,12 +2,33 @@
  * Runs as a builtin (main thread) so it can reach window.SquiggleNet.
  * Talks only to that bridge; never opens its own socket. */
 
-// eslint-disable-next-line max-len
-const menuIconURI = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI4IiBmaWxsPSIjOTk2NmZmIi8+PGNpcmNsZSBjeD0iMTMiIGN5PSIxNCIgcj0iNSIgZmlsbD0iI2ZmZiIvPjxjaXJjbGUgY3g9IjI3IiBjeT0iMTQiIHI9IjUiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNNS41IDMxYzAtNC4yIDMuNC03LjUgNy41LTcuNWgwYzEuNCAwIDIuNy40IDMuOCAxLjFDMTggMjIuOSAxOS45IDIyIDIyIDIyaDBjNC4xIDAgNy41IDMuMyA3LjUgNy41VjMzSDUuNXYtMnoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
+import {installRuleMethods, ruleBlocks, ruleMenus, rulesMark, setupButton} from '../../../rules/rule-blocks.js';
+import {installRulesGuard} from '../../../rules/guard.js';
+import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
+import {openGameSetup} from '../../../rules/open-setup.js';
+import {gameServerReady} from '../../../rules/flags.js';
+import {MAX_OP_NAME, MAX_OP_VALUE, wireValue} from '../../../together2/net.js';
+import {
+    deviceBlocks,
+    deviceMenus,
+    fireDeviceHats,
+    installDeviceMethods,
+    sharedGame
+} from '../../../together2/device-blocks.js';
+import {
+    gameValue as readGameValue,
+    playerValue as readPlayerValue,
+    teamName,
+    timeLeft as readTimeLeft
+} from '../../../together2/game-state.js';
+import menuIconURI from './together-small.svg';
+import log from '../../../log.js';
 
-const str = v => (v == null ? '' : String(v));
+const isMissing = v => v === null || typeof v === 'undefined';
 
-const getNet = () => (typeof window !== 'undefined' ? window.SquiggleNet : null);
+const str = v => (isMissing(v) ? '' : String(v));
+
+const getNet = () => (typeof window === 'undefined' ? null : window.SquiggleNet);
 
 /*
  * How much this extension is allowed to put on the wire.
@@ -57,6 +78,10 @@ class TogetherBlocks {
         this._lastLeaver = '';
         this._unsubs = [];
         this._bound = false;
+        installRuleMethods(this, 'together');
+        installDeviceMethods(this, 'together', sharedGame);
+        const vm = runtime.extensionManager && runtime.extensionManager.vm;
+        if (vm) installRulesGuard(vm);
 
         /*
          * Incoming messages wait here and are handed to hats one per frame.
@@ -85,6 +110,7 @@ class TogetherBlocks {
         this._onGameState = this._onGameState.bind(this);
         this._onPeerJoined = this._onPeerJoined.bind(this);
         this._onPeerLeft = this._onPeerLeft.bind(this);
+        this._onTick = this._onTick.bind(this);
         this._onBridgeReady = this._onBridgeReady.bind(this);
         this._onStep = this._onStep.bind(this);
         this._onDisposed = this._onDisposed.bind(this);
@@ -146,7 +172,7 @@ class TogetherBlocks {
                 if (this._tokens < 1) break;
                 this._tokens -= 1;
                 this._pendingMsgs.delete(name);
-                if (net) net.send({type: 'game', action: 'msg', name, value});
+                if (net) net.send({type: 'game', action: 'msg', name, value: wireValue(value)});
             }
         }
     }
@@ -217,6 +243,7 @@ class TogetherBlocks {
         this._unsubs.push(net.on('game-state', this._onGameState));
         this._unsubs.push(net.on('peer-joined', this._onPeerJoined));
         this._unsubs.push(net.on('peer-left', this._onPeerLeft));
+        if (typeof net.onTick === 'function') this._unsubs.push(net.onTick(this._onTick));
         // Seed from bridge cache in case game-state replay already fired.
         const vars = net.sharedVars;
         if (vars) {
@@ -277,6 +304,23 @@ class TogetherBlocks {
         this._lastLeaver = '';
     }
 
+    _onTick (tick, result) {
+        const net = getNet();
+        if (!net || !net.game || !result || !result.applied) return;
+        fireDeviceHats(this.runtime, 'together', net.game, result);
+        for (const event of result.events) {
+            const name = str(event.n);
+            if (name && event.f === 0) this._deliverGame(name, str(event.v));
+        }
+    }
+
+    _deliverGame (name, value) {
+        const m = {name, value};
+        this._lastMessageName = name;
+        this._lastMessageValue = value;
+        this._tagThreads(this.runtime.startHats('together_whenGameSays', {TEXT: name}), m);
+    }
+
     _onGame (msg) {
         if (!msg || typeof msg !== 'object') return;
         if (msg.action === 'msg') {
@@ -291,7 +335,7 @@ class TogetherBlocks {
             this._queueIncoming(name, str(msg.value));
         } else if (msg.action === 'var') {
             const name = str(msg.name);
-            if (name) this._shared[name] = msg.value == null ? '' : msg.value;
+            if (name) this._shared[name] = isMissing(msg.value) ? '' : msg.value;
         }
     }
 
@@ -324,9 +368,13 @@ class TogetherBlocks {
             blockIconURI: menuIconURI,
             blocks: [
                 {
+                    blockType: 'label',
+                    text: 'Messages'
+                },
+                {
                     opcode: 'broadcastGameMessage',
                     blockType: 'command',
-                    text: 'broadcast game message [NAME] with [VALUE]',
+                    text: 'send [NAME] to everyone with [VALUE]',
                     arguments: {
                         NAME: {
                             type: 'string',
@@ -341,7 +389,7 @@ class TogetherBlocks {
                 {
                     opcode: 'whenGameMessage',
                     blockType: 'event',
-                    text: 'when I receive game message [NAME]',
+                    text: 'when someone sends [NAME]',
                     isEdgeActivated: false,
                     shouldRestartExistingThreads: true,
                     arguments: {
@@ -365,23 +413,26 @@ class TogetherBlocks {
                 {
                     opcode: 'whenAnyGameMessage',
                     blockType: 'event',
-                    text: 'when I receive any game message',
+                    text: 'when someone sends anything',
                     isEdgeActivated: false,
                     shouldRestartExistingThreads: true
                 },
                 {
                     opcode: 'gameMessageName',
                     blockType: 'reporter',
-                    text: 'game message name',
+                    text: 'message name',
                     disableMonitor: true
                 },
                 {
                     opcode: 'gameMessageValue',
                     blockType: 'reporter',
-                    text: 'game message value',
+                    text: 'message value',
                     disableMonitor: false
                 },
-                '---',
+                {
+                    blockType: 'label',
+                    text: 'Shared variables'
+                },
                 {
                     opcode: 'setSharedVariable',
                     blockType: 'command',
@@ -423,7 +474,10 @@ class TogetherBlocks {
                         }
                     }
                 },
-                '---',
+                {
+                    blockType: 'label',
+                    text: 'Room'
+                },
                 {
                     opcode: 'myPlayerName',
                     blockType: 'reporter',
@@ -469,16 +523,186 @@ class TogetherBlocks {
                     opcode: 'connected',
                     blockType: 'Boolean',
                     text: 'connected to room?'
-                }
-            ]
+                },
+                {
+                    blockType: 'label',
+                    hideFromPalette: !gameServerReady(),
+                    text: 'Game server'
+                },
+                {
+                    opcode: 'tellGame',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'command',
+                    text: 'tell the game [NAME] with [VALUE]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            defaultValue: 'jump'
+                        },
+                        VALUE: {
+                            type: 'string',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'whenGameSays',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'event',
+                    text: 'when the game says [EVENT]',
+                    isEdgeActivated: false,
+                    shouldRestartExistingThreads: true,
+                    arguments: {
+                        EVENT: {
+                            type: 'string',
+                            defaultValue: 'hello'
+                        }
+                    }
+                },
+                {
+                    opcode: 'gameValue',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'reporter',
+                    text: 'game value [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            menu: 'gameValues',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'myPlayerValue',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'reporter',
+                    text: 'my player value [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            menu: 'playerValues',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'gameRound',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'reporter',
+                    text: 'round'
+                },
+                {
+                    opcode: 'myTeam',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'reporter',
+                    text: 'my team'
+                },
+                {
+                    opcode: 'timeLeft',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'reporter',
+                    text: 'time left on [TIMER]',
+                    arguments: {
+                        TIMER: {
+                            type: 'string',
+                            menu: 'timers',
+                            defaultValue: 'timer'
+                        }
+                    }
+                },
+                {
+                    opcode: 'inGame',
+                    hideFromPalette: !gameServerReady(),
+                    blockType: 'Boolean',
+                    text: 'in a game?'
+                },
+                ...deviceBlocks('together'),
+                {
+                    blockType: 'button',
+                    text: 'Open Game Rules',
+                    func: 'openGameRules'
+                },
+                {
+                    blockType: 'label',
+                    text: 'Game Rules'
+                },
+                setupButton()
+            ].concat(ruleBlocks('together')),
+            menus: Object.assign({}, ruleMenus('together'), deviceMenus('together'))
         };
+    }
+
+    openGameRules () {
+        const vm = this.runtime.extensionManager && this.runtime.extensionManager.vm;
+        if (!vm) return Promise.resolve(null);
+        return ensureRulesSprite(vm).then(target => {
+            vm.setEditingTarget(target.id);
+            return target;
+        })
+            .catch(error => {
+                log.warn('[together] Game Rules did not open', error && error.message);
+                return null;
+            });
+    }
+
+    openGameSetup () {
+        const vm = this.runtime.extensionManager && this.runtime.extensionManager.vm;
+        if (!vm) return Promise.resolve(null);
+        return Promise.resolve()
+            .then(() => openGameSetup(vm))
+            .catch(error => {
+                log.warn('[together] Game setup did not open', error && error.message);
+                return null;
+            });
+    }
+
+    tellGame (args) {
+        this._ensureBound();
+        const name = str(args.NAME).slice(0, MAX_OP_NAME);
+        if (!name) return;
+        const net = getNet();
+        if (!net || !net.inGame || typeof net.sendInput !== 'function') return;
+        net.sendInput({g: {action: 'input', name, value: wireValue(str(args.VALUE).slice(0, MAX_OP_VALUE))}});
+    }
+
+    gameValue (args) {
+        return readGameValue(sharedGame(), str(args.NAME));
+    }
+
+    myPlayerValue (args) {
+        const net = getNet();
+        const slot = net && net.slot;
+        if (slot === null || typeof slot === 'undefined') return '';
+        return readPlayerValue(sharedGame(), slot, str(args.NAME));
+    }
+
+    gameRound () {
+        return sharedGame().round;
+    }
+
+    myTeam () {
+        const net = getNet();
+        const slot = net && net.slot;
+        if (slot === null || typeof slot === 'undefined') return '';
+        const mark = rulesMark(this.runtime);
+        return teamName(sharedGame(), slot, mark && mark.teams);
+    }
+
+    timeLeft (args) {
+        return readTimeLeft(sharedGame(), str(args.TIMER));
+    }
+
+    inGame () {
+        this._ensureBound();
+        const net = getNet();
+        return !!(net && net.inGame);
     }
 
     broadcastGameMessage (args) {
         this._ensureBound();
-        const name = str(args.NAME);
+        const name = str(args.NAME).slice(0, MAX_OP_NAME);
         if (!name) return;
-        const value = str(args.VALUE);
+        const value = str(args.VALUE).slice(0, MAX_OP_VALUE);
 
         /*
          * The sender hears its own broadcast, through the same queue as
@@ -502,7 +726,7 @@ class TogetherBlocks {
         this._refill(this._now());
         if (this._tokens >= 1) {
             this._tokens -= 1;
-            net.send({type: 'game', action: 'msg', name, value});
+            net.send({type: 'game', action: 'msg', name, value: wireValue(value)});
             return;
         }
         // Over budget: hold it by name and let the next frame send it. A name
@@ -528,7 +752,7 @@ class TogetherBlocks {
         if (!name) return;
         // Preserve numbers from numeric inputs so math reporters stay numeric.
         let value = args.VALUE;
-        if (value == null) value = '';
+        if (isMissing(value)) value = '';
         else if (typeof value !== 'number' && typeof value !== 'boolean') value = str(value);
         // Skip no-op writes — cuts socket + disk work when a loop sets the same value.
         if (this._shared[name] === value) return;
@@ -596,7 +820,7 @@ class TogetherBlocks {
             // Sets first: an increment that survived alongside one is meant to
             // land on top of it, not underneath.
             for (const [key, val] of sets) {
-                net.send({type: 'game', action: 'var', name: key, value: val});
+                net.send({type: 'game', action: 'var', name: key, value: wireValue(val)});
             }
             for (const [key, val] of deltas) {
                 net.send({type: 'game', action: 'var-add', name: key, delta: val});
@@ -619,7 +843,7 @@ class TogetherBlocks {
         const name = str(args.NAME);
         if (!name) return '';
         const v = this._shared[name];
-        return v == null ? '' : v;
+        return isMissing(v) ? '' : v;
     }
 
     myPlayerName () {

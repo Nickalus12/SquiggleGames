@@ -14,8 +14,6 @@ on:
 
 jobs:
   build:
-    # The editor is a TurboWarp checkout, so a full install + webpack 4 build is
-    # slow, and the build succeeding is the real gate.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,15 +28,10 @@ jobs:
         working-directory: scratch-gui
         timeout-minutes: 20
 
-      - name: Lint the collab client
-        run: npx eslint src/lib/collab --ext .js,.jsx
+      - name: Lint the collab client, world seams and kits
+        run: npx eslint --no-error-on-unmatched-pattern src/lib/collab src/lib/world src/lib/kits src/lib/together2 --ext .js,.jsx
         working-directory: scratch-gui
 
-      # This one needs no browser and
-      # no VM — it drives the extension against a stubbed runtime and bridge —
-      # and it covers the failures that manual play-testing does not reach:
-      # two messages in a single frame, a second project load, a loop fast
-      # enough to flood the socket.
       - name: Together extension
         run: node src/lib/libraries/extensions/together/together.test.mjs
         working-directory: scratch-gui
@@ -47,10 +40,20 @@ jobs:
         run: for t in src/lib/collab/*.test.mjs; do node "$t" || exit 1; done
         working-directory: scratch-gui
 
+      - name: World seams, kits and Together 2
+        run: for t in src/lib/world/*.test.mjs src/lib/kits/*.test.mjs src/lib/together2/*.test.mjs src/lib/rules/*.test.mjs src/lib/checker/*.test.mjs src/lib/checker/rules/*.test.mjs src/components/*/*.test.mjs src/lib/libraries/extensions/squiggle*/*.test.mjs; do [ -e "$t" ] || continue; node "$t" || exit 1; done
+        working-directory: scratch-gui
+
       - name: Build
         run: npm run build
         working-directory: scratch-gui
         timeout-minutes: 30
         env:
-          # webpack 4 against modern Node's OpenSSL, and the bundle needs headroom
           NODE_OPTIONS: --openssl-legacy-provider --max-old-space-size=4096
+          NODE_ENV: production
+
+      - name: Bundle size
+        run: node size-check.mjs
+        working-directory: scratch-gui
+        env:
+          NODE_ENV: production

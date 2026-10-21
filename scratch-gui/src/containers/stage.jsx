@@ -8,6 +8,7 @@ import {connect} from 'react-redux';
 import {STAGE_DISPLAY_SIZES} from '../lib/layout-constants';
 import {getEventXY} from '../lib/touch-utils';
 import VideoProvider from '../lib/video/video-provider';
+import {installWorldSeams} from '../lib/world/seams.js';
 import {BitmapAdapter as V2BitmapAdapter} from '@turbowarp/scratch-svg-renderer';
 
 import StageComponent from '../components/stage/stage.jsx';
@@ -72,6 +73,7 @@ class Stage extends React.Component {
                 this.props.customStageSize.height
             );
             this.props.vm.attachRenderer(this.renderer);
+            installWorldSeams(this.props.vm);
 
             // Only attach a video provider once because it is stateful
             this.props.vm.setVideoProvider(new VideoProvider());

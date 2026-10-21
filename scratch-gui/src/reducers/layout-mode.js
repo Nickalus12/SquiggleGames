@@ -3,27 +3,30 @@ import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode} from '../lib/layout-mode';
 const SET_LAYOUT_MODE = 'scratch-gui/layout-mode/SET_LAYOUT_MODE';
 const SET_PHONE_TAB = 'scratch-gui/layout-mode/SET_PHONE_TAB';
 const SET_PHONE_MENU_OPEN = 'scratch-gui/layout-mode/SET_PHONE_MENU_OPEN';
+const SET_PHONE_PALETTE_OPEN = 'scratch-gui/layout-mode/SET_PHONE_PALETTE_OPEN';
 const SET_VIEWPORT = 'scratch-gui/layout-mode/SET_VIEWPORT';
 const SET_MINI_STAGE = 'scratch-gui/layout-mode/SET_MINI_STAGE';
 const SET_TOUCH_CONTROLS = 'scratch-gui/layout-mode/SET_TOUCH_CONTROLS';
 const SET_PROJECT_USES_KEYS = 'scratch-gui/layout-mode/SET_PROJECT_USES_KEYS';
 
-const hasCoarsePointer = () => (
+const pointerMatches = kind => (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches
+    window.matchMedia(`(pointer: ${kind})`).matches
 );
 
 const initialState = {
     mode: typeof window === 'undefined' ? LAYOUT_MODES.desktop : detectLayoutMode(window),
     phoneTab: PHONE_TABS.code,
     phoneMenuOpen: false,
+    phonePaletteOpen: false,
     viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
     viewportHeight: typeof window === 'undefined' ? 0 : window.innerHeight,
     miniStage: false,
     touchControls: null,
     projectUsesKeys: false,
-    coarsePointer: hasCoarsePointer()
+    coarsePointer: pointerMatches('coarse'),
+    finePointer: pointerMatches('fine')
 };
 
 const reducer = function (state, action) {
@@ -33,17 +36,24 @@ const reducer = function (state, action) {
         if (!LAYOUT_MODES[action.mode] || action.mode === state.mode) return state;
         return Object.assign({}, state, {
             mode: action.mode,
-            phoneMenuOpen: false
+            phoneMenuOpen: false,
+            phonePaletteOpen: false
         });
     case SET_PHONE_TAB:
         if (!PHONE_TABS[action.tab]) return state;
         return Object.assign({}, state, {
             phoneTab: action.tab,
-            phoneMenuOpen: false
+            phoneMenuOpen: false,
+            phonePaletteOpen: false
         });
     case SET_PHONE_MENU_OPEN:
         return Object.assign({}, state, {
             phoneMenuOpen: !!action.open
+        });
+    case SET_PHONE_PALETTE_OPEN:
+        if (!!action.open === state.phonePaletteOpen) return state;
+        return Object.assign({}, state, {
+            phonePaletteOpen: !!action.open
         });
     case SET_VIEWPORT:
         if (action.width === state.viewportWidth && action.height === state.viewportHeight) return state;
@@ -84,6 +94,11 @@ const setPhoneMenuOpen = open => ({
     open
 });
 
+const setPhonePaletteOpen = open => ({
+    type: SET_PHONE_PALETTE_OPEN,
+    open
+});
+
 const setViewport = (width, height) => ({
     type: SET_VIEWPORT,
     width,
@@ -110,15 +125,23 @@ const touchControlsVisible = state => {
     return state.coarsePointer && state.projectUsesKeys;
 };
 
+const playerTouchControlsVisible = state => {
+    if (state.touchControls !== null) return state.touchControls;
+    if (!state.projectUsesKeys || state.finePointer) return false;
+    return state.coarsePointer || state.mode === LAYOUT_MODES.phone || state.mode === LAYOUT_MODES.tablet;
+};
+
 export {
     reducer as default,
     initialState as layoutModeInitialState,
     setLayoutMode,
     setMiniStage,
     setPhoneMenuOpen,
+    setPhonePaletteOpen,
     setPhoneTab,
     setProjectUsesKeys,
     setTouchControls,
     setViewport,
+    playerTouchControlsVisible,
     touchControlsVisible
 };

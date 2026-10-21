@@ -1,0 +1,51 @@
+{
+    "deletes": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}],
+            [{"op": "control_start_as_clone"}, {"op": "control_wait", "in": {"DURATION": 2}}, {"op": "control_delete_this_clone"}]
+        ]}]
+    },
+    "runaway": {
+        "targets": [
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                    {"op": "control_if", "in": {"CONDITION": {"op": "sensing_mousedown"}}, "sub": [
+                        {"id": "make", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "Star"]}}
+                    ]}
+                ]}]
+            ]},
+            {"id": "star", "name": "Star", "scripts": [[{"op": "control_start_as_clone"}, {"op": "motion_changeyby", "in": {"DY": 5}}]]}
+        ]
+    },
+    "bounded": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_repeat", "in": {"TIMES": 10}, "sub": [
+                {"op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}],
+            [{"op": "event_whenflagclicked"}, {"op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}]
+        ]}]
+    },
+    "bigRepeat": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_repeat", "in": {"TIMES": 5000}, "sub": [
+                {"id": "many", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}]
+        ]}]
+    },
+    "forEachSmall": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_for_each", "in": {"VALUE": 10}, "sub": [
+                {"id": "few", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}]
+        ]}]
+    },
+    "forEachBig": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_for_each", "in": {"VALUE": 5000}, "sub": [
+                {"id": "lots", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}]
+        ]}]
+    }
+}

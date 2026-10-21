@@ -1,3 +1,4 @@
+@import "../../css/units.css";
 @import "../../css/colors.css";
 @import "../../css/z-index.css";
 
@@ -42,6 +43,51 @@
     opacity: 0.85;
 }
 
+@media (orientation: landscape) {
+    .overlay {
+        top: 0;
+        align-items: center;
+        padding-top: env(safe-area-inset-top, 0px);
+    }
+}
+
+.stage {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+}
+
+.stage .actions {
+    margin-inline-start: auto;
+}
+
+@media (orientation: landscape) {
+    .stage {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: calc($z-index-stage-wrapper-overlay + 1);
+        align-items: center;
+        padding: $stage-menu-height 12px 0;
+        pointer-events: none;
+    }
+
+    .stage .pad,
+    .stage .actions {
+        pointer-events: auto;
+        opacity: 0.85;
+    }
+
+    .stage .pad {
+        grid-template-columns: repeat(3, 48px);
+        grid-template-rows: repeat(3, 48px);
+    }
+}
+
 .pad {
     display: grid;
     grid-template-columns: repeat(3, 52px);
@@ -75,6 +121,19 @@
     grid-area: action;
     align-self: center;
     justify-self: center;
+}
+
+.actions.multi {
+    display: grid;
+    grid-template-columns: repeat(2, 64px);
+    grid-auto-rows: 64px;
+    gap: 8px;
+}
+
+.sides .actions.multi {
+    grid-template-columns: repeat(2, 56px);
+    grid-auto-rows: 56px;
+    gap: 6px;
 }
 
 .up {
@@ -139,12 +198,23 @@
     border-radius: 44px;
 }
 
+.multi .action,
+.sides .multi .action {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+
+.multi .action .key-label {
+    font-size: 16px;
+}
+
 .action .key-label {
     font-size: 20px;
 }
 
 .key-label {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     font-size: 16px;
     font-weight: bold;
     pointer-events: none;

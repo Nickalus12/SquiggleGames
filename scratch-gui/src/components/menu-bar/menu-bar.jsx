@@ -94,12 +94,8 @@ import mystuffIcon from './icon--mystuff.png';
 import profileIcon from './icon--profile.png';
 import remixIcon from './icon--remix.svg';
 import dropdownCaret from './dropdown-caret.svg';
-import aboutIcon from './icon--about.svg';
-import fileIcon from './icon--file.svg';
-import editIcon from './icon--edit.svg';
-import addonsIcon from './addons.svg';
 import errorIcon from './tw-error.svg';
-import advancedIcon from './tw-advanced.svg';
+import {sqIconDataUri} from '../sq-icon';
 
 import ninetiesLogo from './nineties_logo.svg';
 import catLogo from './cat_logo.svg';
@@ -111,7 +107,14 @@ import sharedMessages from '../../lib/shared-messages';
 import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
 import {APP_NAME} from '../../lib/brand.js';
-import collab from '../../lib/collab';
+import {mayReplaceProject} from '../gui/collab-handle.js';
+
+const MENU_ICON = {color: '#ffffff'};
+const aboutIcon = sqIconDataUri('help', MENU_ICON);
+const fileIcon = sqIconDataUri('file', MENU_ICON);
+const editIcon = sqIconDataUri('edit', MENU_ICON);
+const addonsIcon = sqIconDataUri('addons', MENU_ICON);
+const advancedIcon = sqIconDataUri('advanced', MENU_ICON);
 
 const ariaMessages = defineMessages({
     tutorials: {
@@ -185,7 +188,7 @@ MenuItemTooltip.propTypes = {
 
 const AboutButton = props => (
     <Button
-        className={classNames(styles.menuBarItem, styles.hoverable)}
+        className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
         iconClassName={styles.aboutIcon}
         iconSrc={aboutIcon}
         onClick={props.onClick}
@@ -242,7 +245,7 @@ class MenuBar extends React.Component {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
     handleClickNew () {
-        if (!collab.mayReplaceProject()) {
+        if (!mayReplaceProject()) {
             this.props.onRequestCloseFile();
             return;
         }
@@ -581,8 +584,8 @@ class MenuBar extends React.Component {
                                 <img
                                     src={fileIcon}
                                     draggable={false}
-                                    width={20}
-                                    height={20}
+                                    width={24}
+                                    height={24}
                                 />
                                 <span className={styles.collapsibleLabel}>
                                     <FormattedMessage
@@ -736,8 +739,8 @@ class MenuBar extends React.Component {
                             <img
                                 src={editIcon}
                                 draggable={false}
-                                width={20}
-                                height={20}
+                                width={24}
+                                height={24}
                             />
                             <span className={styles.collapsibleLabel}>
                                 <FormattedMessage
@@ -898,14 +901,14 @@ class MenuBar extends React.Component {
 
                         {this.props.onClickAddonSettings && (
                             <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
+                                className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
                                 onClick={this.props.onClickAddonSettings}
                             >
                                 <img
                                     src={addonsIcon}
                                     draggable={false}
-                                    width={20}
-                                    height={20}
+                                    width={24}
+                                    height={24}
                                 />
                                 <span className={styles.collapsibleLabel}>
                                     <FormattedMessage
@@ -918,14 +921,14 @@ class MenuBar extends React.Component {
                         )}
                         {this.props.onClickSettingsModal && (
                             <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
+                                className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
                                 onClick={this.props.onClickSettingsModal}
                             >
                                 <img
                                     src={advancedIcon}
                                     draggable={false}
-                                    width={20}
-                                    height={20}
+                                    width={24}
+                                    height={24}
                                 />
                                 <span className={styles.collapsibleLabel}>
                                     <FormattedMessage
@@ -993,7 +996,7 @@ class MenuBar extends React.Component {
                             {remixButton}
                         </div>
                     )}
-                    <div className={classNames(styles.menuBarItem, styles.communityButtonWrapper)}>
+                    <div className={classNames(styles.menuBarItem, styles.communityButtonWrapper, styles.focusExtra)}>
                         {this.props.enableCommunity ? (
                             (this.props.isShowingProject || this.props.isUpdating) && (
                                 <ProjectWatcher onDoneUpdating={this.props.onSeeCommunity}>
@@ -1023,7 +1026,7 @@ class MenuBar extends React.Component {
                         ) : []))}
                     </div>
                     {/* tw: add a feedback button */}
-                    <div className={styles.menuBarItem}>
+                    <div className={classNames(styles.menuBarItem, styles.focusExtra)}>
                         <a
                             className={styles.feedbackLink}
                             // Upstream points this at the TurboWarp author's Scratch
@@ -1049,6 +1052,7 @@ class MenuBar extends React.Component {
                 </div>
 
                 <div className={styles.accountInfoGroup}>
+                    {this.props.rightSlot}
                     <OutlinePanel />
                     <HistoryPanel />
                     <MessagesButton sheet={this.props.isPhoneSheet} />
@@ -1165,6 +1169,7 @@ MenuBar.propTypes = {
     projectId: PropTypes.string,
     projectTitle: PropTypes.string,
     renderLogin: PropTypes.func,
+    rightSlot: PropTypes.node,
     sessionExists: PropTypes.bool,
     settingsMenuOpen: PropTypes.bool,
     shouldSaveBeforeTransition: PropTypes.func,

@@ -1,0 +1,19 @@
+{
+    "none": {"targets": [{"name": "Cat"}]},
+    "errors": {
+        "targets": [{"id": "rules", "name": "Game Rules", "rules": {"role": "rules", "v": 1}}],
+        "rulesStatus": {
+            "compile": {"hash": "h", "ok": false, "phase": "compile", "errors": [
+                {"blockId": "b1", "code": "limit", "detail": {"limit": "timers", "max": 16}, "n": 1, "text": "Game Rules can have at most 16 timers. Remove some."},
+                {"blockId": null, "code": "too-big", "detail": null, "n": 1}
+            ]},
+            "run": {"hash": "h", "ok": false, "phase": "run", "errors": [
+                {"blockId": "b2", "code": "loop-cap", "detail": null, "n": 4}
+            ]}
+        }
+    },
+    "local": {
+        "targets": [{"id": "rules", "name": "Game Rules", "rules": {"role": "rules", "v": 1}}],
+        "rulesStatus": {"compile": {"hash": "", "ok": false, "phase": "local", "errors": [{"blockId": "b", "code": "cycle", "n": 1}]}, "run": null}
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "assets": {
+        "targets": [{"id": "cat", "name": "Cat",
+            "costumes": [{"name": "small", "assetId": "a1", "bytes": 20000}, {"name": "photo", "assetId": "a2", "bytes": 3145728}],
+            "sounds": [{"name": "pop", "assetId": "s1", "bytes": 9000}, {"name": "song", "assetId": "s2", "bytes": 4194304}, {"name": "edge", "assetId": "s3", "bytes": 2097152}]
+        }]
+    }
+}

@@ -1,26 +1,9 @@
 import React from 'react';
 
-import collab from '../../lib/collab';
+import {collabRoomName} from '../gui/collab-handle.js';
+import {historySummary, restoreVersion, roomHistory} from '../../lib/collab/room-api.js';
 
-/* The dev server (8601) and the API (4455) are different origins; in
- * production they are the same one and this is empty. login.js has always
- * known this — the history panel did not, so History could only ever fail
- * locally, which is exactly where it needed to be tried. */
-const apiBase = () => (location.port === '8601' ? `http://${location.hostname}:4455` : '');
-
-/*
- * Room history.
- *
- * The server has been keeping 25 versions of every room, a minute apart, since
- * the beginning — and until now nothing could read them. "Undo this whole
- * afternoon" is exactly what someone needs after painting over a sprite, and
- * an editor undo stack cannot do it: it dies with the tab, it is per-person,
- * and it knows nothing about what a partner did.
- *
- * Restoring pushes the old project to everyone in the room, which is a big,
- * shared thing to do — so it asks first, and it says how long ago the version
- * is rather than showing a timestamp nobody can parse at a glance.
- */
+const rowKey = v => (typeof v.v === 'number' ? `v${v.v}` : `f${v.file}`);
 
 const T = {
     surface: '#161c36',
@@ -52,26 +35,28 @@ class HistoryPanel extends React.Component {
         this.state = {
             open: false,
             versions: [],
+            details: {},
             loading: false,
             error: null,
             busy: null,
-            // Which row is asking "are you sure?". A browser confirm() would
-            // do, but it steals the whole window for a decision that belongs
-            // next to the thing being decided about.
             confirming: null
         };
         this.handleToggle = this.handleToggle.bind(this);
         this.handleListClick = this.handleListClick.bind(this);
         this.handleDocumentClick = this.handleDocumentClick.bind(this);
+        this.handleOpenRequest = this.handleOpenRequest.bind(this);
         this.rootRef = React.createRef();
     }
 
     componentDidMount () {
         document.addEventListener('mousedown', this.handleDocumentClick);
+        window.addEventListener('sq:open-history', this.handleOpenRequest);
     }
 
     componentWillUnmount () {
+        this.unmounted = true;
         document.removeEventListener('mousedown', this.handleDocumentClick);
+        window.removeEventListener('sq:open-history', this.handleOpenRequest);
     }
 
     handleDocumentClick (e) {
@@ -81,7 +66,11 @@ class HistoryPanel extends React.Component {
     }
 
     room () {
-        return collab.roomName || '';
+        return collabRoomName() || '';
+    }
+
+    update (patch) {
+        if (!this.unmounted) this.setState(patch);
     }
 
     load () {
@@ -91,27 +80,30 @@ class HistoryPanel extends React.Component {
             return;
         }
         this.setState({loading: true, error: null});
-        /*
-         * The server says why. This used to collapse every outcome into "Could
-         * not read the history", so a permission problem, a signed-out
-         * session and an actual outage were one indistinguishable red line —
-         * unhelpful to the person reading it and impossible to diagnose from a
-         * screenshot.
-         */
-        fetch(`${apiBase()}/api/rooms/${encodeURIComponent(room)}/history`, {credentials: 'same-origin'})
-            .then(r => r.json().catch(() => ({})).then(d => {
-                if (!r.ok) {
-                    const err = new Error(d.error || `http-${r.status}`);
-                    err.friendly = d.message;
-                    throw err;
-                }
-                return d;
-            }))
-            .then(d => this.setState({versions: d.versions || [], loading: false}))
-            .catch(e => this.setState({
+        roomHistory(room)
+            .then(d => this.update({versions: (d && d.versions) || [], details: {}, loading: false}))
+            .catch(e => this.update({
                 loading: false,
-                error: e.friendly || 'Could not reach the server — check your connection.'
+                error: e.friendly || 'Could not reach the server. Check your connection.'
             }));
+    }
+
+    loadDetail (v) {
+        const key = rowKey(v);
+        if (typeof v.v !== 'number' || this.state.details[key]) return;
+        this.setState(s => ({details: Object.assign({}, s.details, {[key]: 'loading'})}));
+        historySummary(this.room(), v.v)
+            .then(d => d, () => 'failed')
+            .then(d => {
+                if (this.unmounted) return;
+                this.setState(s => ({details: Object.assign({}, s.details, {[key]: d || 'failed'})}));
+            });
+    }
+
+    handleOpenRequest () {
+        if (this.state.open) return;
+        this.setState({open: true, confirming: null});
+        this.load();
     }
 
     handleToggle () {
@@ -120,48 +112,38 @@ class HistoryPanel extends React.Component {
         if (open) this.load();
     }
 
-    /*
-     * One listener for the whole list rather than a closure per row — the list
-     * repaints on every state change, and per-row handlers would be rebuilt
-     * each time.
-     */
     handleListClick (e) {
-        const btn = e.target.closest('button[data-file]');
+        const btn = e.target.closest('button[data-key]');
         if (!btn) return;
-        const file = btn.dataset.file;
-        if (this.state.confirming !== file) {
-            this.setState({confirming: file});
+        const key = btn.dataset.key;
+        const version = this.state.versions.find(v => rowKey(v) === key);
+        if (!version) return;
+        if (this.state.confirming !== key) {
+            this.setState({confirming: key});
+            this.loadDetail(version);
             return;
         }
-        const version = this.state.versions.find(v => v.file === file);
-        if (version) this.restore(version);
+        this.restore(version);
     }
 
-    // Only reached after the row has been clicked twice — the second click IS
-    // the confirmation, so there is nothing left to ask here.
     restore (v) {
-        this.setState({busy: v.file, confirming: null, error: null});
-        fetch(`${apiBase()}/api/rooms/${encodeURIComponent(this.room())}/history/restore`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {'content-type': 'application/json', 'x-squiggle': '1'},
-            body: JSON.stringify({file: v.file})
-        })
-            .then(r => r.json().catch(() => ({})).then(d => {
-                if (!r.ok) {
-                    const err = new Error(d.error || `http-${r.status}`);
-                    // Most likely reason now: only the host may put a version
-                    // back, because it replaces what everyone else is doing.
-                    err.friendly = d.message;
-                    throw err;
-                }
-                return d;
-            }))
-            .then(() => this.setState({busy: null, open: false}))
-            .catch(e => this.setState({
+        const key = rowKey(v);
+        this.setState({busy: key, confirming: null, error: null});
+        restoreVersion(this.room(), v)
+            .then(() => this.update({busy: null, open: false}))
+            .catch(e => this.update({
                 busy: null,
-                error: e.friendly || 'Could not put it back — check your connection.'
+                error: e.friendly || 'Could not put it back. Check your connection.'
             }));
+    }
+
+    describe (v) {
+        if (typeof v.v !== 'number') return `${Math.max(1, Math.round((v.size || 0) / 1024))} KB`;
+        const found = this.state.details[rowKey(v)];
+        const d = found && typeof found === 'object' ? found : v;
+        const parts = [d.by ? `by ${d.by}` : null, d.summary || null].filter(Boolean);
+        if (found === 'loading' && !parts.length) return 'Looking…';
+        return parts.length ? parts.join(' · ') : `Version ${v.v}`;
     }
 
     render () {
@@ -178,14 +160,16 @@ class HistoryPanel extends React.Component {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        padding: '5px 11px',
-                        borderRadius: '9px',
+                        height: '34px',
+                        boxSizing: 'border-box',
+                        padding: '0 12px',
+                        borderRadius: 'var(--sq-radius-panel, 10px)',
                         cursor: 'pointer',
-                        background: open ? 'rgba(124,92,255,.22)' : T.card,
-                        border: `1px solid ${open ? T.accent : T.line}`,
-                        color: T.ink,
+                        background: open ? 'var(--sq-menu-bar-control-active)' : 'var(--sq-menu-bar-control)',
+                        border: '1px solid transparent',
+                        color: 'var(--sq-menu-bar-text, #ffffff)',
                         font: 'inherit',
-                        fontSize: '13px',
+                        fontSize: 'var(--sq-text-sm, 14px)',
                         fontWeight: 700
                     }}
                 >
@@ -243,7 +227,7 @@ class HistoryPanel extends React.Component {
                         <div onClick={this.handleListClick}>
                             {versions.map(v => (
                                 <div
-                                    key={v.file}
+                                    key={rowKey(v)}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -257,31 +241,34 @@ class HistoryPanel extends React.Component {
                                             {ago(v.at)}
                                         </div>
                                         <div style={{fontSize: '11px', color: T.faint}}>
-                                            {confirming === v.file ?
-                                                'Everyone here will see it change' :
-                                                `${Math.max(1, Math.round(v.size / 1024))} KB`}
+                                            {this.describe(v)}
                                         </div>
+                                        {confirming === rowKey(v) && (
+                                            <div style={{fontSize: '11px', color: T.faint}}>
+                                                {'Everyone here will see it change'}
+                                            </div>
+                                        )}
                                     </div>
                                     <button
-                                        data-file={v.file}
+                                        data-key={rowKey(v)}
                                         disabled={!!busy}
                                         style={{
                                             padding: '5px 10px',
                                             borderRadius: '8px',
                                             cursor: 'pointer',
-                                            background: confirming === v.file ?
+                                            background: confirming === rowKey(v) ?
                                                 'rgba(124,92,255,.3)' : T.card,
-                                            border: `1px solid ${confirming === v.file ?
+                                            border: `1px solid ${confirming === rowKey(v) ?
                                                 T.accent : T.line}`,
                                             color: T.ink,
                                             font: 'inherit',
                                             fontSize: '12px',
                                             fontWeight: 700,
                                             whiteSpace: 'nowrap',
-                                            opacity: busy && busy !== v.file ? 0.5 : 1
+                                            opacity: busy && busy !== rowKey(v) ? 0.5 : 1
                                         }}
-                                    >{busy === v.file ? 'Putting back…' :
-                                            (confirming === v.file ? 'Yes, put it back' : 'Put back')}</button>
+                                    >{busy === rowKey(v) ? 'Putting back…' :
+                                            (confirming === rowKey(v) ? 'Yes, put it back' : 'Put back')}</button>
                                 </div>
                             ))}
                         </div>

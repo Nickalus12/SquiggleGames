@@ -1,8 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
+process.removeAllListeners('warning');
 
 let pass = 0;
 let fail = 0;
@@ -16,9 +12,7 @@ const ok = (label, cond, detail) => {
     }
 };
 
-const src = fs.readFileSync(path.join(here, 'chat.js'), 'utf8')
-    .replace(/^export default (\{[^}]*\});\s*$/m, 'return $1;');
-const chat = new Function(src)();
+const chat = (await import('./chat.js')).default;
 
 const memoryStorage = () => {
     const data = new Map();
@@ -31,9 +25,14 @@ const memoryStorage = () => {
 
 const make = (opts = {}) => {
     const sent = [];
+    const patched = [];
     const storage = opts.storage || memoryStorage();
-    const store = chat.createChatStore({send: m => sent.push(m), storage});
-    return {store, sent, storage};
+    const patchRoom = opts.patchRoom || (body => {
+        patched.push(body);
+        return Promise.resolve({});
+    });
+    const store = chat.createChatStore({send: m => sent.push(m), storage, patchRoom, label: opts.label});
+    return {store, sent, patched, storage};
 };
 
 const PHRASES = [{id: 'hi', text: 'Hi!'}, {id: 'cool', text: 'That is so cool!'}];
@@ -79,10 +78,10 @@ const row = (id, extra) => Object.assign({
 {
     const {store} = make();
     store.handleHistory({messages: Array.from({length: 205}, (_, i) => row(i + 1))});
-    ok('history is capped at 200', store.getState().messages.length === 200);
+    ok('history keeps the last 50', chat.MAX_MESSAGES === 50 && store.getState().messages.length === 50);
     store.handleMessage(row(999));
     const ids = store.getState().messages.map(m => m.id);
-    ok('the cap drops the oldest row', ids.length === 200 && ids[0] === 7 && ids[199] === 999, ids.slice(0, 2));
+    ok('the cap drops the oldest row', ids.length === 50 && ids[0] === 157 && ids[49] === 999, ids.slice(0, 2));
 }
 
 {
@@ -163,21 +162,22 @@ const row = (id, extra) => Object.assign({
 }
 
 {
-    const {store, sent} = make();
+    const {store, sent, patched} = make();
     store.handleConfig(config());
-    ok('members cannot change settings', store.setOn(false) === false && sent.length === 0);
+    ok('members cannot change settings', store.setOn(false) === false && sent.length === 0 && patched.length === 0);
     ok('members cannot mute', store.setMuted(2, true) === false && sent.length === 0);
     store.handleConfig(config({canModerate: true, mutedUserIds: [3, 'x']}));
     ok('owners get the muted list', store.isMuted(3) && store.getState().mutedUserIds.length === 1);
-    store.setOn(false);
-    ok('the switch sends room-chat-settings', sent[0].type === 'room-chat-settings' && sent[0].on === false);
+    ok('the switch returns true for an owner', store.setOn(false) === true);
+    ok('the switch is a PATCH with chatOn, not a socket frame',
+        sent.length === 0 && patched.length === 1 && patched[0].chatOn === false, patched);
     ok('the switch updates config right away', store.getState().config.on === false);
     store.setMuted(2, true);
     ok('mute sends room-chat-mute',
-        sent[1].type === 'room-chat-mute' && sent[1].userId === 2 && sent[1].muted === true);
+        sent[0].type === 'room-chat-mute' && sent[0].userId === 2 && sent[0].muted === true);
     ok('mute shows right away', store.isMuted(2));
     store.setMuted(2, false);
-    ok('unmute clears it', !store.isMuted(2) && sent[2].muted === false);
+    ok('unmute clears it', !store.isMuted(2) && sent[1].muted === false);
     store.handleConfig(config({canModerate: false}));
     ok('losing owner rights clears the list', store.getState().mutedUserIds.length === 0);
 }
@@ -206,6 +206,68 @@ const row = (id, extra) => Object.assign({
     store.handleConfig(config());
     console.error = quiet;
     ok('a broken view does not stop the store', calls === 1 && !!store.getState().config);
+}
+
+{
+    const {store} = make({patchRoom: () => Promise.reject(new Error('http-403'))});
+    store.handleConfig(config({canModerate: true}));
+    store.setOn(false);
+    await new Promise(r => setTimeout(r, 0));
+    ok('a refused switch puts chat back', store.getState().config.on === true);
+    const bare = chat.createChatStore({send: () => true, storage: null});
+    bare.handleConfig(config({canModerate: true}));
+    ok('no room api means no switch', bare.setOn(false) === false);
+}
+
+{
+    const {store, sent} = make();
+    store.setSelf({handle: 'me', guest: true});
+    store.handleConfig(config());
+    ok('a guest sees quick mode', store.getState().config.mode === 'quick');
+    ok('a guest never sends text', store.sendText('hello') === false && sent.length === 0);
+    ok('a guest can still send a phrase id', store.sendPhrase('hi') === true && sent[0].phrase === 'hi');
+}
+
+{
+    const {store, sent} = make();
+    store.handleConfig(config());
+    ok('free mode before self is known', store.getState().config.mode === 'free');
+    store.setSelf({handle: 'me', childSafe: true});
+    ok('a childSafe self turns the box to phrases', store.getState().config.mode === 'quick');
+    ok('a childSafe self never sends text', store.sendText('hello') === false && sent.length === 0);
+}
+
+{
+    const {store, sent} = make();
+    store.handleConfig(config({locked: true}));
+    const c = store.getState().config;
+    ok('the vocabulary lock is read from config', c.locked === true && c.serverMode === 'free');
+    ok('the vocabulary lock means phrases for everyone', c.mode === 'quick' && store.sendText('hi there') === false);
+    ok('nothing went out under the lock', sent.length === 0);
+    store.handleConfig(config());
+    ok('the lock lifts when the config says so', store.getState().config.locked === false &&
+        store.getState().config.mode === 'free');
+}
+
+{
+    const {store} = make({label: id => (id === 'hi' ? 'Salut !' : null)});
+    store.handleConfig(config({phrases: ['hi', 'cool', 'hi', {id: 'mystery'}]}));
+    const c = store.getState().config;
+    ok('phrase ids take local text', c.phrases.find(p => p.id === 'hi').text === 'Salut !', c.phrases);
+    ok('unknown labels fall back to the table', c.phrases.find(p => p.id === 'cool').text === 'That looks so cool!');
+    ok('duplicate and unknown phrase ids are dropped', c.phrases.length === 2, c.phrases);
+    store.handleMessage(row(1, {phrase: 'hi', text: 'Hi!'}));
+    ok('a phrase message shows local text', store.getState().messages[0].text === 'Salut !');
+}
+
+{
+    const {store} = make();
+    store.handleHistory({messages: [row(1, {withheld: true, text: 'fixed server text'}), row(2)]});
+    const [hidden, shown] = store.getState().messages;
+    ok('a withheld line is marked', hidden.withheld === true && shown.withheld === false);
+    ok('a withheld line shows the hidden copy', hidden.text === chat.WITHHELD_TEXT, hidden.text);
+    store.handleMessage(row(3, {withheld: true, phrase: 'hi'}));
+    ok('a withheld flag never hides a phrase', store.getState().messages[2].withheld === false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

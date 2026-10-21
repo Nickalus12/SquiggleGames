@@ -31,6 +31,11 @@ import customStageSizeReducer, {customStageSizeInitialState} from './custom-stag
 import vmReducer, {vmInitialState} from './vm';
 import vmStatusReducer, {vmStatusInitialState} from './vm-status';
 import workspaceMetricsReducer, {workspaceMetricsInitialState} from './workspace-metrics';
+import worldUiReducer, {worldUiInitialState} from './world-ui';
+import checkerReducer, {checkerInitialState} from './checker';
+import commandPaletteReducer, {commandPaletteInitialState} from './command-palette';
+import focusModeReducer, {focusModeInitialState} from './focus-mode';
+import roomPanelReducer, {roomPanelInitialState} from './room-panel';
 import throttle from 'redux-throttle';
 
 import decks from '../lib/libraries/decks/index.jsx';
@@ -69,7 +74,12 @@ const guiInitialState = {
     tw: twInitialState,
     vm: vmInitialState,
     vmStatus: vmStatusInitialState,
-    workspaceMetrics: workspaceMetricsInitialState
+    workspaceMetrics: workspaceMetricsInitialState,
+    worldUi: worldUiInitialState,
+    checker: checkerInitialState,
+    commandPalette: commandPaletteInitialState,
+    focusMode: focusModeInitialState,
+    roomPanel: roomPanelInitialState
 };
 
 const initPlayer = function (currentState) {
@@ -176,7 +186,12 @@ const guiReducer = combineReducers({
     tw: twReducer,
     vm: vmReducer,
     vmStatus: vmStatusReducer,
-    workspaceMetrics: workspaceMetricsReducer
+    workspaceMetrics: workspaceMetricsReducer,
+    worldUi: worldUiReducer,
+    checker: checkerReducer,
+    commandPalette: commandPaletteReducer,
+    focusMode: focusModeReducer,
+    roomPanel: roomPanelReducer
 });
 
 export {
