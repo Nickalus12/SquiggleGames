@@ -231,8 +231,8 @@ class Overlay {
     setPeerPresence (id, {status, sprite}) {
         const p = this.peers.get(id);
         if (!p) return;
-        if (status !== undefined) p.status = status;
-        if (sprite !== undefined) p.sprite = sprite;
+        if (typeof status !== 'undefined') p.status = status;
+        if (typeof sprite !== 'undefined') p.sprite = sprite;
         this._notify();
     }
 
@@ -305,7 +305,7 @@ class Overlay {
             if (visible) {
                 // Cursor positions arrive at ~15fps; ease toward the newest
                 // point every frame so remote cursors glide instead of step.
-                if (!el._stVisible || p._cx === undefined) {
+                if (!el._stVisible || typeof p._cx === 'undefined') {
                     p._cx = tx;
                     p._cy = ty;
                 } else {
@@ -511,7 +511,7 @@ class Overlay {
 
     _esc (s) {
         const entities = {'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'};
-        return String(s === null || s === undefined ? '' : s).replace(/[<>&"]/g, c => entities[c]);
+        return String(s === null || typeof s === 'undefined' ? '' : s).replace(/[<>&"]/g, c => entities[c]);
     }
 }
 
