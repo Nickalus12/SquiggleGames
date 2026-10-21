@@ -1,16 +1,20 @@
+const PEER_INK_LIGHT = '#ffffff';
+const PEER_INK_DARK = '#10142a';
+const PEER_OUTLINE_BAR = '#ffffff';
+
 const PEER_COLORS = [
-    {id: 'coral', hex: '#e8505b'},
-    {id: 'orange', hex: '#d9700a'},
-    {id: 'amber', hex: '#b88700'},
-    {id: 'lime', hex: '#5f9e1b'},
-    {id: 'green', hex: '#1f9d55'},
-    {id: 'teal', hex: '#0f9488'},
-    {id: 'cyan', hex: '#0e8fb3'},
-    {id: 'blue', hex: '#3b7ddd'},
-    {id: 'indigo', hex: '#6366f1'},
-    {id: 'violet', hex: '#9b5de5'},
-    {id: 'magenta', hex: '#c94fb5'},
-    {id: 'rose', hex: '#e0457b'}
+    {id: 'coral', hex: '#e8505b', ink: PEER_INK_DARK},
+    {id: 'orange', hex: '#d9700a', ink: PEER_INK_DARK},
+    {id: 'amber', hex: '#b88700', ink: PEER_INK_DARK},
+    {id: 'lime', hex: '#5f9e1b', ink: PEER_INK_DARK},
+    {id: 'green', hex: '#1f9d55', ink: PEER_INK_DARK},
+    {id: 'teal', hex: '#0f9488', ink: PEER_INK_DARK},
+    {id: 'cyan', hex: '#0e8fb3', ink: PEER_INK_DARK},
+    {id: 'blue', hex: '#3f82e3', ink: PEER_INK_DARK},
+    {id: 'indigo', hex: '#5b5fe8', ink: PEER_INK_LIGHT},
+    {id: 'violet', hex: '#9152e0', ink: PEER_INK_LIGHT},
+    {id: 'magenta', hex: '#c94fb5', ink: PEER_INK_DARK},
+    {id: 'rose', hex: '#e0457b', ink: PEER_INK_DARK}
 ];
 
 const PEER_SHAPES = [
@@ -30,7 +34,6 @@ const PEER_SHAPES = [
     }
 ];
 
-const PEER_INK = '#ffffff';
 const PEER_SLOTS = PEER_COLORS.length * PEER_SHAPES.length;
 
 const hashPeerId = id => {
@@ -50,7 +53,8 @@ const styleForSlot = slot => {
         slot,
         color: color.id,
         hex: color.hex,
-        ink: PEER_INK,
+        ink: color.ink,
+        outlineOnBar: PEER_OUTLINE_BAR,
         shape: shape.id,
         d: shape.d,
         fillRule: shape.fillRule
@@ -66,32 +70,30 @@ const assignPeerStyles = ids => {
     const ordered = unique
         .map(id => ({id, slot: peerSlot(id)}))
         .sort((a, b) => (a.slot - b.slot) || (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)));
+    const shapeCap = Math.max(1, Math.ceil(ordered.length / PEER_SHAPES.length));
     const usedSlots = new Set();
-    const usedColors = new Set();
+    const colorCount = new Array(PEER_COLORS.length).fill(0);
+    const shapeCount = new Array(PEER_SHAPES.length).fill(0);
+    const colorCap = Math.max(1, Math.ceil(ordered.length / PEER_COLORS.length));
     const result = {};
     for (const {id, slot} of ordered) {
         let chosen = -1;
-        if (usedColors.size < PEER_COLORS.length) {
-            for (let step = 0; step < PEER_SLOTS; step++) {
-                const candidate = (slot + step) % PEER_SLOTS;
-                if (!usedSlots.has(candidate) && !usedColors.has(candidate % PEER_COLORS.length)) {
-                    chosen = candidate;
-                    break;
-                }
+        for (let step = 0; step < PEER_SLOTS && chosen < 0; step++) {
+            const candidate = (slot + step) % PEER_SLOTS;
+            const color = candidate % PEER_COLORS.length;
+            const shape = Math.floor(candidate / PEER_COLORS.length);
+            if (!usedSlots.has(candidate) && colorCount[color] < colorCap && shapeCount[shape] < shapeCap) {
+                chosen = candidate;
             }
         }
-        if (chosen < 0) {
-            for (let step = 0; step < PEER_SLOTS; step++) {
-                const candidate = (slot + step) % PEER_SLOTS;
-                if (!usedSlots.has(candidate)) {
-                    chosen = candidate;
-                    break;
-                }
-            }
+        for (let step = 0; step < PEER_SLOTS && chosen < 0; step++) {
+            const candidate = (slot + step) % PEER_SLOTS;
+            if (!usedSlots.has(candidate)) chosen = candidate;
         }
         if (chosen < 0) chosen = slot;
         usedSlots.add(chosen);
-        usedColors.add(chosen % PEER_COLORS.length);
+        colorCount[chosen % PEER_COLORS.length]++;
+        shapeCount[Math.floor(chosen / PEER_COLORS.length)]++;
         result[id] = styleForSlot(chosen);
     }
     return result;
@@ -99,7 +101,9 @@ const assignPeerStyles = ids => {
 
 export {
     PEER_COLORS,
-    PEER_INK,
+    PEER_INK_DARK,
+    PEER_INK_LIGHT,
+    PEER_OUTLINE_BAR,
     PEER_SHAPES,
     PEER_SLOTS,
     assignPeerStyles,
