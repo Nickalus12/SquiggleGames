@@ -27,6 +27,8 @@ import {lockedNames} from '../together2/vocab-lock.js';
 import {BAD_FRAME_TEXT, RELOAD_TEXT} from '../together2/texts.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import {MINE, askKeepWork} from './keep-work.js';
+import {getWorld} from '../world/world.js';
+import {createTilemapSync} from '../world/tilemap-sync.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
 import {DRIFT_REPAIR_MAX, planDriftRepair} from './drift.js';
@@ -1164,7 +1166,7 @@ const applySnapshot = async msg => {
     }
     // Never yank the project while the user is mid-paint — hold the newest
     // snapshot and apply it when they leave the costumes tab.
-    if (state.localTab === 1) {
+    if (state.localTab === 1 && !msg._now) {
         state.pendingSnapshotMsg = carrySnapshotFlags(state.pendingSnapshotMsg, msg);
         return;
     }
@@ -2728,8 +2730,18 @@ const ownVmActionFits = msg => {
     return true;
 };
 
-const replayOwn = msg => {
+const replayTilemap = (msg, tiles) => {
+    const grid = tiles.world.level(msg.level);
+    if (!grid) return false;
+    const base = grid.v || 0;
+    if (!tiles.sync.apply(msg).ok) return false;
+    client.send(Object.assign({}, msg, {base}));
+    return true;
+};
+
+const replayOwn = (msg, tiles) => {
     const self = overlay.self || {};
+    if (msg.type === 'tilemap-patch') return replayTilemap(msg, tiles);
     if (msg.type === 'block-event' && ownBlockEventFits(msg)) {
         applyBlockEvent(msg);
     } else if (msg.type === 'kit-set' && (!msg.targetId || findTargetByName(msg.targetId))) {
@@ -2745,8 +2757,10 @@ const replayOwn = msg => {
 
 const keepMine = async head => {
     const held = client.takeQueue();
-    if (head) await applySnapshot(head);
+    if (head) await applySnapshot(Object.assign(head, {_now: true}));
     else replayQueuedEvents();
+    const world = held.some(msg => msg.type === 'tilemap-patch') ? getWorld(state.vm.runtime) : null;
+    const tiles = world && {world, sync: createTilemapSync({world, send: () => null})};
     let kept = 0;
     let total = 0;
     for (const msg of held) {
@@ -2756,8 +2770,9 @@ const keepMine = async head => {
             continue;
         }
         total++;
-        if (replayOwn(msg)) kept++;
+        if (replayOwn(msg, tiles)) kept++;
     }
+    if (tiles) tiles.sync.dispose();
     client.releaseQueue();
     if (!total) return;
     scheduleSnapshot(true);
