@@ -1,5 +1,5 @@
 import {SCENES_KEY, MAX_SCENES, MAX_SPAWNS, readScenes, writeScenes} from './storage.js';
-import {attachWhenReady, getWorld, peekWorld} from './world.js';
+import {attachWhenReady, getWorld, peekWorld, seamFor} from './world.js';
 import {preserveExtensionStorage} from '../collab/project-seam.js';
 
 const ANY = '_any_';
@@ -39,7 +39,8 @@ const createScenes = runtime => {
         busy: null,
         tickers: new Set(),
         effect: null,
-        touched: new Set()
+        touched: new Set(),
+        unhook: null
     };
 
     const data = () => readScenes(runtime);
@@ -75,10 +76,17 @@ const createScenes = runtime => {
         const dt = runtime.currentStepTime || (1000 / 30);
         Array.from(state.tickers).forEach(fn => fn(dt));
     };
-    runtime.on('AFTER_EXECUTE', tick);
+    const hookTick = () => {
+        if (state.unhook) return true;
+        const seam = seamFor(runtime);
+        if (!seam) return false;
+        state.unhook = seam.onAfterExecute(tick);
+        return true;
+    };
+    hookTick();
 
     const waitFor = (done, limit) => new Promise(resolve => {
-        if (done(0)) {
+        if (done(0) || !hookTick()) {
             resolve();
             return;
         }
@@ -94,8 +102,10 @@ const createScenes = runtime => {
     });
 
     const drawables = () => {
-        const renderer = runtime.renderer;
-        return renderer && Array.isArray(renderer._drawList) ? renderer._drawList.slice() : [];
+        const ids = runtime.targets.filter(target => typeof target.drawableID === 'number')
+            .map(target => target.drawableID);
+        const world = peekWorld(runtime);
+        return world ? ids.concat(world.ownDrawables()) : ids;
     };
 
     const ownEffect = (id, effect) => {
@@ -209,11 +219,12 @@ const createScenes = runtime => {
 
     const phase = (name, scene) => emitter.emit('phase', {phase: name, scene: scene.name});
 
-    const perform = async (to, options) => {
+    const perform = async (id, options) => {
         const opts = options || {};
         const transition = TRANSITIONS.indexOf(opts.transition) === -1 ? 'cut' : opts.transition;
         const scenes = data();
-        const scene = scenes.scenes[to];
+        const scene = scenes.scenes.find(item => item.id === id);
+        if (!scene) return null;
         const from = current().scene;
         if (from) {
             phase('ends', from);
@@ -246,7 +257,7 @@ const createScenes = runtime => {
         applySpawns(scene, scenes.allScenes);
         phase('starts', scene);
         startHats(HAT_STARTS, 'starting', scene.name);
-        emitter.emit('current', {index: to, scene});
+        emitter.emit('current', {index: list().findIndex(item => item.id === scene.id), scene});
         await ramp(transition, 1, 0);
         clearEffect();
         return {scene, callerLeaves};
@@ -255,7 +266,8 @@ const createScenes = runtime => {
     const switchTo = (key, options) => {
         const to = indexOf(key);
         if (to === -1) return Promise.resolve(null);
-        const run = (state.busy || Promise.resolve()).then(() => perform(to, options));
+        const id = list()[to].id;
+        const run = (state.busy || Promise.resolve()).then(() => perform(id, options));
         const tail = run.catch(() => null);
         state.busy = tail;
         tail.then(() => {

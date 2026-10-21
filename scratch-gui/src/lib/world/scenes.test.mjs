@@ -12,7 +12,7 @@ vmLog.info = () => {};
 globalThis.document = {hidden: true};
 
 const {installWorldSeams} = await import('./seams.js');
-const {getWorld} = await import('./world.js');
+const {getWorld, peekWorld} = await import('./world.js');
 const {getScenes, PHASES, HALF_MS} = await import('./scenes.js');
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {default: SquiggleScenesBlocks} = await import('../libraries/extensions/squigglescenes/index.js');
@@ -208,6 +208,15 @@ ok('the leaving caller thread is stopped after', !runtime.threads.some(t => t.ta
 
 section('transitions');
 effects.length = 0;
+const kitWorld = peekWorld(runtime);
+const ownDrawables = kitWorld.ownDrawables;
+const kitIds = new Set();
+kitWorld.ownDrawables = () => {
+    const ids = ownDrawables();
+    ids.forEach(id => kitIds.add(id));
+    return ids;
+};
+const targetIds = new Set(runtime.targets.map(target => target.drawableID));
 r = await runUntil(ext.switchTo({SCENE: 'One', FX: 'fade'}, {target: stage, thread: null}), 120);
 const bright = effects.filter(e => e.effect === 'brightness');
 ok('fade darkens through brightness', r.finished && bright.some(e => e.value <= -99));
@@ -215,6 +224,11 @@ const lastById = new Map();
 bright.forEach(e => lastById.set(e.id, e.value));
 ok('fade restores every drawable', Array.from(lastById.values()).every(v => v === 0),
     Array.from(lastById.entries()).filter(e => e[1] !== 0));
+kitWorld.ownDrawables = ownDrawables;
+ok('fade touches only target and kit drawables', bright.every(e => targetIds.has(e.id) || kitIds.has(e.id)),
+    bright.filter(e => !targetIds.has(e.id) && !kitIds.has(e.id)).map(e => e.id));
+ok('fade reaches the tile chunks the world owns', kitIds.size > 0 && Array.from(kitIds).every(id => lastById.has(id)),
+    Array.from(kitIds));
 const steps = Math.ceil(HALF_MS / (runtime.currentStepTime || 33));
 ok('a fade takes two half ramps of frames', bright.length >= steps * 2, {count: bright.length, steps});
 effects.length = 0;
@@ -242,6 +256,14 @@ ok('add captures backdrop and shown sprites', added.name === 'Boss Room' && adde
 ok('rename', scenes.rename('scene4', 'Lair').name === 'Lair');
 ok('move to the front', scenes.move('Lair', 0) && scenes.list()[0].name === 'Lair');
 ok('remove', scenes.remove('Lair') && scenes.list().length === 3);
+scenes.add({name: 'Temp'});
+const first = scenes.switchTo('One', {transition: 'fade'});
+const queued = scenes.switchTo('Temp');
+scenes.remove('Temp');
+r = await runUntil(first, 120);
+const gone = await runUntil(queued, 10);
+ok('a queued switch to a scene removed while it waits does nothing', r.finished && gone.finished &&
+    gone.value === null && ext.currentScene({PROP: 'name'}) === 'One', gone);
 ok('all scenes toggle', scenes.setAllScenes('Coin', true) && scenes.allScenes().join() === 'Hud,Coin');
 const saved = JSON.parse(vm.toJSON());
 ok('scenes save in runtime extension storage', saved.extensionStorage.squigglescenes.scenes.length === 3 &&

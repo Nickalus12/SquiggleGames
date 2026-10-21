@@ -507,7 +507,8 @@ const createView3d = (runtime, world, options) => {
             link.disposers.push(
                 seam.onBeforeExecute(onBefore),
                 seam.onAfterExecute(onAfter),
-                chainHook(seam, 'drawableProperties', hookProperties)
+                chainHook(seam, 'drawableProperties', hookProperties),
+                world.addDrawables(() => gpu.drawable)
             );
             if (runtime.renderer) link.disposers.push(wrapEffect(runtime.renderer));
             return view;

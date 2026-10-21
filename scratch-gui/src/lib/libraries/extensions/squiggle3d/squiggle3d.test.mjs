@@ -98,6 +98,7 @@ ok('the viewer menu lists me and the sprites', JSON.stringify(ext.viewerMenu()) 
     '[{"text":"me","value":"_myself_"},"Hero","Coin"]');
 
 section('opcodes');
+ok('nothing is owned before the view shows', world.ownDrawables().length === 0);
 ext.showView({VIEWER: '_myself_'}, util(runtime.getTargetForStage()));
 ok('show from me on the stage does nothing', ext.viewOn() === false);
 ext.showView({VIEWER: 'Nobody'}, util(hero));
@@ -131,6 +132,8 @@ runtime._step();
 await flush();
 runtime._step();
 ok('sprite in my sights reports the coin ahead', ext.spriteInSights() === 'Coin', ext.spriteInSights());
+ok('the 3D drawable is listed with the drawables kits own', world.ownDrawables().length === 1 &&
+    typeof world.ownDrawables()[0] === 'number' && runtime.targets.every(t => t.drawableID !== world.ownDrawables()[0]));
 ext.showMeAs({LOOK: 'nothing'}, util(coin));
 ok('nothing leaves the sights empty', ext.spriteInSights() === '');
 ext.mouseTurn({ONOFF: 'on'});

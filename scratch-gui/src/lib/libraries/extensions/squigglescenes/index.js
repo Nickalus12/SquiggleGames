@@ -1,3 +1,4 @@
+import log from '../../../log.js';
 import {registerKit} from '../../../kits/registry.js';
 import {KIT_COLORS} from '../../../themes/tokens.js';
 import {ANY, getScenes} from '../../../world/scenes.js';
@@ -25,7 +26,7 @@ class SquiggleScenesBlocks {
     mountStrip () {
         import('../../../../components/scene-strip/mount.jsx')
             .then(mod => mod.installSceneStrip({runtime: this.runtime, controller: this.scenes}))
-            .catch(() => null);
+            .catch(error => log.warn('Squiggle scene strip did not load', error));
     }
 
     getInfo () {
