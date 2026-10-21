@@ -11,13 +11,13 @@ import {
     gameValue as readGameValue,
     playerValue as readPlayerValue
 } from '../../../together2/game-state.js';
+import menuIconURI from './together-small.svg';
 
-// eslint-disable-next-line max-len
-const menuIconURI = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI4IiBmaWxsPSIjOTk2NmZmIi8+PGNpcmNsZSBjeD0iMTMiIGN5PSIxNCIgcj0iNSIgZmlsbD0iI2ZmZiIvPjxjaXJjbGUgY3g9IjI3IiBjeT0iMTQiIHI9IjUiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNNS41IDMxYzAtNC4yIDMuNC03LjUgNy41LTcuNWgwYzEuNCAwIDIuNy40IDMuOCAxLjFDMTggMjIuOSAxOS45IDIyIDIyIDIyaDBjNC4xIDAgNy41IDMuMyA3LjUgNy41VjMzSDUuNXYtMnoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
+const isMissing = v => v === null || typeof v === 'undefined';
 
-const str = v => (v == null ? '' : String(v));
+const str = v => (isMissing(v) ? '' : String(v));
 
-const getNet = () => (typeof window !== 'undefined' ? window.SquiggleNet : null);
+const getNet = () => (typeof window === 'undefined' ? null : window.SquiggleNet);
 
 /*
  * How much this extension is allowed to put on the wire.
@@ -330,7 +330,7 @@ class TogetherBlocks {
             this._queueIncoming(name, str(msg.value));
         } else if (msg.action === 'var') {
             const name = str(msg.name);
-            if (name) this._shared[name] = msg.value == null ? '' : msg.value;
+            if (name) this._shared[name] = isMissing(msg.value) ? '' : msg.value;
         }
     }
 
@@ -721,7 +721,7 @@ class TogetherBlocks {
         if (!name) return;
         // Preserve numbers from numeric inputs so math reporters stay numeric.
         let value = args.VALUE;
-        if (value == null) value = '';
+        if (isMissing(value)) value = '';
         else if (typeof value !== 'number' && typeof value !== 'boolean') value = str(value);
         // Skip no-op writes — cuts socket + disk work when a loop sets the same value.
         if (this._shared[name] === value) return;
@@ -812,7 +812,7 @@ class TogetherBlocks {
         const name = str(args.NAME);
         if (!name) return '';
         const v = this._shared[name];
-        return v == null ? '' : v;
+        return isMissing(v) ? '' : v;
     }
 
     myPlayerName () {
