@@ -836,6 +836,55 @@ await section('the last colour and cursor ride on later presence', async () => {
         sent.slice(before).filter(m => m && m.type === 'presence'));
 });
 
+await section('presence names the editor tab', async () => {
+    const fx = await fixture();
+    const {sent} = fx;
+    await welcome2(fx);
+    const said = sent.filter(m => m && m.type === 'presence');
+    ok('the welcome presence says code', said.length === 1 && said[0].tab === 'code', said);
+    fx.overlay.peers.set('pal', {id: 'pal'});
+    const tabs = [false, true, false].map(on => ({getAttribute: () => (on ? 'true' : 'false')}));
+    const find = globalThis.document.querySelectorAll;
+    globalThis.document.querySelectorAll = () => tabs;
+    let before = sent.length;
+    await settle(1500);
+    const painting = sent.slice(before).filter(m => m && m.type === 'presence');
+    ok('a switch to costumes sends it', painting.length === 1 && painting[0].tab === 'costumes', painting);
+    before = sent.length;
+    fx.collab.setAppearance({color: '#22aa66', style: 'heart'});
+    fx.emit('peer-joined', {peer: {id: 'pal', name: 'Pal', color: '#123456'}});
+    fx.emit('welcome', welcome({proto: 2, version: 1, hasSnapshot: true}));
+    await settle();
+    const later = sent.slice(before).filter(m => m && m.type === 'presence');
+    ok('appearance, the hello and a later welcome all carry it',
+        later.length === 3 && later.every(m => m.tab === 'costumes'), later);
+    globalThis.document.querySelectorAll = find;
+    fx.overlay.peers.clear();
+});
+
+await section('a snapshot load marks the sync chip reloading', async () => {
+    const fx = await fixture();
+    const marks = [];
+    fx.client.syncReloading = on => marks.push(on);
+    await welcome2(fx);
+    const text = project(['Fox']);
+    const sha = await publish(fx, text);
+    let release = null;
+    fx.hold = {match: new RegExp(`/pj/${sha}$`), wait: new Promise(resolve => {
+        release = resolve;
+    })};
+    fx.emit('welcome', welcome({proto: 2, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version: 9,
+        snap: {sha, size: text.length, version: 9, atSeq: 0, hashes: {}}}));
+    ok('reloading starts with the welcome', marks.join() === 'true', marks);
+    release();
+    ok('the project loads', await waitFor(() => fx.has('Fox')));
+    ok('and reloading ends once', await waitFor(() => marks.join() === 'true,false'), marks);
+    fx.hold = null;
+    const bad = 'b'.repeat(64);
+    fx.emit('snapshot', {type: 'snapshot', sha: bad, size: 10, version: 10});
+    ok('a load that fails ends reloading too', await waitFor(() => marks.join() === 'true,false,true,false'), marks);
+});
+
 await section('a refused room title says so', async () => {
     const fx = await fixture();
     const {calls} = fx;

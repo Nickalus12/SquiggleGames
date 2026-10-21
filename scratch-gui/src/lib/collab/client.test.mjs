@@ -726,5 +726,71 @@ await section('a first join answered with replay', () => {
     client.disconnect();
 });
 
+await section('field and viewport are lossy', () => {
+    const env = setup();
+    const {client} = env;
+    const ws = v2Room(env);
+    ws.readyState = 3;
+    ws.onclose({code: 1006, reason: ''});
+    const queued = client._queue.length;
+    client.send({type: 'field', targetId: 't', blockId: 'b', value: 'x'});
+    client.send({type: 'viewport', x: 0, y: 0, scale: 1});
+    ok('offline they are dropped, not queued', client._queue.length === queued, client._queue);
+    client.send({type: 'drag', phase: 'move', blockId: 'b'});
+    ok('a drag still waits for the socket', client._queue.length === queued + 1 &&
+        client._queue[queued].type === 'drag', client._queue);
+    client.disconnect();
+});
+
+await section('sync state', () => {
+    const env = setup();
+    const {client} = env;
+    const states = [];
+    client.on('sync-state', m => states.push(`${m.state}:${m.pending}`));
+    let ws = env.connect('sync');
+    ws.open();
+    ok('an open socket before its welcome is offline', client.syncState.state === 'offline', client.syncState);
+    deliver(ws, v2Welcome({rs: 10, replay: false}));
+    ok('a welcome with nothing to replay is synced', states.join() === 'synced:0' &&
+        client.syncState.state === 'synced', states);
+    client.syncReloading(true);
+    client.syncReloading(true);
+    ok('a snapshot reload says reloading once', states.join() === 'synced:0,reloading:0', states);
+    client.syncReloading(false);
+    ok('and synced when it is done', states.join() === 'synced:0,reloading:0,synced:0', states);
+    states.length = 0;
+    ws.readyState = 3;
+    ws.onclose({code: 1006, reason: ''});
+    client.send({type: 'block-event', event: {type: 'move'}});
+    ok('a dropped socket is offline', states.join() === 'offline:0', states);
+    ok('the getter counts what waits', client.syncState.state === 'offline' && client.syncState.pending === 1,
+        client.syncState);
+    client._clearReconnect();
+    client._open();
+    ws = env.last();
+    ws.open();
+    states.length = 0;
+    deliver(ws, v2Welcome({rs: 13, replay: true}));
+    ok('a replay welcome with frames to come is catching up', states.join() === 'catching-up:0' &&
+        client.rs === 10, {states, rs: client.rs});
+    deliver(ws, {type: 'block-event', from: 3, rs: 11, event: {type: 'a'}});
+    client.syncReloading(true);
+    client.syncReloading(false);
+    deliver(ws, {type: 'block-event', from: 3, rs: 12, event: {type: 'b'}});
+    ok('a reload mid replay goes back to catching up',
+        states.join() === 'catching-up:0,reloading:0,catching-up:0', states);
+    deliver(ws, {type: 'block-event', from: 3, rs: 13, event: {type: 'c'}});
+    ok('the frame at the welcome rs is synced', states[states.length - 1] === 'synced:0', states);
+    states.length = 0;
+    deliver(ws, v2Welcome({rs: 30, replay: false, behind: true}));
+    deliver(ws, v2Welcome({rs: 35, replay: true, behind: true}));
+    ok('a behind welcome waits on no frames', states.length === 0 && client.syncState.state === 'synced', states);
+    deliver(ws, v2Welcome({rs: 40, replay: true}));
+    ok('a replay welcome with frames to come after synced catches up', states.join() === 'catching-up:0', states);
+    deliver(ws, {type: 'welcome', id: 9, color: '#fff'});
+    ok('a v1 welcome has no replay to wait on', states.join() === 'catching-up:0,synced:0', states);
+    client.disconnect();
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
