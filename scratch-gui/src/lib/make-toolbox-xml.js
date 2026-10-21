@@ -799,11 +799,11 @@ const xmlClose = '</xml>';
  * @param {?string} backdropName - The name of the default selected backdrop dropdown.
  * @param {?string} soundName -  The name of the default selected sound dropdown.
  * @param {?object} colors - The colors for the theme.
- * @param {?string} mode - 'rules' for the Game Rules sprite, anything else for a device sprite.
  * @returns {string} - a ScratchBlocks-style XML document for the contents of the toolbox.
  */
 const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categoriesXML = [],
-    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors, mode) {
+    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors, ...modeArgs) {
+    const [mode] = modeArgs;
     isStage = isInitialSetup || isStage;
     const gap = [categorySeparator];
     const rulesMode = mode === MODE_RULES && !isStage;

@@ -16,7 +16,7 @@ const CONTENT_TYPES = Object.freeze({
     ogg: 'audio/ogg'
 });
 
-const MD5EXT = /^[0-9a-f]{32}\.[a-z0-9]{2,5}$/;
+const MD5EXT = new RegExp(`^[0-9a-f]{32}\\.(${Object.keys(CONTENT_TYPES).join('|')})$`);
 
 const snapshotError = (code, detail) => {
     const error = new Error(`snapshot ${code}${detail ? `: ${detail}` : ''}`);
@@ -25,7 +25,7 @@ const snapshotError = (code, detail) => {
 };
 
 const snapshotFrame = fields => {
-    const frame = {type: 'snapshot'};
+    const frame = {type: 'snapshot', atSeq: 0};
     SNAPSHOT_FIELDS.forEach(key => {
         if (fields && typeof fields[key] !== 'undefined' && fields[key] !== null) frame[key] = fields[key];
     });
@@ -72,12 +72,57 @@ const streamBytes = (bytes, transform) => new Response(
 ).arrayBuffer()
     .then(buffer => new Uint8Array(buffer));
 
-const gzip = text => streamBytes(toBytes(text), new CompressionStream('gzip'));
+const CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c >>> 0;
+    }
+    return table;
+})();
+
+const crc32 = bytes => {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+};
+
+const STORED_BLOCK = 0xffff;
+
+const storedGzip = bytes => {
+    const blocks = Math.max(1, Math.ceil(bytes.length / STORED_BLOCK));
+    const out = new Uint8Array(10 + bytes.length + (blocks * 5) + 8);
+    out.set([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]);
+    let at = 10;
+    for (let b = 0; b < blocks; b++) {
+        const start = b * STORED_BLOCK;
+        const len = Math.min(STORED_BLOCK, bytes.length - start);
+        out[at] = b === blocks - 1 ? 1 : 0;
+        out[at + 1] = len & 0xff;
+        out[at + 2] = len >>> 8;
+        out[at + 3] = ~len & 0xff;
+        out[at + 4] = (~len >>> 8) & 0xff;
+        out.set(bytes.subarray(start, start + len), at + 5);
+        at += 5 + len;
+    }
+    const view = new DataView(out.buffer);
+    view.setUint32(at, crc32(bytes), true);
+    view.setUint32(at + 4, bytes.length >>> 0, true);
+    return out;
+};
+
+const gzip = text => {
+    const bytes = toBytes(text);
+    if (typeof CompressionStream === 'undefined') return Promise.resolve(storedGzip(bytes));
+    return streamBytes(bytes, new CompressionStream('gzip'));
+};
 
 const isGzip = bytes => bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 
 const gunzipText = bytes => {
     const raw = toBytes(bytes);
+    if (isGzip(raw) && typeof DecompressionStream === 'undefined') return Promise.reject(snapshotError('no-gunzip'));
     const plain = isGzip(raw) ? streamBytes(raw, new DecompressionStream('gzip')) : Promise.resolve(raw);
     return plain.then(out => new TextDecoder().decode(out));
 };
@@ -138,7 +183,7 @@ const createSnapshotHttp = ({slug, base, fetchImpl, concurrency}) => {
     const putAsset = asset => {
         const bytes = toBytes(asset.data);
         if (bytes.length > ASSET_MAX_BYTES) return Promise.reject(snapshotError('asset-too-big', asset.md5ext));
-        return run(`/api/assets/${asset.md5ext}`, {
+        return run(`/api/assets/${asset.md5ext}?room=${encodeURIComponent(slug)}`, {
             method: 'PUT',
             headers: {'content-type': CONTENT_TYPES[asset.dataFormat] || 'application/octet-stream'},
             body: bytes
@@ -239,6 +284,7 @@ const attachAssetStore = (storage, http) => {
 
 export {
     ASSET_MAX_BYTES,
+    MD5EXT,
     PROJECT_MAX_BYTES,
     SNAPSHOT_FIELDS,
     attachAssetStore,
@@ -247,5 +293,6 @@ export {
     gzip,
     projectAssets,
     sha256Hex,
-    snapshotFrame
+    snapshotFrame,
+    storedGzip
 };

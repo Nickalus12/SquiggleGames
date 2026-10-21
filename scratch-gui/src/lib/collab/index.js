@@ -18,9 +18,17 @@ import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
 import {installProjectSeam} from './project-seam.js';
+import log from '../log';
 import {driftedTargets, projectHashes} from './hash.js';
 import {showPortabilityNote} from '../../components/squiggle-only-notice';
-import {attachAssetStore, createSnapshotHttp, projectAssets, sha256Hex, snapshotFrame} from './snapshot-http.js';
+import {
+    MD5EXT,
+    attachAssetStore,
+    createSnapshotHttp,
+    projectAssets,
+    sha256Hex,
+    snapshotFrame
+} from './snapshot-http.js';
 
 /*
  * Small preferences that belong to the person rather than the project, kept
@@ -69,7 +77,7 @@ const state = {
     pendingSpriteInfo: null, // trailing sprite-info so the final drag position always lands
     spriteInfoTimer: null,
     lastPresence: {status: null, sprite: null, sentAt: 0},
-    lastSnapshotKey: null, // dedup — skip re-broadcasting identical project state
+    lastSnapshotKey: null,
     snapshotRef: 0,
     unackedSnapshots: [],
     sentSnapshotKey: null,
@@ -229,8 +237,6 @@ const exportAddedSprite = target => {
         .then(() => ({sprite: state.vm.toJSON(target.id), format: 'json'}));
 };
 
-const MD5EXT = /^([0-9a-f]{32})\.([a-z0-9]{2,5})$/;
-
 const md5extOf = (asset, dataFormat) => `${asset.assetId}.${dataFormat}`.toLowerCase();
 
 const sendAssetAction = (msg, asset, dataFormat) => {
@@ -239,10 +245,13 @@ const sendAssetAction = (msg, asset, dataFormat) => {
         return;
     }
     const md5ext = md5extOf(asset, dataFormat);
+    if (!MD5EXT.test(md5ext)) {
+        scheduleSnapshot(false);
+        return;
+    }
     state.snapshotHttp.uploadAssets([{md5ext, dataFormat, data: asset.data}])
         .then(() => client.send(Object.assign(msg, {md5ext})), e => {
-            // eslint-disable-next-line no-console
-            console.error('[collab] asset upload failed', e && e.code, e && e.status);
+            log.error('[collab] asset upload failed', e && e.code, e && e.status);
             scheduleSnapshot(false);
         });
 };
@@ -253,9 +262,11 @@ const remoteAsset = (msg, assetType, fmt) => {
         const bytes = new Uint8Array(bufferFromB64(msg.data));
         return Promise.resolve(storage.createAsset(assetType, fmt, bytes, null, true));
     }
-    const match = typeof msg.md5ext === 'string' && msg.md5ext.match(MD5EXT);
-    if (!match) return Promise.reject(new Error('asset action without data or md5ext'));
-    return Promise.resolve(storage.load(assetType, match[1], match[2])).then(asset => {
+    if (typeof msg.md5ext !== 'string' || !MD5EXT.test(msg.md5ext)) {
+        return Promise.reject(new Error('asset action without data or md5ext'));
+    }
+    const [assetId, ext] = msg.md5ext.split('.');
+    return Promise.resolve(storage.load(assetType, assetId, ext)).then(asset => {
         if (!asset) throw new Error(`asset ${msg.md5ext} not found`);
         return asset;
     });
@@ -653,8 +664,6 @@ const readProject = async () => {
         const json = state.vm.toJSON();
         return {json, key: await sha256Hex(json)};
     }
-    // Ask JSZip for base64 directly — skips the blob -> FileReader -> b64
-    // copy chain (one less multi-MB pass on the main thread per snapshot).
     const b64 = await zipProject();
     return {b64, key: b64};
 };
@@ -676,8 +685,7 @@ const snapshotUploadFailed = (e, cacheOnly) => {
         overlay.banner(TOO_BIG_TEXT, {kind: 'update'});
         return;
     }
-    // eslint-disable-next-line no-console
-    console.error('[collab] snapshot upload failed', e && e.code, e && e.status);
+    log.error('[collab] snapshot upload failed', e && e.code, e && e.status);
     retrySnapshotLater(cacheOnly);
 };
 
@@ -703,7 +711,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         if (!state.active || state.applyingRemote) return;
         const force = state.forceNextSnapshot === true;
         const reset = cacheOnly !== true && state.resetNextSnapshot === true;
-        if (!force && !reset && key === state.lastSnapshotKey) return; // nothing actually changed
+        if (!force && !reset && key === state.lastSnapshotKey) return;
         if (!force && !reset && cacheOnly === true && key === state.sentSnapshotKey &&
             state.sentSnapshotGen === client.generation) return;
         const basedOn = state.roomVersion;
@@ -728,7 +736,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         const urgent = state.urgentSnapshot === true;
         state.urgentSnapshot = false;
         const fields = {ref, cacheOnly: cacheOnly === true, basedOn, force, reset};
-        if (typeof client.rs === 'number') fields.atSeq = client.rs;
+        fields.atSeq = typeof client.rs === 'number' ? client.rs : 0;
         client.send(uploaded ?
             snapshotFrame(Object.assign(fields, uploaded)) :
             Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
@@ -953,8 +961,7 @@ const rescueLocalProject = async (why, incomingKey) => {
         try {
             return await rescueHttpProject(why, incomingKey);
         } catch (e) {
-            // eslint-disable-next-line no-console
-            console.error('[collab] rescue save failed', e);
+            log.error('[collab] rescue save failed', e);
             return null;
         }
     }
@@ -962,8 +969,7 @@ const rescueLocalProject = async (why, incomingKey) => {
     try {
         b64 = await state.vm.saveProjectSb3('base64');
     } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] rescue save failed', e);
+        log.error('[collab] rescue save failed', e);
         return null;
     }
     if (b64 === incomingKey || b64 === state.rescuedB64) return b64;
@@ -1998,8 +2004,7 @@ const applyExtensionAdd = id => {
     try {
         manager.loadExtensionIdSync(id);
     } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] extension add failed', id, e);
+        log.error('[collab] extension add failed', id, e);
     } finally {
         state.installingRemote--;
     }
@@ -2045,8 +2050,7 @@ const applyCostumeAdd = msg => {
         return state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version);
     })
         .catch(e => {
-            // eslint-disable-next-line no-console
-            console.error('[collab] costume install failed', e);
+            log.error('[collab] costume install failed', e);
         });
 };
 
@@ -2063,8 +2067,7 @@ const applySoundAdd = msg => {
         return state.vm.addSound(soundObj, target.id);
     })
         .catch(e => {
-            // eslint-disable-next-line no-console
-            console.error('[collab] sound install failed', e);
+            log.error('[collab] sound install failed', e);
         });
 };
 

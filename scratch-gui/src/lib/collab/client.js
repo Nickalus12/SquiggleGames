@@ -188,7 +188,9 @@ class CollabClient {
             if (gen !== this._openGen || !this.ws || this.ws.readyState !== 1) return;
             try {
                 this.ws.send(JSON.stringify({type: 'ack', b: this._received, t: Date.now()}));
-            } catch (e) { /* the close handler will pick this up */ }
+            } catch (e) {
+                this._clearAck();
+            }
         }, ACK_EVERY_MS);
     }
 

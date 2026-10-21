@@ -7,8 +7,10 @@ const {
     gunzipText,
     gzip,
     projectAssets,
+    MD5EXT,
     sha256Hex,
-    snapshotFrame
+    snapshotFrame,
+    storedGzip
 } = await import('./snapshot-http.js');
 
 let pass = 0;
@@ -56,9 +58,10 @@ const makeServer = ({have = [], status = {}} = {}) => {
             const asked = JSON.parse(body).md5ext;
             return Response.json({missing: asked.filter(name => !assets.has(name))});
         }
-        const assetMatch = path.match(/^\/api\/assets\/([0-9a-f]{32}\.[a-z]+)$/);
+        const assetMatch = path.match(/^\/api\/assets\/([0-9a-f]{32}\.[a-z]+)\?room=([^&]+)$/);
         if (assetMatch && method === 'PUT') {
             assets.add(assetMatch[1]);
+            calls[calls.length - 1].room = decodeURIComponent(assetMatch[2]);
             return Response.json({ok: true});
         }
         const pjMatch = path.match(/^\/api\/rooms\/([^/]+)\/pj$/);
@@ -88,7 +91,9 @@ section('frame');
     ok('only the meta fields travel', JSON.stringify(Object.keys(frame).sort()) ===
         JSON.stringify(['atSeq', 'basedOn', 'cacheOnly', 'force', 'ref', 'reset', 'sha', 'size', 'type']), frame);
     ok('no project bytes in the frame', !('b64' in frame) && !('json' in frame));
-    ok('unset fields are left out', !('atSeq' in snapshotFrame({sha: 'a'})));
+    ok('unset fields are left out', !('ref' in snapshotFrame({sha: 'a'})));
+    ok('atSeq is always sent, 0 when unknown', snapshotFrame({sha: 'a'}).atSeq === 0);
+    ok('a null atSeq still sends 0', snapshotFrame({sha: 'a', atSeq: null}).atSeq === 0);
 }
 
 section('assets');
@@ -97,6 +102,9 @@ section('assets');
     ok('assets are unique by md5ext', list.length === 3, list.map(a => a.md5ext));
     ok('clones add nothing', !list.some(a => a.md5ext.startsWith('4444')));
     ok('md5ext is id dot format', list[0].md5ext === `${md5(1)}.svg`);
+    ok('md5ext accepts the nine api types', ['svg', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'wav', 'mp3', 'ogg']
+        .every(ext => MD5EXT.test(`${md5(1)}.${ext}`)));
+    ok('md5ext refuses fonts and unknown types', !MD5EXT.test(`${md5(1)}.ttf`) && !MD5EXT.test(`${md5(1)}.webp`));
 }
 
 section('gzip');
@@ -106,6 +114,22 @@ section('gzip');
     ok('gzip output has the magic bytes', gz[0] === 0x1f && gz[1] === 0x8b);
     ok('gzip shrinks a repetitive project', gz.length < text.length / 10, gz.length);
     ok('it round trips', await gunzipText(gz) === text);
+    const big = new Uint8Array(70000).map((_, i) => (i * 31) & 0xff);
+    const stored = storedGzip(big);
+    const {gunzipSync} = await import('node:zlib');
+    ok('the stored gzip fallback gunzips with zlib across blocks',
+        Buffer.compare(gunzipSync(stored), Buffer.from(big)) === 0);
+    ok('an empty stored gzip gunzips', gunzipSync(storedGzip(new Uint8Array(0))).length === 0);
+    const realCompression = globalThis.CompressionStream;
+    delete globalThis.CompressionStream;
+    const fallback = await gzip(text);
+    globalThis.CompressionStream = realCompression;
+    ok('without CompressionStream gzip falls back and round trips', await gunzipText(fallback) === text);
+    const realDecompression = globalThis.DecompressionStream;
+    delete globalThis.DecompressionStream;
+    const refused = await gunzipText(gz).then(() => null, error => error.code);
+    globalThis.DecompressionStream = realDecompression;
+    ok('without DecompressionStream gzip bytes are refused as no-gunzip', refused === 'no-gunzip', refused);
     ok('plain bytes pass through', await gunzipText(new TextEncoder().encode('{"x":1}')) === '{"x":1}');
 }
 
@@ -123,8 +147,10 @@ section('upload');
     ok('the project is gzipped', pj.body[0] === 0x1f && pj.headers['content-encoding'] === 'gzip');
     ok('every call sends cookies and the squiggle header',
         server.calls.every(c => c.credentials === 'include' && c.headers['x-squiggle'] === '1'));
-    const svgPut = server.calls.find(c => c.url.endsWith('.svg'));
+    const svgPut = server.calls.find(c => c.url.includes('.svg?room='));
     ok('an asset goes up with its content type', svgPut && svgPut.headers['content-type'] === 'image/svg+xml');
+    ok('every asset put names the room', server.calls.filter(c => c.method === 'PUT' && c.url.includes('/api/assets/'))
+        .every(c => c.room === 'blue fox'), server.calls.map(c => c.url));
     ok('the result carries the server sha', result.sha === await sha256Hex(vm.toJSON()), result);
     ok('and the size', result.size === vm.toJSON().length);
 
@@ -196,7 +222,7 @@ section('missing assets on the project put');
     const result = await http.upload(vm, json);
     ok('a 409 missing-assets re-puts the named asset and retries', result.sha === await sha256Hex(json), result);
     ok('only the named asset went up again',
-        server.calls.filter(c => c.method === 'PUT' && c.url.endsWith(`${md5(2)}.png`)).length === 2,
+        server.calls.filter(c => c.method === 'PUT' && c.url.includes(`${md5(2)}.png?room=`)).length === 2,
         server.calls.map(c => `${c.method} ${c.url}`));
 
     const always = createSnapshotHttp({slug: 'r', base: 'https://sq.test', fetchImpl: async (url, init) => (

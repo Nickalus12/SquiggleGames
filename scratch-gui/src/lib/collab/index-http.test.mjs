@@ -97,7 +97,8 @@ globalThis.__collabStubs = {
     './moderated': noopObject({}),
     './paint-merge': noopObject({}),
     '@turbowarp/paper': noopObject({}),
-    '../../components/squiggle-only-notice': {showPortabilityNote: target => notes.push(target)}
+    '../../components/squiggle-only-notice': {showPortabilityNote: target => notes.push(target)},
+    '../log': {error: noop, warn: noop, info: noop, log: noop}
 };
 globalThis.window = noopObject({addEventListener: noop, dispatchEvent: () => true});
 globalThis.document = noopObject({
@@ -283,7 +284,8 @@ section('a builtin extension travels as a vm-action');
     const soundAdd = await waitFor(() => sent.slice(before3).some(m => m && m.action === 'soundAdd')) &&
         sent.slice(before3).find(m => m && m.action === 'soundAdd');
     ok('a new sound travels by md5ext', soundAdd && soundAdd.md5ext === `${soundId}.wav` && !('data' in soundAdd), soundAdd);
-    ok('its bytes went up first', calls.some(c => c.method === 'PUT' && c.url.endsWith(`/api/assets/${soundId}.wav`)));
+    ok('its bytes went up first', calls.some(c => c.method === 'PUT' &&
+        c.url.endsWith(`/api/assets/${soundId}.wav?room=blue%20fox`)));
 
     const ant = vm.runtime.targets.find(t => t.getName && t.getName() === 'Ant');
     const peerId = 'c'.repeat(32);
@@ -363,6 +365,18 @@ section('a replay welcome keeps the local project and checks drift');
     Date.now = realNow;
     ok('a drifted target asks the room for a resync', resynced);
     ok('still without fetching the head first', gets().length === getsBefore);
+}
+
+section('with no room seq the snapshot still claims atSeq 0');
+{
+    client.rs = null;
+    const frames = snapshots().length;
+    const fox = vm.runtime.targets.find(t => t.getName && t.getName() === 'Fox');
+    vm.renameSprite(fox.id, 'Vixen');
+    emit('server-restarting', {});
+    ok('a frame goes out', await waitFor(() => snapshots().length > frames), snapshots().length);
+    const frame = snapshots()[snapshots().length - 1];
+    ok('it carries atSeq 0', frame && frame.atSeq === 0, frame);
 }
 
 section('a 4010 close ends the session with a reload message');

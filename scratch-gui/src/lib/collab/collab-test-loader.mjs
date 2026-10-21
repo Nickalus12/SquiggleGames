@@ -1,4 +1,4 @@
-const STUBBED = new Set(['./client', './login', './overlay', './moderated', './paint-merge', '@turbowarp/paper']);
+const STUBBED = new Set(['./client', './login', './overlay', './moderated', './paint-merge', '@turbowarp/paper', '../log']);
 const NAMED = new Map([['../../components/squiggle-only-notice', ['showPortabilityNote']]]);
 
 const stubSource = specifier => {
