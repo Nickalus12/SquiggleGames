@@ -6,7 +6,8 @@ import {Provider, connect} from 'react-redux';
 import {IntlProvider, defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode, watchLayoutMode} from '../../lib/layout-mode';
-import kitLoaded from '../../lib/world/kit-loaded.js';
+import kitLoaded, {afterKitAdded} from '../../lib/world/kit-loaded.js';
+import {needsSync} from '../../lib/world/painter-shell.js';
 import SqIcon from '../sq-icon';
 import {addTopBarItem, closeSheet, openSheet} from '../phone-shell/phone-slots';
 import SceneStrip from './scene-strip.jsx';
@@ -129,14 +130,16 @@ const installSceneStrip = ({runtime, controller, win = window, store = win.Redux
 
     const observer = new win.MutationObserver(() => {
         const slot = doc.getElementById(SLOT_ID);
-        if ((slot && container.parentNode !== slot) || (!slot && rendered)) sync();
+        const phone = mode === LAYOUT_MODES.phone;
+        if (needsSync({slot, phone, inSlot: container.parentNode === slot, rendered})) sync();
     });
     observer.observe(doc.body, {childList: true, subtree: true});
     const stopWatching = watchLayoutMode(win, next => {
         mode = next;
         sync();
     });
-    runtime.on('EXTENSION_ADDED', sync);
+    const onAdded = afterKitAdded(sync);
+    runtime.on('EXTENSION_ADDED', onAdded);
     runtime.on('PROJECT_LOADED', sync);
     sync();
 
@@ -145,7 +148,7 @@ const installSceneStrip = ({runtime, controller, win = window, store = win.Redux
         dispose: () => {
             observer.disconnect();
             if (typeof stopWatching === 'function') stopWatching();
-            runtime.removeListener('EXTENSION_ADDED', sync);
+            runtime.removeListener('EXTENSION_ADDED', onAdded);
             runtime.removeListener('PROJECT_LOADED', sync);
             if (rendered) ReactDOM.unmountComponentAtNode(container);
             rendered = false;

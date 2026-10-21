@@ -11,6 +11,7 @@ import {
     FLAG_NAMES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom, createPainter, panBy, pinchView,
     revealCell, toStage, zoomAround
 } from '../../lib/world/painter.js';
+import {createTrayFocus, releasePointer} from '../../lib/world/painter-shell.js';
 import {peekScenes} from '../../lib/world/scenes.js';
 import {
     setPainterFlag, setPainterGrid, setPainterLayer, setPainterOpen, setPainterTile, setPainterTool
@@ -158,6 +159,7 @@ class TilePainter extends React.Component {
         this.pointers = new Map();
         this.gesture = null;
         this.view = null;
+        this.trayFocus = createTrayFocus();
         this.state = {
             rect: null,
             hover: null,
@@ -188,12 +190,13 @@ class TilePainter extends React.Component {
         this.refreshPalette();
         const seen = this.props.world.view() || {x: 0, y: 0, zoom: 1};
         this.setView({x: seen.x, y: seen.y, zoom: clampZoom(seen.zoom)});
-        this.wantFocus = !this.props.docked;
         this.frame = this.props.win.requestAnimationFrame(this.handleFrame);
+        this.trayFocus.start(this.props.docked);
     }
     stop () {
         if (this.frame) this.props.win.cancelAnimationFrame(this.frame);
         this.frame = null;
+        this.trayFocus.stop();
         this.painter.cancel();
         this.pointers.clear();
         this.gesture = null;
@@ -422,15 +425,9 @@ class TilePainter extends React.Component {
         this.dirty = true;
     }
     handlePointerUp (event) {
-        this.pointers.delete(event.pointerId);
-        if (this.gesture) {
-            const gesture = this.gesture;
-            if (gesture.kind === 'pan' ? gesture.id === event.pointerId : gesture.ids.indexOf(event.pointerId) !== -1) {
-                this.gesture = null;
-            }
-            return;
-        }
-        if (!this.painter.stroking() || !this.view) return;
+        const released = releasePointer(this.pointers, this.gesture, event.pointerId);
+        this.gesture = released.gesture;
+        if (!released.stroke || !this.painter.stroking() || !this.view) return;
         this.finish(this.painter.end(this.cellAt(event)));
     }
     handleWheel (event) {
@@ -589,11 +586,7 @@ class TilePainter extends React.Component {
         this.dirty = true;
     }
     setToolbar (el) {
-        this.toolbar = el;
-        if (!el || !this.wantFocus) return;
-        this.wantFocus = false;
-        const first = el.querySelector('button:not([disabled])');
-        if (first) first.focus();
+        this.trayFocus.setTray(el);
     }
     thumbFor (item) {
         const costume = item.costume;

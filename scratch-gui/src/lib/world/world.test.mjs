@@ -300,6 +300,31 @@ await seam.createTile('none').catch(() => {
 });
 ok('createTile rejects with no level in use', refused);
 world.useLevel('cave');
+const caveTileset = world.level('cave').tileset;
+world.level('cave').tileset = 'Gone';
+let missing = '';
+await seam.createTile('lost').catch(error => {
+    missing = error.message;
+});
+ok('a missing tileset sprite does not fall back to the stage', missing === 'no tileset' &&
+    seam.tileNames().length === 0, missing);
+world.level('cave').tileset = caveTileset;
+const realAdd = vm.addCostume;
+const realGet = WeakMap.prototype.get;
+vm.addCostume = (...args) => realAdd.apply(vm, args).then(() => {
+    WeakMap.prototype.get = function (key) {
+        return key === runtime ? undefined : realGet.call(this, key);
+    };
+});
+delete tiles.getCostumes;
+let gone = '';
+await seam.createTile('late').catch(error => {
+    gone = error.message;
+});
+WeakMap.prototype.get = realGet;
+vm.addCostume = realAdd;
+tiles.getCostumes = fakeCostumes;
+ok('a world gone during the upload fails cleanly', gone === 'no world', gone);
 
 section('painter edits change the saved level');
 const events = [];
