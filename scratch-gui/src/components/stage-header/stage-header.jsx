@@ -9,6 +9,9 @@ import Box from '../box/box.jsx';
 import Button from '../button/button.jsx';
 import ToggleButtons from '../toggle-buttons/toggle-buttons.jsx';
 import Controls from '../../containers/controls.jsx';
+import SqIcon from '../sq-icon';
+import {LAYOUT_MODES} from '../../lib/layout-mode';
+import {toggleFocusMode} from '../../reducers/focus-mode.js';
 import {getStageDimensions, getMinWidth} from '../../lib/screen-utils';
 import {STAGE_DISPLAY_SIZES, STAGE_SIZE_MODES} from '../../lib/layout-constants';
 
@@ -60,6 +63,11 @@ const messages = defineMessages({
         defaultMessage: 'Open advanced settings',
         description: 'Button to open advanced settings in embeds',
         id: 'tw.openAdvanced'
+    },
+    focusMode: {
+        defaultMessage: 'Focus mode',
+        description: 'Stage header button that hides the stage and sprite list and floats a small stage over the code',
+        id: 'sq.stageHeader.focus'
     }
 });
 
@@ -68,6 +76,8 @@ const enableSettingsButton = new URLSearchParams(location.search).has('settings-
 const StageHeaderComponent = function (props) {
     const {
         customStageSize,
+        focusActive,
+        focusAvailable,
         showFixedLargeSize,
         isFullScreen,
         isPlayerOnly,
@@ -78,6 +88,7 @@ const StageHeaderComponent = function (props) {
         onSetStageSmall,
         onSetStageFull,
         onOpenSettings,
+        onToggleFocus,
         isEmbedded,
         stageSize,
         stageSizeMode,
@@ -197,6 +208,24 @@ const StageHeaderComponent = function (props) {
                     />
                 </div>
             );
+        const focusButton = focusAvailable && !isPlayerOnly ? (
+            <div>
+                <button
+                    aria-label={props.intl.formatMessage(messages.focusMode)}
+                    aria-pressed={focusActive}
+                    className={classNames(styles.stageButton, styles.focusButton)}
+                    data-sq-focus-button
+                    title={props.intl.formatMessage(messages.focusMode)}
+                    type="button"
+                    onClick={onToggleFocus}
+                >
+                    <SqIcon
+                        className={styles.focusIcon}
+                        name="focus"
+                    />
+                </button>
+            </div>
+        ) : null;
         const slotStacked = stageDimensions.width < SLOT_INLINE_MIN_STAGE_WIDTH;
         header = (
             <Box
@@ -222,6 +251,7 @@ const StageHeaderComponent = function (props) {
                         key="editor" // addons require the HTML element to be not be re-used by in-editor buttons
                     >
                         {stageControls}
+                        {focusButton}
                         <div>
                             <Button
                                 className={styles.stageButton}
@@ -247,7 +277,14 @@ const StageHeaderComponent = function (props) {
 
 const mapStateToProps = state => ({
     // This is the button's mode, as opposed to the actual current state
-    stageSizeMode: state.scratchGui.stageSize.stageSize
+    stageSizeMode: state.scratchGui.stageSize.stageSize,
+    focusActive: !!(state.scratchGui.focusMode && state.scratchGui.focusMode.active),
+    focusAvailable: !!state.scratchGui.focusMode &&
+        state.scratchGui.layoutMode.mode !== LAYOUT_MODES.phone
+});
+
+const mapDispatchToProps = dispatch => ({
+    onToggleFocus: () => dispatch(toggleFocusMode())
 });
 
 StageHeaderComponent.propTypes = {
@@ -256,6 +293,8 @@ StageHeaderComponent.propTypes = {
         width: PropTypes.number,
         height: PropTypes.number
     }),
+    focusActive: PropTypes.bool,
+    focusAvailable: PropTypes.bool,
     showFixedLargeSize: PropTypes.bool,
     isFullScreen: PropTypes.bool.isRequired,
     isPlayerOnly: PropTypes.bool.isRequired,
@@ -266,6 +305,7 @@ StageHeaderComponent.propTypes = {
     onSetStageSmall: PropTypes.func.isRequired,
     onSetStageFull: PropTypes.func.isRequired,
     onOpenSettings: PropTypes.func.isRequired,
+    onToggleFocus: PropTypes.func.isRequired,
     isEmbedded: PropTypes.bool.isRequired,
     stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)),
     stageSizeMode: PropTypes.oneOf(Object.keys(STAGE_SIZE_MODES)),
@@ -277,5 +317,6 @@ StageHeaderComponent.defaultProps = {
 };
 
 export default injectIntl(connect(
-    mapStateToProps
+    mapStateToProps,
+    mapDispatchToProps
 )(StageHeaderComponent));
