@@ -13,7 +13,8 @@ import {LAYOUT_MODES} from '../../lib/layout-mode.js';
 import {exitFocusMode, movePip, toggleFocusMode} from '../../reducers/focus-mode.js';
 
 const FOCUS_ATTRIBUTE = 'data-sq-focus';
-const FALLBACK_SIZE = Object.freeze({width: 256, height: 228});
+const PIP_STAGE_WIDTH = 320;
+const FALLBACK_SIZE = Object.freeze({width: 322, height: 284});
 
 const viewport = () => ({width: window.innerWidth, height: window.innerHeight});
 
@@ -28,6 +29,8 @@ class PipStage extends React.Component {
             'handlePointerUp',
             'handleHandleKey',
             'handleExit',
+            'handleGreenFlag',
+            'handleStop',
             'setPanel'
         ]);
         this.state = {drag: null, announce: ''};
@@ -49,6 +52,7 @@ class PipStage extends React.Component {
         this.syncAttribute();
         if (shown) this.enter();
         else this.leave();
+        this.relayout();
     }
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyDown, true);
@@ -68,6 +72,11 @@ class PipStage extends React.Component {
             document.contains(element)) {
             element.focus();
         }
+    }
+    relayout () {
+        const fire = () => window.dispatchEvent(new Event('resize'));
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(fire);
+        else fire();
     }
     shown () {
         return !!this.props.active && !this.props.isPhone;
@@ -128,6 +137,12 @@ class PipStage extends React.Component {
     handleExit () {
         this.props.onExit();
     }
+    handleGreenFlag () {
+        if (this.props.vm) this.props.vm.greenFlag();
+    }
+    handleStop () {
+        if (this.props.vm) this.props.vm.stopAll();
+    }
     setPanel (element) {
         this.panel = element;
     }
@@ -155,6 +170,31 @@ class PipStage extends React.Component {
                     style={{transform: `translate(${pos.x}px, ${pos.y}px)`}}
                 >
                     <div className={styles.bar}>
+                        <button
+                            aria-label={intl.formatMessage(messages.start)}
+                            className={styles.control}
+                            onClick={this.handleGreenFlag}
+                            title={intl.formatMessage(messages.start)}
+                            type="button"
+                        >
+                            <SqIcon
+                                className={styles.flag}
+                                name="flag"
+                                size={20}
+                            />
+                        </button>
+                        <button
+                            aria-label={intl.formatMessage(messages.stop)}
+                            className={styles.control}
+                            onClick={this.handleStop}
+                            title={intl.formatMessage(messages.stop)}
+                            type="button"
+                        >
+                            <span
+                                aria-hidden="true"
+                                className={styles.stop}
+                            />
+                        </button>
                         <button
                             aria-label={moveLabel}
                             className={styles.handle}
@@ -203,6 +243,10 @@ PipStage.propTypes = {
     pip: PropTypes.shape({
         x: PropTypes.number,
         y: PropTypes.number
+    }),
+    vm: PropTypes.shape({
+        greenFlag: PropTypes.func,
+        stopAll: PropTypes.func
     })
 };
 
@@ -212,7 +256,8 @@ const mapStateToProps = state => {
     return {
         active: !!(focus && focus.active),
         isPhone: !!(layout && layout.mode === LAYOUT_MODES.phone),
-        pip: focus ? focus.pip : null
+        pip: focus ? focus.pip : null,
+        vm: state.scratchGui.vm
     };
 };
 
@@ -222,5 +267,5 @@ const mapDispatchToProps = dispatch => ({
     onToggle: () => dispatch(toggleFocusMode())
 });
 
-export {FOCUS_ATTRIBUTE};
+export {FOCUS_ATTRIBUTE, PIP_STAGE_WIDTH};
 export default injectIntl(connect(mapStateToProps, mapDispatchToProps)(PipStage));

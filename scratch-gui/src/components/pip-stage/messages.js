@@ -11,6 +11,16 @@ export default defineMessages({
         defaultMessage: 'Move the stage. Drag it, or use the arrow keys.',
         description: 'Accessible name of the drag handle on the floating stage'
     },
+    start: {
+        id: 'sq.focus.start',
+        defaultMessage: 'Start',
+        description: 'Green flag button on the floating stage'
+    },
+    stop: {
+        id: 'sq.focus.stop',
+        defaultMessage: 'Stop',
+        description: 'Stop button on the floating stage'
+    },
     exit: {
         id: 'sq.focus.exit',
         defaultMessage: 'Exit focus',
