@@ -4,7 +4,7 @@ import React from 'react';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import SqIcon from '../sq-icon';
-import {closeSheet, getState, subscribe} from './phone-slots';
+import {closeSheet, getState, registerSheetHost, subscribe} from './phone-slots';
 
 import styles from './phone-shell.css';
 
@@ -43,6 +43,7 @@ class PhoneBottomSheet extends React.Component {
     }
     componentDidMount () {
         this.unsubscribe = subscribe(this.handleChange);
+        this.unregisterHost = registerSheetHost();
         if (this.state.sheet) this.focusSheet();
     }
     componentDidUpdate (prevProps, prevState) {
@@ -59,6 +60,7 @@ class PhoneBottomSheet extends React.Component {
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.unregisterHost) this.unregisterHost();
     }
     setSheet (el) {
         this.sheetEl = el;

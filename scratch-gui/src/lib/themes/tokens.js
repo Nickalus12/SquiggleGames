@@ -68,6 +68,7 @@ const SCALE = {
     'sq-brand-600': BRAND[600],
     'sq-brand-700': BRAND[700],
     'sq-brand-800': BRAND[800],
+    'sq-on-brand': '#ffffff',
 
     'sq-menu-bar': MENU_BAR_GRADIENT,
     'sq-menu-bar-from': MENU_BAR_FROM,
