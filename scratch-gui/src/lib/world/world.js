@@ -6,6 +6,7 @@ import {createTileRenderer} from './render.js';
 import {createTextureCache, browserCanvas, browserImageLoader} from './textures.js';
 import {SCENES_KEY, WORLD_KEY, readLevels, readScenes, removeLevel, writeLevel} from './storage.js';
 import {preserveExtensionStorage} from '../collab/project-seam.js';
+import {createTilemapSync} from './tilemap-sync.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_START = 'PROJECT_START';
@@ -526,7 +527,11 @@ const extendSeam = seam => {
         scenes: () => readScenes(runtime).scenes.map(scene => scene.name),
         solidAt: (x, y) => (live() ? live().solidAt(x, y) : false),
         rulesLevels: withSolid => (live() ? live().rulesLevels(withSolid) :
-            readLevels(runtime).map(grid => toRulesLevel(grid, withSolid)))
+            readLevels(runtime).map(grid => toRulesLevel(grid, withSolid))),
+        connectTilemap: (send, options) => createTilemapSync(Object.assign({}, options, {
+            world: getWorld(runtime),
+            send
+        }))
     });
     return seam;
 };
