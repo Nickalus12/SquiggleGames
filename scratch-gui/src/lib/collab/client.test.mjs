@@ -633,11 +633,46 @@ await section('platform close codes', () => {
     const opened = env.sockets.length;
     ws.readyState = 3;
     ws.onclose({code: 1007, reason: 'bad-frame'});
-    ok('a 1007 close says bad-frame and counts it', events.some(e => e.on === 'bad-frame' && e.count === 1) &&
-        client.badFrames === 1, events);
+    ok('a 1007 close says bad-frame and counts it', events.some(e => e.on === 'bad-frame' && e.count === 1 &&
+        e.final === false) && client.badFrames === 1, events);
+    clock.advance(5000);
+    ok('the first reconnects once', env.sockets.length === opened + 1, env.sockets.length - opened);
+    ws = env.last();
+    ws.open();
+    ok('with a fresh join', !('rs' in joinOf(ws)) && !('resume' in joinOf(ws)) && client.freshJoin === true, joinOf(ws));
+    ws.autoPong = true;
+    deliver(ws, v2Welcome({rs: 41}));
+    events.length = 0;
+    clock.advance(30000);
+    ws.readyState = 3;
+    ws.onclose({code: 1007, reason: 'bad-frame'});
+    ok('a second inside a minute is final', events.some(e => e.on === 'bad-frame' && e.count === 2 && e.final === true),
+        events);
     ok('and stays closed', client._reconnectTimer === null && client._closedByUser === true, events);
     clock.advance(60000);
-    ok('with no reconnect loop', env.sockets.length === opened);
+    ok('with no reconnect loop', env.sockets.length === opened + 1);
+
+    ws = env.connect('v2room');
+    ws.open();
+    deliver(ws, v2Welcome({rs: 50}));
+    ws.readyState = 3;
+    const first = env.sockets.length;
+    ws.onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(5000);
+    ok('a new connect starts the strikes again', env.sockets.length === first + 1, env.sockets.length - first);
+    ws = env.last();
+    ws.open();
+    ws.autoPong = true;
+    deliver(ws, v2Welcome({rs: 51}));
+    clock.advance(61000);
+    events.length = 0;
+    const before = env.sockets.length;
+    ws.readyState = 3;
+    ws.onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(5000);
+    ok('two a minute apart each reconnect', events.some(e => e.on === 'bad-frame' && e.final === false) &&
+        env.sockets.length === before + 1, events);
+    client.disconnect();
 
     ws = env.connect('another');
     ws.open();

@@ -4,8 +4,8 @@ const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
 const {createInterpolationBuffer} = await import('./buffer.js');
 const {createPrediction} = await import('./prediction.js');
 const {timeLeft} = await import('./game-state.js');
-const {avatarOf, blockedAt, createAvatarLayer, createGameLink, findPlayerSprite, outboundOp, renderedDirection} =
-    await import('./session.js');
+const {avatarOf, blockedAt, createAvatarLayer, createGameLink, findPlayerSprite, outboundOp, renderedDirection,
+    worldLevel} = await import('./session.js');
 
 const sprite = (name, extra) => Object.assign({
     name, isOriginal: true, isStage: false, extensionStorage: {}, x: 0, y: 0, direction: 90, size: 100,
@@ -145,32 +145,80 @@ section('the game link follows the welcome tick rate');
     link.stop();
 }
 
-section('a bad-frame close on the game socket is counted and stays closed');
+section('a bad-frame close on the game socket rejoins once, a second one inside a minute is final');
 {
     const clock = fakeClock();
     const sockets = [];
     class FakeSocket {
         constructor (url) {
             this.url = url;
+            this.sent = [];
             sockets.push(this);
         }
-        send () {}
+        send (text) {
+            this.sent.push(JSON.parse(text));
+        }
         close (code) {
             this.onclose({code});
         }
     }
     const closed = [];
     const runtime = {targets: [], renderer: null, on: () => {}, off: () => {}};
-    const link = createGameLink({vm: {runtime}, base: 'wss://sq.test', slug: 'blue', WebSocketImpl: FakeSocket,
+    const make = () => createGameLink({vm: {runtime}, base: 'wss://sq.test', slug: 'blue', WebSocketImpl: FakeSocket,
         now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer, onClosed: msg => closed.push(msg)});
+    const join = ws => {
+        ws.onopen();
+        ws.onmessage({data: JSON.stringify({type: 'welcome', slot: 1, ack: 0})});
+    };
+    const link = make();
     link.start();
-    sockets[0].onopen();
-    sockets[0].onmessage({data: JSON.stringify({type: 'welcome', slot: 1, ack: 0})});
+    join(sockets[0]);
     sockets[0].onclose({code: 1007, reason: 'bad-frame'});
-    clock.advance(60000);
-    ok('the link says bad-frame', closed.length === 1 && closed[0].reason === 'bad-frame', closed);
+    ok('the first says bad-frame and is not final', closed.length === 1 && closed[0].reason === 'bad-frame' &&
+        closed[0].final === false, closed);
     ok('and counts it', link.badFrames === 1, link.badFrames);
-    ok('and does not reconnect', sockets.length === 1 && !link.inGame, sockets.length);
+    clock.advance(1000);
+    ok('one new game socket opens by itself while the game runs', sockets.length === 2, sockets.length);
+    join(sockets[1]);
+    ok('with a fresh join', sockets[1].sent[0] && sockets[1].sent[0].type === 'join' &&
+        !('resume' in sockets[1].sent[0]), sockets[1].sent[0]);
+    clock.advance(30000);
+    sockets[1].onclose({code: 1007, reason: 'bad-frame'});
+    ok('a second inside a minute is final', closed.length === 2 && closed[1].final === true, closed);
+    clock.advance(60000);
+    ok('nothing opens again', sockets.length === 2, sockets.length);
+    ok('and start is null until a reload', link.start() === null && link.latched === 'bad-frame' && sockets.length === 2);
+
+    const spaced = make();
+    spaced.start();
+    join(sockets[2]);
+    sockets[2].onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(1000);
+    join(sockets[3]);
+    clock.advance(61000);
+    sockets[3].onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(1000);
+    ok('two a minute apart each rejoin', sockets.length === 5 && spaced.latched === null, sockets.length);
+    spaced.stop();
+
+    const idle = make();
+    idle.start();
+    join(sockets[5]);
+    idle.stop();
+    sockets[5].onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(5000);
+    ok('a stopped game does not rejoin by itself', sockets.length === 6, sockets.length);
+    ok('the next start is the fresh join', idle.start() !== null && sockets.length === 7, sockets.length);
+    idle.stop();
+
+    const reload = make();
+    reload.start();
+    join(sockets[7]);
+    sockets[7].onclose({code: 4010, reason: 'please-reload'});
+    clock.advance(5000);
+    ok('a 4010 is final at once', closed[closed.length - 1].reason === 'reload' && closed[closed.length - 1].final === true,
+        closed[closed.length - 1]);
+    ok('and start is null after it', reload.start() === null && sockets.length === 8, sockets.length);
 }
 
 section('own game messages and input after stop');
@@ -224,7 +272,37 @@ section('the render helpers write into what they are given');
     const out = [];
     ok('sample fills the caller array', buffer.sample('2', 1200, out) === out && out.length === 6);
     const keys = [];
-    ok('slots fills the caller array', buffer.slots(keys) === keys && keys.join() === '2');
+    const forEach = Map.prototype.forEach;
+    let walks = 0;
+    Map.prototype.forEach = function (...args) {
+        walks += 1;
+        return forEach.apply(this, args);
+    };
+    const filled = buffer.slots(keys);
+    const layer = createAvatarLayer({renderer: new Proxy({}, {get: (target, key) => () =>
+        (key === 'createDrawable' ? 7 : undefined)})});
+    layer.draw('3', [0, 0, 90, 1, 1, 0], sprite('Cat'));
+    const drawnKeys = [];
+    layer.slots(drawnKeys);
+    Map.prototype.forEach = forEach;
+    ok('slots fills the caller array', filled === keys && keys.join() === '2');
+    ok('the avatar layer lists its slots into the caller array', drawnKeys.join() === '3', drawnKeys);
+    ok('neither walks its map with a callback', walks === 0, walks);
+    const savedWindow = globalThis.window;
+    const findIndex = Array.prototype.findIndex;
+    let finds = 0;
+    Array.prototype.findIndex = function (...args) {
+        finds += 1;
+        return findIndex.apply(this, args);
+    };
+    globalThis.window = {SquiggleWorld: {levels: () => [{id: 'a'}, null, {id: 'c'}], currentLevel: () => 'c'}};
+    const level = worldLevel();
+    globalThis.window.SquiggleWorld.currentLevel = () => 'gone';
+    const missing = worldLevel();
+    Array.prototype.findIndex = findIndex;
+    globalThis.window = savedWindow;
+    ok('the world level is the 1-based place of the current level', level === 3 && missing === 0, [level, missing]);
+    ok('found without a callback', finds === 0, finds);
     const a = [];
     ok('avatarOf fills the caller array', avatarOf(sprite('Cat'), 0, a) === a && a.length === 6);
     const prediction = createPrediction();

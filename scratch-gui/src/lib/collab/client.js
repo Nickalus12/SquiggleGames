@@ -35,7 +35,8 @@ const V2_FRAME_LIMITS = new Map([
 const V2_DEFAULT_FRAME_LIMIT = 4 * 1024;
 const RING_TYPES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-set']);
 const BAD_FRAME_CODE = 1007;
-const FINAL_CLOSE_CODES = new Set([BAD_FRAME_CODE, 4003, 4010]);
+const BAD_FRAME_WINDOW_MS = 60 * 1000;
+const FINAL_CLOSE_CODES = new Set([4003, 4010]);
 const ACK_EVERY_MS = 1000;
 const RESTART_JITTER_MS = 2000;
 const TOO_SLOW_CODE = 1013;
@@ -101,6 +102,7 @@ class CollabClient {
         this._backoff = 1000;
         this._closedByUser = false;
         this.badFrames = 0;
+        this._lastBadFrameAt = null;
         this._reconnectTimer = null;
         this._queue = []; // reliable messages waiting for an open socket
         this._openGen = 0; // ignore stale socket callbacks after supersede
@@ -159,6 +161,7 @@ class CollabClient {
             this.resume = null;
             this._selfIds.clear();
         }
+        this._lastBadFrameAt = null;
         this.session = {url, room, name};
         this._closedByUser = false;
         this._backoff = 1000;
@@ -444,14 +447,28 @@ class CollabClient {
             }
             if (dropped) this._purgeOversized();
             if (code === 4010) this._emit('reload-needed', {code, reason});
-            if (code === BAD_FRAME_CODE) {
-                this.badFrames += 1;
-                this._emit('bad-frame', {code, reason, count: this.badFrames});
+            if (code === BAD_FRAME_CODE && this._badFrame(code, reason)) {
+                this.disconnect();
+                return;
             }
             if (FINAL_CLOSE_CODES.has(code)) this.disconnect();
             else if (!this._closedByUser) this._scheduleReconnect(code === 1012, code === TOO_SLOW_CODE);
         };
         ws.onerror = () => { /* onclose follows */ };
+    }
+
+    _badFrame (code, reason) {
+        const at = Date.now();
+        const final = this._lastBadFrameAt !== null && at - this._lastBadFrameAt <= BAD_FRAME_WINDOW_MS;
+        this._lastBadFrameAt = at;
+        this.badFrames += 1;
+        if (!final) {
+            this.rs = null;
+            this.resume = null;
+            this._queue = [];
+        }
+        this._emit('bad-frame', {code, reason, count: this.badFrames, final});
+        return final;
     }
 
     _scheduleReconnect (restart, tooSlow) {
