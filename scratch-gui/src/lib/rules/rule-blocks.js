@@ -1,4 +1,4 @@
-import schema from './rules-schema.json';
+import schema from './rules-schema.js';
 import {RULES_COLORS} from '../themes/tokens.js';
 import {RULES_KEY, isRulesTarget} from '../collab/project-seam.js';
 

@@ -8,6 +8,8 @@ process.removeAllListeners('warning');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const {canonical, rulesPayload, hashRules, hasRuleBlocks} = await import('./hash.js');
 const fixture = JSON.parse(fs.readFileSync(path.join(here, 'hash-fixture.json'), 'utf8'));
+const schemaJSON = JSON.parse(fs.readFileSync(path.join(here, 'rules-schema.json'), 'utf8'));
+const schemaModule = (await import('./rules-schema.js')).default;
 
 let pass = 0;
 let fail = 0;
@@ -54,6 +56,8 @@ const marked = JSON.parse(JSON.stringify(fixture.sprite));
 marked.extensionStorage.together.teams.push('Green');
 ok('the rules mark is part of the hash', await hashRules(marked) !== base);
 ok('hasRuleBlocks sees blocks', hasRuleBlocks(fixture.sprite) && !hasRuleBlocks({blocks: {}}));
+
+ok('rules-schema.json matches rules-schema.js', canonical(schemaJSON) === canonical(schemaModule));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
