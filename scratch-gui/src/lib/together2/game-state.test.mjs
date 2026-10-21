@@ -1,0 +1,56 @@
+process.removeAllListeners('warning');
+
+const {ok, section, done} = await import('./harness.test-util.mjs');
+const {applyTick, createGameState, gameValue, playerName, playerValue, teamName, timeLeft} =
+    await import('./game-state.js');
+
+section('keyframes and deltas');
+{
+    const state = createGameState();
+    ok('a delta before the first keyframe asks for one', applyTick(state, {t: 3, v: {a: 1}}).needKeyframe === true);
+    applyTick(state, {t: 4, kf: 1, v: {a: 1, b: 2}, p: {1: {hp: 3}}, a: {1: [0, 0, 90, 1, 1, 0]}});
+    ok('the keyframe sets values', gameValue(state, 'a') === 1 && playerValue(state, 1, 'hp') === 3);
+    applyTick(state, {t: 5, v: {a: null, c: 3}, p: {1: {hp: 2}}});
+    ok('a delta merges and a null removes', gameValue(state, 'a') === '' && gameValue(state, 'c') === 3 &&
+        gameValue(state, 'b') === 2);
+    ok('a stale delta is ignored', applyTick(state, {t: 5, v: {c: 9}}).stale === true && gameValue(state, 'c') === 3);
+    applyTick(state, {t: 40, kf: 1, v: {d: 1}});
+    ok('a later keyframe resets everything it does not carry',
+        gameValue(state, 'b') === '' && playerValue(state, 1, 'hp') === '' && !state.avatars[1]);
+    applyTick(state, {t: 38, kf: 1, v: {e: 1}});
+    ok('a keyframe always applies, even an older one after a resume', gameValue(state, 'e') === 1 && state.t === 38);
+}
+
+section('tick apply order');
+{
+    const state = createGameState();
+    const result = applyTick(state, {t: 10, kf: 1, v: {n: 1}, y: {round: [1, 1], names: {2: 'Pal'}},
+        e: [{n: 'first', v: '', f: 0}, {hit: 2}, {n: 'second', v: '', f: 3}]});
+    ok('events come back in server order', result.events.map(e => e.n || 'hit').join() === 'first,hit,second');
+    ok('values are in place before events are handed out', gameValue(state, 'n') === 1);
+    ok('a hit records the shooter', state.lastHit === 2);
+}
+
+section('tick.y');
+{
+    const state = createGameState();
+    applyTick(state, {t: 100, kf: 1, y: {round: [2, 1], names: {1: 'Me', 2: 'Pal'}, teams: {1: 1, 2: 2},
+        timers: {clock: 160, old: 90}, boards: [{n: 'Best', top: [[1, 5]]}], places: {Best: 1}}, e: [{hit: 2}]});
+    ok('round reads the number and running', state.round === 2 && state.running === true);
+    ok('names by slot', playerName(state, 2) === 'Pal');
+    ok('team by index into the mark teams', teamName(state, 1, ['Red', 'Blue']) === 'Red' &&
+        teamName(state, 2, ['Red', 'Blue']) === 'Blue');
+    ok('team 0 is no team', teamName(state, 3, ['Red']) === '');
+    ok('time left is end minus t at 20 a second', timeLeft(state, 'clock') === 3, timeLeft(state, 'clock'));
+    ok('a past timer reads 0', timeLeft(state, 'old') === 0);
+    ok('boards and places arrive', state.boards.length === 1 && state.places.Best === 1);
+    applyTick(state, {t: 101, y: {round: [2, 0]}});
+    ok('running drops while the number stays', state.round === 2 && state.running === false);
+    applyTick(state, {t: 102, y: {names: {2: null}}, p: {2: {hp: 1}}});
+    ok('a slot that leaves tick.y is forgotten', playerName(state, 2) === '' && teamName(state, 2, ['Red', 'Blue']) === '');
+    ok('who hit me last becomes nobody when that slot leaves', state.lastHit === 0);
+    applyTick(state, {t: 103, y: {round: 4}});
+    ok('a bare round number still reads', state.round === 4 && state.running === true);
+}
+
+done();

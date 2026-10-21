@@ -2,7 +2,7 @@
  * Runs as a builtin (main thread) so it can reach window.SquiggleNet.
  * Talks only to that bridge; never opens its own socket. */
 
-import {installRuleMethods, ruleBlocks, ruleMenus, setupButton} from '../../../rules/rule-blocks.js';
+import {installRuleMethods, ruleBlocks, ruleMenus, rulesMark, setupButton} from '../../../rules/rule-blocks.js';
 import {installRulesGuard} from '../../../rules/guard.js';
 import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
 import {openGameSetup} from '../../../rules/open-setup.js';
@@ -10,7 +10,9 @@ import {
     applyTick,
     createGameState,
     gameValue as readGameValue,
-    playerValue as readPlayerValue
+    playerValue as readPlayerValue,
+    teamName,
+    timeLeft as readTimeLeft
 } from '../../../together2/game-state.js';
 import menuIconURI from './together-small.svg';
 import log from '../../../log.js';
@@ -681,12 +683,12 @@ class TogetherBlocks {
         const net = getNet();
         const slot = net && net.slot;
         if (slot === null || typeof slot === 'undefined') return '';
-        return str(this._game.teams[String(slot)]);
+        const mark = rulesMark(this.runtime);
+        return teamName(this._game, slot, mark && mark.teams);
     }
 
     timeLeft (args) {
-        const left = Number(this._game.timers[str(args.TIMER)]);
-        return Number.isFinite(left) ? Math.max(0, left) : 0;
+        return readTimeLeft(this._game, str(args.TIMER));
     }
 
     inGame () {

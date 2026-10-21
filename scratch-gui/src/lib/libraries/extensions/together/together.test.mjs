@@ -479,15 +479,19 @@ console.log('\ngame server ticks');
         kf: 1,
         v: {score: 3, level: 'cave'},
         p: {2: {hp: 9}, 3: {hp: 4}},
-        y: {round: 2, teams: {2: 'red', 3: 'blue'}, timers: {timer: 30}},
+        y: {round: [2, 1], names: {2: 'Me', 3: 'Pal'}, teams: {2: 1, 3: 2}, timers: {timer: 606}},
         e: [{n: 'start', v: 'go', f: 0}, {n: 'private', v: 'x', f: 1}]
     });
     ok('game value reads the keyframe', ext.gameValue({NAME: 'score'}) === 3);
     ok('an unknown game value is empty', ext.gameValue({NAME: 'nope'}) === '');
     ok('my player value reads my slot', ext.myPlayerValue({NAME: 'hp'}) === 9);
     ok('round comes from the tick', ext.gameRound() === 2);
-    ok('my team comes from the slot map', ext.myTeam() === 'red');
-    ok('time left reads the named timer', ext.timeLeft({TIMER: 'timer'}) === 30);
+    ok('with no Game setup teams, my team is empty', ext.myTeam() === '');
+    runtime.targets = [{isOriginal: true, isStage: false, extensionStorage: {together: {role: 'rules', v: 1,
+        teams: ['Red', 'Blue']}}}];
+    ok('my team names the Game setup team by index', ext.myTeam() === 'Red', ext.myTeam());
+    ok('time left counts ticks to the end at 20 a second', ext.timeLeft({TIMER: 'timer'}) === 30,
+        ext.timeLeft({TIMER: 'timer'}));
     ok('an unknown timer reads 0', ext.timeLeft({TIMER: 'other'}) === 0);
 
     const says = runtime.hats.filter(h => h.opcode === 'together_whenGameSays');
@@ -495,7 +499,7 @@ console.log('\ngame server ticks');
     ok('inside that script the message reads back',
         reads(ext, says[0]).name === 'start' && reads(ext, says[0]).value === 'go', reads(ext, says[0]));
 
-    tick({t: 7, v: {score: null, lives: 2}, p: {2: {hp: 8}}, y: {timers: {timer: -1}}});
+    tick({t: 7, v: {score: null, lives: 2}, p: {2: {hp: 8}}, y: {timers: {timer: 3}}});
     ok('a delta updates values', ext.gameValue({NAME: 'lives'}) === 2);
     ok('a null deletes a value', ext.gameValue({NAME: 'score'}) === '');
     ok('a delta updates my player value', ext.myPlayerValue({NAME: 'hp'}) === 8);
