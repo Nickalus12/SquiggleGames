@@ -6,23 +6,23 @@ week of guessing; a block idea from someone who tried to build a game and
 couldn't is worth more than a roadmap.
 
 There is no contributor bar here. If you have never opened a pull request
-before, this is a fine place to open your first one — say so and someone will
+before, this is a fine place to open your first one. Say so and someone will
 walk you through it.
 
 ## Ways to help, easiest first
 
 | | How |
 |---|---|
-| **Report a bug** | `/bug` in [Discord](https://discord.gg/8rc63SwhvW) — it files the GitHub issue for you — or [open one directly](https://github.com/Nickalus12/SquiggleGames/issues/new/choose) |
+| **Report a bug** | `/bug` in [Discord](https://discord.gg/8rc63SwhvW) (it files the GitHub issue for you), or [open one directly](https://github.com/Nickalus12/SquiggleGames/issues/new/choose) |
 | **Suggest a feature or a block** | [Feature issue](https://github.com/Nickalus12/SquiggleGames/issues/new/choose), or `#feature-ideas` in Discord |
-| **Show what you built** | `#showcase` in Discord. Projects that break things in interesting ways are the best test suite we have |
+| **Show what you built** | `#showcase` in Discord or a Showcase post on [r/SquiggleGames](https://www.reddit.com/r/SquiggleGames/). Projects that break things in interesting ways are the best test suite we have |
 | **Improve the docs** | Anything in `README.md` or `docs/` that was wrong or confusing when *you* read it. These PRs are welcome and get reviewed fast |
 | **Fix a bug** | Issues labelled [`good first issue`](https://github.com/Nickalus12/SquiggleGames/labels/good%20first%20issue) are scoped to be self-contained |
 | **Build a feature** | Comment on the issue first (or open one) so two people don't build the same thing |
 
 ## What is in this repository
 
-This repository is **the editor** — the TurboWarp-derived app that runs in the
+This repository is **the editor**: the TurboWarp-derived app that runs in the
 browser, including the multiplayer client under `src/lib/collab/`.
 
 The Squiggle server it connects to is a separate proprietary program in its own
@@ -38,7 +38,7 @@ You need **Node ≥ 22.13**. Nothing to install beyond npm packages.
 git clone https://github.com/Nickalus12/SquiggleGames.git
 cd SquiggleGames/scratch-gui
 npm install
-NODE_OPTIONS=--openssl-legacy-provider npm start      # → http://localhost:8601
+NODE_OPTIONS=--openssl-legacy-provider npm start      # http://localhost:8601
 ```
 
 Webpack 4 needs that `--openssl-legacy-provider` flag on modern Node; leave it
@@ -47,7 +47,7 @@ off and you get an opaque OpenSSL error.
 That is a full editor with hot reload. It runs single-player out of the box,
 which is enough for most changes. To work on anything that syncs, point it at a
 server with `?server=ws://host:4455` and open the same room in a second browser
-profile or a private window — two tabs in the same profile share a session.
+profile or a private window. Two tabs in the same profile share a session.
 
 ## Finding your way around
 
@@ -56,7 +56,7 @@ a bug that looks like something else entirely:
 
 - Applying a remote change must not emit a local event that gets sent back out
   (echo loops look like lag and end in divergence).
-- Sync routes by sprite **name**, not id — ids are regenerated on `.sb3` load.
+- Sync routes by sprite **name**, not id. Ids are regenerated on `.sb3` load.
 
 Short version of where things live:
 
@@ -65,28 +65,31 @@ Short version of where things live:
 | What syncs between players | `scratch-gui/src/lib/collab/index.js` |
 | Cursors, presence widget, toasts, banners | `scratch-gui/src/lib/collab/overlay.js` |
 | Reconnect behaviour | `scratch-gui/src/lib/collab/client.js` |
+| Room chat | `scratch-gui/src/lib/collab/chat*.js` and `scratch-gui/src/components/collab-chat/` |
+| The phone layout | `scratch-gui/src/components/phone-shell/` and `scratch-gui/src/lib/touch-keys.js` |
 | The Together extension's blocks | search `scratch-gui` for the Together extension; see [docs/TOGETHER.md](./docs/TOGETHER.md) |
 
 ## Before you open a PR
 
-The build succeeding is the gate:
+CI runs these on every pull request, and all of them have to pass:
 
 ```bash
-cd scratch-gui && NODE_OPTIONS=--openssl-legacy-provider npm run build
-npx eslint src/lib/collab --ext .js,.jsx    # advisory, see below
+cd scratch-gui
+npx eslint src/lib/collab --ext .js,.jsx
+node src/lib/libraries/extensions/together/together.test.mjs
+for t in src/lib/collab/*.test.mjs; do node "$t"; done
+NODE_OPTIONS="--openssl-legacy-provider --max-old-space-size=4096" npm run build
 ```
 
-Lint is worth reading but is not a pass/fail: upstream's eslint config reports
-about 75 pre-existing JSDoc and operator-precedence errors on
-`src/lib/collab`. Don't fix them in your PR — just don't add new ones on the
-lines you touched.
+The tests need no browser and no server. The build takes a few minutes, so run
+the lint and tests first.
 
 If your change touches sync, say in the PR how you checked it and what you saw.
 Two things about that are worth knowing before you spend an evening confused:
 
 **Give each identity its own account.** The server drops the older socket when
-the same account joins twice — that is what stops one person appearing twice
-after a refresh — so a second tab signed into the same account silently evicts
+the same account joins twice (that is what stops one person appearing twice
+after a refresh), so a second tab signed into the same account silently evicts
 the first from the room. That tab stays up, stops receiving, and the failure
 reads exactly like a sync bug. Use a second browser profile.
 
@@ -97,7 +100,7 @@ check passes without ever running the path it is named after. Advance the room
 first, then verify.
 
 **When you fix a bug, describe the reproduction that used to fail.** That is the
-whole review standard for a fix — if the bug could come back silently, it will.
+whole review standard for a fix. If the bug could come back silently, it will.
 
 ## What a good pull request looks like
 
@@ -105,7 +108,7 @@ whole review standard for a fix — if the bug could come back silently, it will
   review and cannot be reverted independently.
 - **Every changed line traces to the stated goal.** Please don't reformat
   neighbouring code, rename things you happened to read, or "improve" something
-  adjacent. Mention it instead — that's useful.
+  adjacent. Mention it instead; that's useful.
 - **Matches the surrounding style** even where you'd have done it differently.
 - **Explains the *why*, not the *what*.** The diff already says what changed.
   The description should say what was broken, what you tried, and anything you
@@ -119,7 +122,7 @@ beats a badly-scoped prefix.
 
 ## Review
 
-PRs are reviewed by a human, usually within a few days. Expect questions — they
+PRs are reviewed by a human, usually within a few days. Expect questions. They
 are about the change, never about you. If something is asked for that you don't
 know how to do, say so; it's normal for a reviewer to push a commit onto your
 branch to help it land.
@@ -145,7 +148,7 @@ These are not negotiable in a PR, so they're worth knowing up front:
 
 ## Security
 
-Please don't open a public issue for anything that could hurt a user — account
+Please don't open a public issue for anything that could hurt a user, such as account
 takeover, data exposure, a bypass of moderation. [SECURITY.md](./SECURITY.md)
 has the private route.
 

@@ -5,11 +5,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting this. You don't have to fill in every box — what
+        Thanks for reporting this. You don't have to fill in every box. What
         you were doing and what happened is enough to get started.
 
         If it's a **security** problem (someone could get into another account,
-        see private work, or reach a child), please don't file it here — see
+        see private work, or reach a child), please don't file it here. See
         [SECURITY.md](https://github.com/Nickalus12/SquiggleGames/blob/main/SECURITY.md).
 
   - type: textarea
@@ -47,9 +47,9 @@ body:
     attributes:
       label: Where in Squiggle?
       options:
-        - Editor — blocks
-        - Editor — paint / costumes / sounds
-        - Editor — sprites or the stage
+        - "Editor: blocks"
+        - "Editor: paint / costumes / sounds"
+        - "Editor: sprites or the stage"
         - Multiplayer sync between players
         - Together extension (multiplayer games)
         - Accounts, signing in, recovery
