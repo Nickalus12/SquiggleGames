@@ -1,4 +1,4 @@
-import {VOCAB_LOCK} from './net.js';
+import {DIGIT_RUN, VOCAB_LOCK} from './net.js';
 
 const LOCKED_NAME_INPUTS = Object.freeze({
     together_broadcastGameMessage: 'NAME',
@@ -6,8 +6,6 @@ const LOCKED_NAME_INPUTS = Object.freeze({
     together_changeSharedVariable: 'NAME',
     together_tellGame: 'NAME'
 });
-
-const DIGIT_RUN = new RegExp(`\\d{${VOCAB_LOCK.digitRun},}`);
 
 const lockReason = text => {
     if (typeof text !== 'string') return null;

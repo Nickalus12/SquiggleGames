@@ -9,15 +9,13 @@ import {openGameSetup} from '../../../rules/open-setup.js';
 import {gameServerReady} from '../../../rules/flags.js';
 import {MAX_OP_NAME, MAX_OP_VALUE, wireValue} from '../../../together2/net.js';
 import {
-    beforeTick,
     deviceBlocks,
     deviceMenus,
     fireDeviceHats,
-    installDeviceMethods
+    installDeviceMethods,
+    sharedGame
 } from '../../../together2/device-blocks.js';
 import {
-    applyTick,
-    createGameState,
     gameValue as readGameValue,
     playerValue as readPlayerValue,
     teamName,
@@ -80,9 +78,8 @@ class TogetherBlocks {
         this._lastLeaver = '';
         this._unsubs = [];
         this._bound = false;
-        this._game = createGameState();
         installRuleMethods(this, 'together');
-        installDeviceMethods(this, 'together', () => this._game);
+        installDeviceMethods(this, 'together', sharedGame);
         const vm = runtime.extensionManager && runtime.extensionManager.vm;
         if (vm) installRulesGuard(vm);
 
@@ -114,7 +111,6 @@ class TogetherBlocks {
         this._onPeerJoined = this._onPeerJoined.bind(this);
         this._onPeerLeft = this._onPeerLeft.bind(this);
         this._onTick = this._onTick.bind(this);
-        this._onGameEnded = this._onGameEnded.bind(this);
         this._onBridgeReady = this._onBridgeReady.bind(this);
         this._onStep = this._onStep.bind(this);
         this._onDisposed = this._onDisposed.bind(this);
@@ -248,7 +244,6 @@ class TogetherBlocks {
         this._unsubs.push(net.on('peer-joined', this._onPeerJoined));
         this._unsubs.push(net.on('peer-left', this._onPeerLeft));
         if (typeof net.onTick === 'function') this._unsubs.push(net.onTick(this._onTick));
-        this._unsubs.push(net.on('game-ended', this._onGameEnded));
         // Seed from bridge cache in case game-state replay already fired.
         const vars = net.sharedVars;
         if (vars) {
@@ -307,25 +302,16 @@ class TogetherBlocks {
         this._lastMessageValue = '';
         this._lastJoiner = '';
         this._lastLeaver = '';
-        this._game = createGameState();
     }
 
-    _onTick (tick) {
+    _onTick (tick, result) {
         const net = getNet();
-        const hz = net && net.tickHz;
-        if (Number.isFinite(hz) && hz > 0) this._game.tickSeconds = 1 / hz;
-        const before = beforeTick(this._game);
-        const result = applyTick(this._game, tick);
-        fireDeviceHats(this.runtime, 'together', before, this._game, result);
+        if (!net || !net.game || !result || !result.applied) return;
+        fireDeviceHats(this.runtime, 'together', net.game, result);
         for (const event of result.events) {
             const name = str(event.n);
             if (name && event.f === 0) this._deliverGame(name, str(event.v));
         }
-        return result;
-    }
-
-    _onGameEnded () {
-        this._game = createGameState();
     }
 
     _deliverGame (name, value) {
@@ -680,18 +666,18 @@ class TogetherBlocks {
     }
 
     gameValue (args) {
-        return readGameValue(this._game, str(args.NAME));
+        return readGameValue(sharedGame(), str(args.NAME));
     }
 
     myPlayerValue (args) {
         const net = getNet();
         const slot = net && net.slot;
         if (slot === null || typeof slot === 'undefined') return '';
-        return readPlayerValue(this._game, slot, str(args.NAME));
+        return readPlayerValue(sharedGame(), slot, str(args.NAME));
     }
 
     gameRound () {
-        return this._game.round;
+        return sharedGame().round;
     }
 
     myTeam () {
@@ -699,11 +685,11 @@ class TogetherBlocks {
         const slot = net && net.slot;
         if (slot === null || typeof slot === 'undefined') return '';
         const mark = rulesMark(this.runtime);
-        return teamName(this._game, slot, mark && mark.teams);
+        return teamName(sharedGame(), slot, mark && mark.teams);
     }
 
     timeLeft (args) {
-        return readTimeLeft(this._game, str(args.TIMER));
+        return readTimeLeft(sharedGame(), str(args.TIMER));
     }
 
     inGame () {

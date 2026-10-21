@@ -102,12 +102,13 @@ const waitFor = async (cond, budget = 5000) => {
         current.clock.advance(STEP);
     }
 };
-const pump = async promise => {
+const pump = async (promise, budget = 5000) => {
     let done = false;
     const result = Promise.resolve(promise).finally(() => {
         done = true;
     });
-    while (!done) {
+    for (let spent = 0; !done; spent += STEP) {
+        if (spent >= budget) throw new Error(`pump: the promise did not settle within ${budget} ms`);
         await yieldReal();
         current.clock.advance(STEP);
     }
@@ -313,6 +314,22 @@ const addRules = async fx => {
 
 const replayWelcome = (fx, version, snap) => fx.emit('welcome', welcome({proto: 2, replay: true, rs: snap.atSeq + 5,
     hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version, snap}));
+
+await section('pump fails a promise that never settles within its budget', async () => {
+    const saved = current;
+    current = {clock: makeClock()};
+    let threw = null;
+    const start = current.clock.now();
+    try {
+        await pump(new Promise(noop), 200);
+    } catch (e) {
+        threw = e.message;
+    }
+    ok('pump throws once the budget is spent', threw === 'pump: the promise did not settle within 200 ms', threw);
+    ok('the fake clock stops at the budget', current.clock.now() - start === 200, current.clock.now() - start);
+    ok('a settling promise still resolves through pump', await pump(Promise.resolve(7), 200) === 7);
+    current = saved;
+});
 
 await section('welcome with proto 2 seeds the room over http', async () => {
     const fx = await fixture();
@@ -681,11 +698,20 @@ await section('the green flag opens the game socket', async () => {
     ok('and the mode and tick rate', net.mode === 'rules' && net.tickHz === 20, [net.mode, net.tickHz]);
     const ticks = [];
     const games = [];
-    const offTick = net.onTick(msg => ticks.push(msg));
+    const results = [];
+    const game = net.game;
+    const offTick = net.onTick((msg, result) => {
+        ticks.push(msg);
+        results.push(result);
+    });
     const offGame = net.on('game', msg => games.push(msg));
     ws.deliver({type: 'tick', t: 1, kf: 1, v: {score: 2}, y: {names: {2: 'Pal'}}, a: {2: [10, 0, 90, 0, 1, 0]},
         e: [{n: 'hi', v: 'x', f: 2}, {n: 'go', v: '', f: 0}]});
     ok('ticks reach onTick subscribers', ticks.length === 1 && ticks[0].v.score === 2);
+    ok('with what the session made of them', results[0] && results[0].applied === true &&
+        results[0].changed.join() === 'score', results[0]);
+    ok('the bridge reads the game the session parsed', !!game && net.game === game && game.values.score === 2,
+        game && game.values);
     ok('a player message in a tick arrives as a game message with the sender name',
         games.length === 1 && games[0].name === 'hi' && games[0].fromName === 'Pal' && games[0].from === 2, games);
     ws.deliver({type: 'rules-status', hash: 'abc', ok: true, phase: 'compile', errors: []});
@@ -930,41 +956,65 @@ await section('a 4010 close ends the session with a reload message', async () =>
     ok('saving the copy shows the portability note first', notes.length === 1 && notes[0] === vm, notes.length);
 });
 
-await section('a bad-frame close says reload and stays closed', async () => {
+await section('a bad-frame close reconnects once and the second one ends the session', async () => {
     const fx = await fixture();
-    const {banners, sent} = fx;
+    const {banners} = fx;
     const toasts = [];
+    let disconnects = 0;
     fx.overlay.toast = text => toasts.push(text);
+    fx.client.disconnect = () => {
+        disconnects += 1;
+    };
     await welcome2(fx);
-    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 1});
+    const said = () => toasts.filter(t => /could not read something this editor sent/.test(t));
+    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 1, final: false});
+    ok('the first says nothing and keeps the session', said().length === 0 && banners.length === 0 && disconnects === 0,
+        toasts);
+    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 2, final: true});
     const ended = banners.find(b => /could not read something this editor sent/.test(b.text || ''));
-    ok('the banner says the room could not read it and a reload fixes it',
-        Boolean(ended) && /Reload the page/.test(ended.text), banners.map(b => b.text));
-    ok('and a toast says the same', toasts.some(t => /could not read something this editor sent/.test(t)), toasts);
-    const before = sent.length;
-    fx.vm.runtime.emit('PROJECT_CHANGED');
-    await settle(50);
-    ok('nothing more goes out after it', sent.slice(before).every(m => !m || m.type !== 'block-event'), sent.slice(before));
+    ok('the second ends it with the reload banner', Boolean(ended) && /Reload the page/.test(ended.text),
+        banners.map(b => b.text));
+    ok('and one toast', said().length === 1, toasts);
+    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 3, final: true});
+    ok('a later one adds no second toast', said().length === 1 && disconnects === 1, [toasts, disconnects]);
+    await welcome2(fx);
+    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 4, final: true});
+    ok('a new session ends on its own final bad frame', said().length === 2 && disconnects === 2,
+        [toasts, disconnects]);
 });
 
-await section('a bad-frame close on the game socket says reload and does not reconnect', async () => {
+await section('a bad-frame close on the game socket rejoins once and the second closes both sockets', async () => {
     const fx = await fixture();
     const {vm, gameSockets} = fx;
     const toasts = [];
+    let disconnects = 0;
     fx.overlay.toast = text => toasts.push(text);
+    fx.client.disconnect = () => {
+        disconnects += 1;
+    };
     await welcome2(fx);
     await addRules(fx);
     gameFlags.serverReady = true;
     vm.runtime.emit('PROJECT_START');
     await waitFor(() => gameSockets.length === 1);
-    const ws = gameSockets[0];
-    ws.onopen();
-    ws.deliver({type: 'welcome', slot: 1, ack: 0, mode: 'rules', tickHz: 20});
-    ws.onclose({code: 1007, reason: 'bad-frame'});
-    await settle(200);
-    ok('the toast says reload', toasts.some(t => /could not read something this editor sent/.test(t)), toasts);
-    ok('the game socket is not opened again', gameSockets.length === 1, gameSockets.length);
-    ok('and the bridge is out of the game', globalThis.window.SquiggleNet.inGame === false);
+    const said = () => toasts.filter(t => /could not read something this editor sent/.test(t));
+    const join = ws => {
+        ws.onopen();
+        ws.deliver({type: 'welcome', slot: 1, ack: 0, mode: 'rules', tickHz: 20});
+    };
+    join(gameSockets[0]);
+    gameSockets[0].onclose({code: 1007, reason: 'bad-frame'});
+    ok('the first opens one fresh game socket', await waitFor(() => gameSockets.length === 2), gameSockets.length);
+    ok('and says nothing', said().length === 0 && disconnects === 0, toasts);
+    join(gameSockets[1]);
+    gameSockets[1].onclose({code: 1007, reason: 'bad-frame'});
+    await settle(400);
+    ok('the second toasts once', said().length === 1, toasts);
+    ok('and closes the room socket too', disconnects === 1, disconnects);
+    ok('no game socket opens again', gameSockets.length === 2, gameSockets.length);
+    vm.runtime.emit('PROJECT_START');
+    await settle(400);
+    ok('a green flag after it opens nothing', gameSockets.length === 2 && said().length === 1, gameSockets.length);
 });
 
 await section('a locked game message says what the lock allows', async () => {
@@ -976,6 +1026,27 @@ await section('a locked game message says what the lock allows', async () => {
         message: 'That was not sent because it looked like contact details or words that are not allowed here.'});
     ok('the toast names the 32 letters and the 5 numbers',
         toasts.some(t => /32 letters or fewer/.test(t) && /5 numbers in a row/.test(t)), toasts);
+});
+
+await section('a moderated reply picks a fixed sentence from its category', async () => {
+    const fx = await fixture();
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    await welcome2(fx);
+    const reply = (category, message) => {
+        toasts.length = 0;
+        fx.emit('moderated', {type: 'moderated', of: 'chat', reason: 'blocked', category, message});
+        return toasts[0] || '';
+    };
+    ok('contact asks to keep details private', /Keep phone numbers and addresses private/.test(
+        reply('contact', 'raw server words')), toasts);
+    ok('link says links are not allowed', /links are not allowed/.test(reply('link', 'x')), toasts);
+    const odd = reply('made-up-category', 'raw server words');
+    ok('an unknown category gets the plain default', /words that are not allowed here/.test(odd) &&
+        !/made-up-category/.test(odd), odd);
+    ok('a null category gets the plain default', /words that are not allowed here/.test(reply(null, 'x')), toasts);
+    ok('the server text and the category are never shown', ['contact', 'link', 'toString', '__proto__']
+        .every(c => !/raw server words|toString|__proto__/.test(reply(c, 'raw server words'))), toasts);
 });
 
 await section('a game name the lock refuses is flagged at edit time', async () => {
@@ -991,11 +1062,21 @@ await section('a game name the lock refuses is flagged at edit time', async () =
             next: null, x: 0, y: 0, fields: {}, inputs: {NAME: {name: 'NAME', block: `${id}t`, shadow: `${id}t`}}});
         fx.vm.runtime.emit('PROJECT_CHANGED');
     };
+    const config = extra => fx.emit('room-chat-config', Object.assign({type: 'room-chat-config', mode: 'quick', on: true,
+        phrases: []}, extra));
     const flagged = () => toasts.filter(t => /the room will not send it/.test(t));
     say('a1', 'q'.repeat(40));
     await settle(800);
     ok('nothing is flagged while no guest or younger player is here', flagged().length === 0, toasts);
-    fx.emit('room-chat-config', {type: 'room-chat-config', mode: 'quick', on: true, phrases: []});
+    fx.client.proto = 1;
+    config({});
+    await settle(800);
+    ok('a 1.8 server in quick mode never warns', flagged().length === 0, toasts);
+    fx.client.proto = 2;
+    config({locked: false});
+    await settle(800);
+    ok('a quick-chat member of an unlocked room is not warned', flagged().length === 0, toasts);
+    config({locked: true});
     await settle(800);
     ok('the long name is flagged once the room is locked',
         flagged().length === 1 && /longer than 32 letters/.test(flagged()[0]), toasts);
@@ -1005,6 +1086,13 @@ await section('a game name the lock refuses is flagged at edit time', async () =
     fx.vm.runtime.emit('PROJECT_CHANGED');
     await settle(800);
     ok('each name is flagged once', flagged().length === 2, toasts);
+    config({locked: false});
+    say('a3', 'r'.repeat(40));
+    await settle(800);
+    ok('nothing new is flagged once the lock lifts', flagged().length === 2, toasts);
+    config({});
+    await settle(800);
+    ok('without the flag a v2 room still reads quick mode', flagged().length === 3, toasts);
 });
 
 await section('typed field text goes out with the block-event at once', async () => {
@@ -1029,6 +1117,9 @@ await section('typed field text goes out with the block-event at once', async ()
 await section('a masked spriteAdd from the room loads', async () => {
     const fx = await fixture();
     await welcome2(fx);
+    const PROC = '***** %s *** %n **** %b';
+    const IDS = '["a1","a2","a3"]';
+    const NAMES = '["***","****","*****"]';
     const masked = sprite('*****');
     masked.variables = {v1: ['*****', 0], v2: ['*****', 'x']};
     masked.lists = {l1: ['****', []]};
@@ -1042,17 +1133,21 @@ await section('a masked spriteAdd from the room loads', async () => {
             shadow: false, topLevel: false},
         set: {opcode: 'data_setvariableto', next: 'call', parent: 'say', inputs: {VALUE: [1, [10, '***']]},
             fields: {VARIABLE: ['*****', 'v1']}, shadow: false, topLevel: false},
-        call: {opcode: 'procedures_call', next: null, parent: 'set', inputs: {a1: [1, [10, '***']]}, fields: {},
-            shadow: false, topLevel: false,
-            mutation: {tagName: 'mutation', children: [], proccode: '*****', argumentids: '["a1"]', warp: 'false'}},
+        call: {opcode: 'procedures_call', next: null, parent: 'set', inputs: {a1: [1, [10, '***']], a2: [1, [4, '3']]},
+            fields: {}, shadow: false, topLevel: false,
+            mutation: {tagName: 'mutation', children: [], proccode: PROC, argumentids: IDS, warp: 'false'}},
         def: {opcode: 'procedures_definition', next: 'think', parent: null, inputs: {custom_block: [1, 'proto']},
             fields: {}, shadow: false, topLevel: true, x: 300, y: 0},
-        proto: {opcode: 'procedures_prototype', next: null, parent: 'def', inputs: {a1: [1, 'arg']}, fields: {},
-            shadow: true, topLevel: false,
-            mutation: {tagName: 'mutation', children: [], proccode: '*****', argumentids: '["a1"]',
-                argumentnames: '["***"]', argumentdefaults: '[""]', warp: 'false'}},
+        proto: {opcode: 'procedures_prototype', next: null, parent: 'def',
+            inputs: {a1: [1, 'arg'], a2: [1, 'arg2'], a3: [1, 'arg3']}, fields: {}, shadow: true, topLevel: false,
+            mutation: {tagName: 'mutation', children: [], proccode: PROC, argumentids: IDS,
+                argumentnames: NAMES, argumentdefaults: '["","","false"]', warp: 'false'}},
         arg: {opcode: 'argument_reporter_string_number', next: null, parent: 'proto', inputs: {},
             fields: {VALUE: ['***', null]}, shadow: true, topLevel: false},
+        arg2: {opcode: 'argument_reporter_string_number', next: null, parent: 'proto', inputs: {},
+            fields: {VALUE: ['****', null]}, shadow: true, topLevel: false},
+        arg3: {opcode: 'argument_reporter_boolean', next: null, parent: 'proto', inputs: {},
+            fields: {VALUE: ['*****', null]}, shadow: true, topLevel: false},
         think: {opcode: 'looks_think', next: null, parent: 'def', inputs: {MESSAGE: [3, 'argUse', [10, '*****']]},
             fields: {}, shadow: false, topLevel: false},
         argUse: {opcode: 'argument_reporter_string_number', next: null, parent: 'think', inputs: {},
@@ -1066,7 +1161,12 @@ await section('a masked spriteAdd from the room loads', async () => {
     ok('its blocks are all there', ['hat', 'say', 'set', 'call', 'def', 'proto', 'arg', 'think', 'argUse']
         .every(id => blocks[id]), Object.keys(blocks));
     ok('the masked call still finds its definition',
-        target && target.blocks.getProcedureDefinition('*****') === 'def');
+        target && target.blocks.getProcedureDefinition(PROC) === 'def');
+    const proto = blocks.proto && blocks.proto.mutation;
+    ok('the masked proccode keeps its placeholders', proto && proto.proccode === PROC &&
+        (proto.proccode.match(/%[snb]/g) || []).join(' ') === '%s %n %b', proto);
+    ok('the masked argument names stay a same-length JSON array', proto &&
+        JSON.parse(proto.argumentnames).length === JSON.parse(proto.argumentids).length, proto);
     ok('the variable keeps its id', target && target.variables.v1 && target.variables.v1.name === '*****');
     ok('the costume keeps its md5ext', target && target.getCostumes()[0].md5 === 'cd21514d0531fdffb22204e0ec5ed84a.svg',
         target && target.getCostumes()[0]);

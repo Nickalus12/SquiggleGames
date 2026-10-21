@@ -1,4 +1,4 @@
-import {MAX_OP_NAME, MAX_OP_VALUE, createGameSession, gameSocketUrl, wireValue} from './net.js';
+import {MAX_OP_NAME, MAX_OP_VALUE, RECONNECT_MIN_MS, createGameSession, gameSocketUrl, wireValue} from './net.js';
 import {TICK_MS, createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
@@ -10,6 +10,7 @@ const MAX_X = 480;
 const MAX_Y = 360;
 const MAX_COSTUME = 1000;
 const MAX_LEVEL = 100;
+const BAD_FRAME_WINDOW_MS = 60 * 1000;
 
 const halfPixel = value => Math.round(value * 2) / 2;
 
@@ -42,8 +43,11 @@ const worldLevel = () => {
     if (!world || typeof world.currentLevel !== 'function' || typeof world.levels !== 'function') return 0;
     const current = world.currentLevel();
     if (!current) return 0;
-    const index = (world.levels() || []).findIndex(level => level && level.id === current);
-    return index + 1;
+    const levels = world.levels() || [];
+    for (let i = 0; i < levels.length; i++) {
+        if (levels[i] && levels[i].id === current) return i + 1;
+    }
+    return 0;
 };
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -106,7 +110,7 @@ const createAvatarLayer = runtime => {
         slots (out) {
             const into = out || [];
             into.length = 0;
-            drawn.forEach((id, slot) => into.push(slot));
+            for (const slot of drawn.keys()) into.push(slot);
             return into;
         },
         clear () {
@@ -135,8 +139,8 @@ const createGameLink = ({
     slug,
     WebSocketImpl,
     now = Date.now,
-    setTimer,
-    clearTimer,
+    setTimer = setTimeout,
+    clearTimer = clearTimeout,
     onRulesStatus,
     onGameMessage,
     onEnded,
@@ -162,6 +166,9 @@ const createGameLink = ({
     let mineSlot = null;
     let mineKey = '';
     let badFrames = 0;
+    let lastBadFrameAt = null;
+    let latched = null;
+    let rejoinTimer = null;
 
     const forgetOwn = () => {
         ownTargets = null;
@@ -186,10 +193,10 @@ const createGameLink = ({
         buffer = createInterpolationBuffer({tickMs});
     };
 
-    const deliverTick = tick => {
+    const deliverTick = (tick, result) => {
         tickHandlers.forEach(cb => {
             try {
-                cb(tick);
+                cb(tick, result);
             } catch (e) {
                 tickHandlers.delete(cb);
             }
@@ -210,7 +217,7 @@ const createGameLink = ({
                 if (!game.avatars[slot]) buffer.drop(slot);
             });
         }
-        deliverTick(tick);
+        deliverTick(tick, result);
         if (!result.applied) return;
         result.events.forEach(event => {
             if (!Number.isInteger(event.f) || event.f === 0 || typeof event.n !== 'string') return;
@@ -280,8 +287,26 @@ const createGameLink = ({
         mineSlot = null;
     };
 
-    return {
+    const cancelRejoin = () => {
+        if (rejoinTimer !== null) clearTimer(rejoinTimer);
+        rejoinTimer = null;
+    };
+
+    const closeKind = msg => {
+        const reason = msg && msg.reason;
+        if (reason === 'reload') return 'final';
+        if (reason !== 'bad-frame') return 'other';
+        badFrames += 1;
+        const at = now();
+        const second = lastBadFrameAt !== null && at - lastBadFrameAt <= BAD_FRAME_WINDOW_MS;
+        lastBadFrameAt = at;
+        return second ? 'final' : 'rejoin';
+    };
+
+    const link = {
         start () {
+            if (latched) return null;
+            cancelRejoin();
             if (session && !session.stopped) return session;
             reset();
             session = createGameSession({
@@ -302,9 +327,16 @@ const createGameLink = ({
             }));
             unsubs.push(session.on('closed', msg => {
                 if (session !== current) return;
-                if (msg && msg.reason === 'bad-frame') badFrames += 1;
+                const kind = closeKind(msg);
+                if (kind === 'final') latched = msg.reason;
                 reset();
-                if (onClosed) onClosed(msg);
+                if (onClosed) onClosed(Object.assign({}, msg, {final: kind === 'final'}));
+                if (kind === 'rejoin') {
+                    rejoinTimer = setTimer(() => {
+                        rejoinTimer = null;
+                        if (!latched && !session) link.start();
+                    }, RECONNECT_MIN_MS);
+                }
             }));
             runtime.on('AFTER_EXECUTE', frame);
             runtime.on('PROJECT_CHANGED', forgetOwn);
@@ -312,6 +344,7 @@ const createGameLink = ({
             return session;
         },
         stop () {
+            cancelRejoin();
             if (session) session.stop();
             else reset();
         },
@@ -352,8 +385,12 @@ const createGameLink = ({
         },
         get game () {
             return game;
+        },
+        get latched () {
+            return latched;
         }
     };
+    return link;
 };
 
 export {
@@ -363,5 +400,6 @@ export {
     createGameLink,
     findPlayerSprite,
     outboundOp,
-    renderedDirection
+    renderedDirection,
+    worldLevel
 };

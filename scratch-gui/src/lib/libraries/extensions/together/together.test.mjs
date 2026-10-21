@@ -17,6 +17,7 @@ import '../../../rules/json-hook.mjs';
 
 const TogetherBlocks = (await import('./index.js')).default;
 const {ruleOpcodes} = await import('../../../rules/rule-blocks.js');
+const {applyTick, createGameState} = await import('../../../together2/game-state.js');
 
 let pass = 0;
 let fail = 0;
@@ -229,6 +230,18 @@ console.log('\nsending messages');
     for (let i = 0; i < 20; i++) step(r2, c2, 100);
     ok('a different message name still gets through under flood',
         n2.sent.some(m => m.name === 'b'), n2.sent.slice(-3));
+
+    const {runtime: r4, net: n4, ext: e4, clock: c4} = setup();
+    e4.broadcastGameMessage({NAME: 'zip', VALUE: '12345'});
+    ok('a typed run of 5 digits goes out as text', n4.sent[0] && n4.sent[0].value === '12345', n4.sent[0]);
+    for (let i = 0; i < 200; i++) e4.broadcastGameMessage({NAME: 'a', VALUE: '1'});
+    e4.broadcastGameMessage({NAME: 'phone', VALUE: '5551234567'});
+    e4.broadcastGameMessage({NAME: 'n', VALUE: '123'});
+    for (let i = 0; i < 20; i++) step(r4, c4, 100);
+    const held = name => n4.sent.find(m => m.name === name);
+    ok('a held message with a digit run still goes out as text', held('phone') && held('phone').value === '5551234567',
+        held('phone'));
+    ok('a held short number still goes out as a number', held('n') && held('n').value === 123, held('n'));
 }
 
 console.log('\nshared variables');
@@ -476,8 +489,12 @@ const withTicks = () => {
         net.inputs = [];
         net.sendInput = msg => net.inputs.push(msg);
         net.slot = 2;
+        net.game = createGameState();
     });
-    env.tick = msg => tickHandlers.slice().forEach(cb => cb(msg));
+    env.tick = msg => {
+        const result = applyTick(env.net.game, msg);
+        tickHandlers.slice().forEach(cb => cb(msg, result));
+    };
     env.tickHandlers = tickHandlers;
     return env;
 };
@@ -510,11 +527,10 @@ console.log('\ngame server ticks');
         ext.timeLeft({TIMER: 'timer'}));
     ok('an unknown timer reads 0', ext.timeLeft({TIMER: 'other'}) === 0);
     const left20 = ext.timeLeft({TIMER: 'timer'});
-    net.tickHz = 10;
-    tick({t: 6, y: {}});
-    ok('at 10 ticks a second the same timer reads twice as long', ext.timeLeft({TIMER: 'timer'}) === left20 * 2,
-        ext.timeLeft({TIMER: 'timer'}));
-    delete net.tickHz;
+    net.game.tickSeconds = 0.1;
+    ok('at the 10 a second the session set, the same timer reads twice as long',
+        ext.timeLeft({TIMER: 'timer'}) === left20 * 2, ext.timeLeft({TIMER: 'timer'}));
+    net.game.tickSeconds = 0.05;
 
     const says = runtime.hats.filter(h => h.opcode === 'together_whenGameSays');
     ok('a game event starts its hat once', says.length === 1 && says[0].fields.TEXT === 'start', says);
@@ -534,9 +550,17 @@ console.log('\ngame server ticks');
     ok('with no slot, my player value is empty', ext.myPlayerValue({NAME: 'hp'}) === '');
     ok('with no slot, my team is empty', ext.myTeam() === '');
 
-    net.fire('game-ended', {});
-    ok('the game ending clears its values',
-        ext.gameValue({NAME: 'lives'}) === '' && ext.gameRound() === 0);
+    const kept = net.game;
+    net.game = createGameState();
+    ok('the game ending clears its values once the session drops its game',
+        ext.gameValue({NAME: 'lives'}) === '' && ext.gameRound() === 0 && kept.values.lives === 2);
+    tick({t: 1, kf: 1, v: {lives: 3}});
+    ok('the next game reads at once', ext.gameValue({NAME: 'lives'}) === 3);
+    tick({t: 2, v: {lives: 3}});
+    ok('a tick the session already parsed is not parsed again here', ext.gameValue({NAME: 'lives'}) === 3 &&
+        net.game.t === 2);
+    delete net.game;
+    ok('a bridge with no game reads empty', ext.gameValue({NAME: 'lives'}) === '' && ext.gameRound() === 0);
 }
 
 console.log('\ntelling the game');
@@ -569,7 +593,7 @@ console.log('\nproject reload: game state');
     const {runtime, ext, tick} = withTicks();
     tick({t: 1, kf: 1, v: {score: 5}, y: {round: 3}});
     runtime.emit('RUNTIME_DISPOSED');
-    ok('a reload forgets the last game', ext.gameValue({NAME: 'score'}) === '' && ext.gameRound() === 0);
+    ok('a reload mid-game keeps reading the live game', ext.gameValue({NAME: 'score'}) === 5 && ext.gameRound() === 3);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

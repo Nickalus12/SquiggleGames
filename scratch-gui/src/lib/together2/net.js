@@ -15,6 +15,7 @@ const FRAME_HEAD_BYTES = 128;
 const MAX_OP_NAME = 100;
 const MAX_OP_VALUE = 4096;
 const VOCAB_LOCK = Object.freeze({text: 32, digitRun: 5});
+const DIGIT_RUN = new RegExp(`\\d{${VOCAB_LOCK.digitRun},}`);
 const BAD_FRAME_CODE = 1007;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
@@ -35,6 +36,7 @@ const wireValue = value => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
+    if (DIGIT_RUN.test(trimmed)) return value;
     const number = Number(trimmed);
     return trimmed && Number.isFinite(number) && String(number) === trimmed ? number : value;
 };
@@ -92,6 +94,7 @@ const createGameSession = ({
     let joinedWithResume = false;
     let pendingA = null;
     let lastSentA = null;
+    const avatarBuffers = [[], []];
     const pendingG = [];
     let mode = null;
     let tickHz = null;
@@ -306,7 +309,10 @@ const createGameSession = ({
         setAvatar (a) {
             if (!Array.isArray(a)) return false;
             if (sameAvatar(a, pendingA || lastSentA)) return false;
-            pendingA = a.slice();
+            const into = avatarBuffers[0] === lastSentA ? avatarBuffers[1] : avatarBuffers[0];
+            into.length = a.length;
+            for (let i = 0; i < a.length; i++) into[i] = a[i];
+            pendingA = into;
             schedule();
             return true;
         },
@@ -389,7 +395,9 @@ export {
     MAX_OP_VALUE,
     OUT_ACTIONS,
     VOCAB_LOCK,
+    DIGIT_RUN,
     BAD_FRAME_CODE,
+    RECONNECT_MIN_MS,
     cutOp,
     wireValue,
     gameSocketUrl,

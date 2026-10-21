@@ -1,4 +1,4 @@
-import {applyTick, createGameState, playerName, playerValue, teamName} from './game-state.js';
+import {createGameState, playerName, playerValue, teamName} from './game-state.js';
 import {gameServerReady} from '../rules/flags.js';
 import {MENU_METHODS, menuItems, rulesMark} from '../rules/rule-blocks.js';
 
@@ -98,33 +98,20 @@ const deviceMenus = card => {
     return menus;
 };
 
-const beforeTick = state => ({values: Object.assign({}, state.values), round: state.round, running: state.running});
-
-const changedValues = (before, state) => {
-    const names = new Set();
-    Object.keys(before.values).forEach(name => {
-        if (state.values[name] !== before.values[name]) names.add(name);
-    });
-    Object.keys(state.values).forEach(name => {
-        if (state.values[name] !== before.values[name]) names.add(name);
-    });
-    return names;
-};
-
 const startAll = (runtime, opcode, tag) => {
     const threads = runtime.startHats(opcode) || [];
     if (tag) threads.forEach(thread => Object.assign(thread, tag));
     return threads;
 };
 
-const fireDeviceHats = (runtime, card, before, state, result) => {
-    if (!runtime || typeof runtime.startHats !== 'function' || !result || !result.applied) return;
+const fireDeviceHats = (runtime, card, state, result) => {
+    if (!runtime || typeof runtime.startHats !== 'function' || !state || !result || !result.applied) return;
     if (card === 'together') {
-        const changed = changedValues(before, state);
-        if (changed.size) startAll(runtime, 'together_whenGameValueChanges', {[THREAD_CHANGED]: changed});
+        const changed = result.changed;
+        if (changed.length) startAll(runtime, 'together_whenGameValueChanges', {[THREAD_CHANGED]: changed});
     } else if (card === 'squigglescores') {
-        const rose = state.round > before.round;
-        if (before.running && (rose || !state.running)) startAll(runtime, 'squigglescores_whenTheRoundEnds');
+        const rose = state.round > result.roundWas;
+        if (result.runningWas && (rose || !state.running)) startAll(runtime, 'squigglescores_whenTheRoundEnds');
         if (rose) startAll(runtime, 'squigglescores_whenTheRoundStarts');
     } else if (card === 'squigglearena') {
         result.events.forEach(event => {
@@ -148,7 +135,7 @@ const installDeviceMethods = (extension, card, gameOf) => {
     const methods = {
         whenGameValueChanges (args, util) {
             const changed = util && util.thread && util.thread[THREAD_CHANGED];
-            return !!changed && changed.has(str(args.NAME));
+            return !!changed && changed.indexOf(str(args.NAME)) >= 0;
         },
         playerValueOf (args) {
             const slot = slotOf(args.PLAYER, netOf());
@@ -209,30 +196,23 @@ const installDeviceMethods = (extension, card, gameOf) => {
     return extension;
 };
 
+const NO_GAME = createGameState();
+
+const sharedGame = () => {
+    const net = netOf();
+    return (net && net.game) || NO_GAME;
+};
+
 const createDeviceFeed = (runtime, card) => {
-    let game = createGameState();
-    let slot = 0;
     let unsubs = [];
-    const onTick = tick => {
+    const onTick = (tick, result) => {
         const net = netOf();
-        const now = mySlot(net);
-        if (now !== slot) {
-            game = createGameState(game.tickSeconds);
-            slot = now;
-        }
-        const hz = net && net.tickHz;
-        if (Number.isFinite(hz) && hz > 0) game.tickSeconds = 1 / hz;
-        const before = beforeTick(game);
-        fireDeviceHats(runtime, card, before, game, applyTick(game, tick));
-    };
-    const onEnded = () => {
-        game = createGameState(game.tickSeconds);
+        if (net && net.game) fireDeviceHats(runtime, card, net.game, result);
     };
     const bind = () => {
         const net = netOf();
         if (unsubs.length || !net || typeof net.onTick !== 'function') return;
         unsubs.push(net.onTick(onTick));
-        if (typeof net.on === 'function') unsubs.push(net.on('game-ended', onEnded));
     };
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('SquiggleNetReady', bind);
@@ -240,7 +220,7 @@ const createDeviceFeed = (runtime, card) => {
     bind();
     return {
         get game () {
-            return game;
+            return sharedGame();
         },
         bind,
         dispose () {
@@ -249,7 +229,6 @@ const createDeviceFeed = (runtime, card) => {
             }
             unsubs.forEach(off => off());
             unsubs = [];
-            game = createGameState(game.tickSeconds);
         }
     };
 };
@@ -258,12 +237,12 @@ export {
     PLAYERS_MENU,
     THREAD_CHANGED,
     TOP_PLACES,
-    beforeTick,
     createDeviceFeed,
     deviceBlocks,
     deviceMenus,
     deviceOpcodes,
     fireDeviceHats,
     installDeviceMethods,
+    sharedGame,
     slotOf
 };

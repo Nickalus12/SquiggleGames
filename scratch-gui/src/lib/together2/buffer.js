@@ -110,7 +110,7 @@ const createInterpolationBuffer = ({
         slots (out) {
             const into = out || [];
             into.length = 0;
-            slots.forEach((list, key) => into.push(key));
+            for (const key of slots.keys()) into.push(key);
             return into;
         },
         clear () {

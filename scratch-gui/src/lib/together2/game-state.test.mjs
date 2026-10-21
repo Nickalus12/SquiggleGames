@@ -74,4 +74,22 @@ section('tick.y');
     ok('a bare round number still reads', state.round === 4 && state.running === true);
 }
 
+section('what a tick changed');
+{
+    const state = createGameState();
+    const names = result => result.changed.slice().sort()
+        .join();
+    const first = applyTick(state, {t: 1, kf: 1, v: {a: 1, b: 2}, y: {round: [1, 1]}});
+    ok('a first keyframe changes every value it brings', names(first) === 'a,b', first.changed);
+    ok('and says the round it found', first.roundWas === 0 && first.runningWas === false);
+    const delta = applyTick(state, {t: 2, v: {a: 1, b: 3, c: null}, y: {round: [1, 0]}});
+    ok('a delta changes only the values that differ', names(delta) === 'b', delta.changed);
+    ok('the round before the delta', delta.roundWas === 1 && delta.runningWas === true);
+    ok('removing a value is a change', names(applyTick(state, {t: 3, v: {b: null}})) === 'b');
+    ok('a tick with no values changes none', applyTick(state, {t: 4}).changed.length === 0);
+    const again = applyTick(state, {t: 40, kf: 1, v: {a: 1, d: 4}});
+    ok('a keyframe changes only what it adds or alters', names(again) === 'd', again.changed);
+    ok('a keyframe that drops a value says so', names(applyTick(state, {t: 80, kf: 1, v: {d: 4}})) === 'a');
+}
+
 done();

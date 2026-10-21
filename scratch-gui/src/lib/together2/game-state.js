@@ -76,11 +76,29 @@ const applyHits = (state, events) => {
     });
 };
 
+const changedOnKeyframe = (old, values) => {
+    const names = [];
+    Object.keys(old).forEach(name => {
+        if (values[name] !== old[name]) names.push(name);
+    });
+    Object.keys(values).forEach(name => {
+        if (!Object.prototype.hasOwnProperty.call(old, name)) names.push(name);
+    });
+    return names;
+};
+
+const changedByDelta = (values, delta) => (isObject(delta) ? Object.keys(delta).filter(name => (delta[name] === null ?
+    Object.prototype.hasOwnProperty.call(values, name) : values[name] !== delta[name])) : []);
+
 const applyTick = (state, tick) => {
     if (!tick || !Number.isFinite(tick.t)) return {applied: false, events: []};
     const keyframe = tick.kf === 1 || tick.kf === true;
     if (!keyframe && state.kf < 0) return {applied: false, needKeyframe: true, events: []};
     if (!keyframe && tick.t <= state.t) return {applied: false, stale: true, events: []};
+    const old = state.values;
+    const roundWas = state.round;
+    const runningWas = state.running;
+    const changed = keyframe ? null : changedByDelta(old, tick.v);
     if (keyframe) {
         state.values = {};
         state.players = {};
@@ -112,7 +130,14 @@ const applyTick = (state, tick) => {
     state.t = tick.t;
     const events = Array.isArray(tick.e) ? tick.e.filter(isObject) : [];
     applyHits(state, events);
-    return {applied: true, keyframe, events};
+    return {
+        applied: true,
+        keyframe,
+        events,
+        changed: changed || changedOnKeyframe(old, state.values),
+        roundWas,
+        runningWas
+    };
 };
 
 const playerValue = (state, slot, name) => {
