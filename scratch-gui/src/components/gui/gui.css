@@ -412,6 +412,19 @@ $fade-out-distance: 15px;
     background-color: $ui-modal-overlay;
 }
 
+.phone .blocks-wrapper {
+    overflow: hidden;
+}
+
+.phone[data-phone-tab="code"]:not(.phone-palette-open) .blocks-wrapper :global(.injectionDiv) {
+    left: calc(-1 * var(--sq-phone-toolbox, 240px));
+}
+
+[dir="rtl"].phone[data-phone-tab="code"]:not(.phone-palette-open) .blocks-wrapper :global(.injectionDiv) {
+    left: 0;
+    right: calc(-1 * var(--sq-phone-toolbox, 240px));
+}
+
 .phone .tab-list {
     display: none;
 }

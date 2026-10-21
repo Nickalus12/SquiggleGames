@@ -15,6 +15,7 @@ const OWN_PROPS = [
     'onSetLayoutMode',
     'onSetStageSize',
     'onSetViewport',
+    'phonePaletteOpen',
     'phoneTab',
     'stageSizeMode'
 ];
@@ -43,7 +44,9 @@ const LayoutModeHOC = function (WrappedComponent) {
             const {layoutMode} = this.props;
             if (
                 layoutMode === LAYOUT_MODES.phone &&
-                (this.props.phoneTab !== prevProps.phoneTab || this.props.miniStage !== prevProps.miniStage)
+                (this.props.phoneTab !== prevProps.phoneTab ||
+                    this.props.miniStage !== prevProps.miniStage ||
+                    this.props.phonePaletteOpen !== prevProps.phonePaletteOpen)
             ) {
                 this.scheduleAnnounce();
             }
@@ -104,12 +107,14 @@ const LayoutModeHOC = function (WrappedComponent) {
         onSetLayoutMode: PropTypes.func,
         onSetStageSize: PropTypes.func,
         onSetViewport: PropTypes.func,
+        phonePaletteOpen: PropTypes.bool,
         phoneTab: PropTypes.string,
         stageSizeMode: PropTypes.oneOf(Object.keys(STAGE_SIZE_MODES))
     };
     const mapStateToProps = state => ({
         layoutMode: state.scratchGui.layoutMode.mode,
         miniStage: state.scratchGui.layoutMode.miniStage,
+        phonePaletteOpen: state.scratchGui.layoutMode.phonePaletteOpen,
         phoneTab: state.scratchGui.layoutMode.phoneTab,
         stageSizeMode: state.scratchGui.stageSize.stageSize
     });
