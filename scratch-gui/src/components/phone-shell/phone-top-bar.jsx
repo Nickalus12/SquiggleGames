@@ -7,7 +7,8 @@ import {defineMessages, injectIntl, intlShape} from 'react-intl';
 import VM from 'scratch-vm';
 
 import ProjectTitleInput from '../menu-bar/project-title-input.jsx';
-import {setPhoneMenuOpen} from '../../reducers/layout-mode';
+import {PHONE_TABS} from '../../lib/layout-mode';
+import {setPhoneMenuOpen, setPhonePaletteOpen} from '../../reducers/layout-mode';
 import greenFlagIcon from '../green-flag/icon--green-flag.svg';
 import stopAllIcon from '../stop-all/icon--stop-all.svg';
 
@@ -16,6 +17,7 @@ import {getState as getSlots, subscribe as subscribeSlots} from './phone-slots';
 import styles from './phone-shell.css';
 
 const SHEET_ID = 'phone-menu-sheet';
+const PALETTE_EVENT = 'sq-command-palette';
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const messages = defineMessages({
@@ -23,6 +25,11 @@ const messages = defineMessages({
         id: 'gui.phone.menu',
         defaultMessage: 'Menu',
         description: 'Button that opens the main menu on phones'
+    },
+    findBlocks: {
+        id: 'sq.phone.findBlocks',
+        defaultMessage: 'Find blocks',
+        description: 'Top bar button on phones that shows or hides the block palette'
     },
     go: {
         id: 'gui.controls.go',
@@ -43,6 +50,7 @@ class PhoneTopBar extends React.Component {
             'handleGreenFlag',
             'handleStop',
             'handleToggleMenu',
+            'handleTogglePalette',
             'handleContextMenu',
             'handleKeyDown',
             'handleSlotsChange',
@@ -91,11 +99,17 @@ class PhoneTopBar extends React.Component {
     handleToggleMenu () {
         this.props.onSetMenuOpen(!this.props.menuOpen);
     }
+    handleTogglePalette () {
+        const open = !this.props.paletteOpen;
+        const event = new CustomEvent(PALETTE_EVENT, {cancelable: true, detail: {open, source: 'phone'}});
+        if (!window.dispatchEvent(event)) return;
+        this.props.onSetPaletteOpen(open);
+    }
     handleContextMenu (e) {
         e.preventDefault();
     }
     render () {
-        const {canEditTitle, intl, menuOpen, projectRunning, projectTitle} = this.props;
+        const {canEditTitle, intl, menuOpen, paletteOpen, phoneTab, projectRunning, projectTitle} = this.props;
         return (
             <div className={styles.topBar}>
                 <button
@@ -126,6 +140,19 @@ class PhoneTopBar extends React.Component {
                             <React.Fragment key={item.id}>{item.render()}</React.Fragment>
                         ))}
                     </div>
+                ) : null}
+                {phoneTab === PHONE_TABS.code ? (
+                    <button
+                        aria-expanded={paletteOpen}
+                        aria-label={intl.formatMessage(messages.findBlocks)}
+                        className={styles.iconButton}
+                        data-phone-palette-button
+                        title={intl.formatMessage(messages.findBlocks)}
+                        type="button"
+                        onClick={this.handleTogglePalette}
+                    >
+                        <SqIcon name={paletteOpen ? 'close' : 'search'} />
+                    </button>
                 ) : null}
                 <div
                     className={styles.controls}
@@ -175,6 +202,9 @@ PhoneTopBar.propTypes = {
     isStarted: PropTypes.bool,
     menuOpen: PropTypes.bool,
     onSetMenuOpen: PropTypes.func.isRequired,
+    onSetPaletteOpen: PropTypes.func.isRequired,
+    paletteOpen: PropTypes.bool,
+    phoneTab: PropTypes.string,
     projectRunning: PropTypes.bool,
     projectTitle: PropTypes.string,
     vm: PropTypes.instanceOf(VM).isRequired
@@ -183,12 +213,15 @@ PhoneTopBar.propTypes = {
 const mapStateToProps = state => ({
     isStarted: state.scratchGui.vmStatus.started,
     menuOpen: state.scratchGui.layoutMode.phoneMenuOpen,
+    paletteOpen: state.scratchGui.layoutMode.phonePaletteOpen,
+    phoneTab: state.scratchGui.layoutMode.phoneTab,
     projectRunning: state.scratchGui.vmStatus.running,
     projectTitle: state.scratchGui.projectTitle
 });
 
 const mapDispatchToProps = dispatch => ({
-    onSetMenuOpen: open => dispatch(setPhoneMenuOpen(open))
+    onSetMenuOpen: open => dispatch(setPhoneMenuOpen(open)),
+    onSetPaletteOpen: open => dispatch(setPhonePaletteOpen(open))
 });
 
 export default injectIntl(connect(

@@ -70,7 +70,7 @@ const TabIcon = ({name}) => (
     <span className={styles.tabIcon}>
         <SqIcon
             name={TAB_ICONS[name]}
-            size={22}
+            size={24}
         />
     </span>
 );

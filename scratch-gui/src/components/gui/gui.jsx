@@ -49,6 +49,7 @@ import {resolveStageSize} from '../../lib/screen-utils';
 import {
     LAYOUT_MODES,
     PHONE_FLYOUT_WIDTH,
+    PHONE_TOOLBOX_WIDTH,
     PHONE_TABS,
     isPhoneLandscape,
     phoneStageWidth
@@ -60,9 +61,7 @@ import {isRendererSupported, isBrowserSupported} from '../../lib/tw-environment-
 
 import styles from './gui.css';
 import addExtensionIcon from './icon--extensions.svg';
-import codeIcon from '!../../lib/tw-recolor/build!./icon--code.svg';
-import costumesIcon from '!../../lib/tw-recolor/build!./icon--costumes.svg';
-import soundsIcon from '!../../lib/tw-recolor/build!./icon--sounds.svg';
+import SqIcon from '../sq-icon/sq-icon.jsx';
 
 const messages = defineMessages({
     addExtension: {
@@ -129,6 +128,7 @@ const GUIComponent = props => {
         miniStage,
         onClosePhoneMenu,
         phoneMenuOpen,
+        phonePaletteOpen,
         phoneTab,
         touchControlsShown,
         viewportHeight,
@@ -274,6 +274,7 @@ const GUIComponent = props => {
                     [styles.tablet]: isTablet,
                     [styles.phoneLandscape]: phoneLandscape,
                     [styles.miniStageOpen]: isPhone && miniStage,
+                    [styles.phonePaletteOpen]: isPhone && phonePaletteOpen,
                     [styles.withTouchControls]: phoneControls
                 })}
                 data-phone-tab={isPhone ? phoneTab : null}
@@ -407,9 +408,10 @@ const GUIComponent = props => {
                             >
                                 <TabList className={tabClassNames.tabList}>
                                     <Tab className={tabClassNames.tab}>
-                                        <img
-                                            draggable={false}
-                                            src={codeIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="code"
+                                            size={24}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Code"
@@ -421,9 +423,10 @@ const GUIComponent = props => {
                                         className={tabClassNames.tab}
                                         onClick={onActivateCostumesTab}
                                     >
-                                        <img
-                                            draggable={false}
-                                            src={costumesIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="art"
+                                            size={24}
                                         />
                                         {targetIsStage ? (
                                             <FormattedMessage
@@ -443,9 +446,10 @@ const GUIComponent = props => {
                                         className={tabClassNames.tab}
                                         onClick={onActivateSoundsTab}
                                     >
-                                        <img
-                                            draggable={false}
-                                            src={soundsIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="sounds"
+                                            size={24}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Sounds"
@@ -455,7 +459,10 @@ const GUIComponent = props => {
                                     </Tab>
                                 </TabList>
                                 <TabPanel className={tabClassNames.tabPanel}>
-                                    <Box className={styles.blocksWrapper}>
+                                    <Box
+                                        className={styles.blocksWrapper}
+                                        style={isPhone ? {'--sq-phone-toolbox': `${PHONE_TOOLBOX_WIDTH}px`} : null}
+                                    >
                                         <Blocks
                                             key={`${blocksId}/${theme.id}${isPhone ? '/phone' : ''}`}
                                             canUseCloud={canUseCloud}
@@ -613,6 +620,7 @@ GUIComponent.propTypes = {
     onTelemetryModalOptOut: PropTypes.func,
     onToggleLoginOpen: PropTypes.func,
     phoneMenuOpen: PropTypes.bool,
+    phonePaletteOpen: PropTypes.bool,
     phoneTab: PropTypes.oneOf(Object.keys(PHONE_TABS)),
     renderLogin: PropTypes.func,
     securityManager: PropTypes.shape({}),
@@ -670,6 +678,7 @@ const mapStateToProps = state => ({
     layoutMode: state.scratchGui.layoutMode.mode,
     miniStage: state.scratchGui.layoutMode.miniStage,
     phoneMenuOpen: state.scratchGui.layoutMode.phoneMenuOpen,
+    phonePaletteOpen: state.scratchGui.layoutMode.phonePaletteOpen,
     phoneTab: state.scratchGui.layoutMode.phoneTab,
     touchControlsShown: touchControlsVisible(state.scratchGui.layoutMode),
     viewportHeight: state.scratchGui.layoutMode.viewportHeight,

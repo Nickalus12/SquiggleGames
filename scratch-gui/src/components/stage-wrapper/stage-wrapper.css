@@ -19,6 +19,10 @@
     padding-top: 44px;
 }
 
+.offset-controls:has(:global(#sq-stage-header-slot[data-stacked="true"]:not(:empty))) .stage-canvas-wrapper {
+    padding-top: calc(44px + 2.25rem + 0.5rem);
+}
+
 .stage-wrapper.full-screen {
     position: fixed;
     top: $stage-menu-height;

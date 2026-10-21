@@ -8,9 +8,21 @@
 }
 
 .framerate-label {
-    font-size: 0.625rem;
-    font-weight: bold;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    color: $control-primary;
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-1, 4px);
+    font-size: var(--sq-text-xs, 12px);
+    font-weight: var(--sq-weight-bold, 700);
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    color: var(--sq-text, $text-primary);
     white-space: nowrap;
+}
+
+.framerate-label::before {
+    content: "";
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--sq-radius-pill, 999px);
+    background-color: var(--sq-warn, $control-primary);
 }

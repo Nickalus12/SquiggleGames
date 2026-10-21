@@ -1,4 +1,5 @@
 import {NIGHT} from '../tokens';
+import {ZOOM_FILTER} from '../zoom-filter';
 
 const guiColors = {
     'color-scheme': 'dark',
@@ -77,7 +78,7 @@ const blockColors = {
     buttonBorder: '#8f98bd',
     buttonActiveBackground: NIGHT['sq-raised'],
     buttonForeground: '#dfe3f5',
-    zoomIconFilter: 'invert(100%)',
+    zoomIconFilter: ZOOM_FILTER,
     gridColor: '#242c4f'
 };
 

@@ -11,6 +11,10 @@ import extensionLibraryContent, {
     galleryMore
 } from '../lib/libraries/extensions/index.jsx';
 import extensionTags from '../lib/libraries/tw-extension-tags';
+import {getKit, isKit, TOGETHER_ID} from '../lib/kits/registry.js';
+import {isTogetherRequired, squiggleFirst, tagChipsFor} from '../components/extension-library/extension-cards.js';
+import collab from '../lib/collab';
+import {showLoadError, showTogetherSheet} from '../components/squiggle-only-notice';
 
 import LibraryComponent from '../components/library/library.jsx';
 import extensionIcon from '../components/action-menu/icon--sprite.svg';
@@ -23,10 +27,19 @@ const messages = defineMessages({
     }
 });
 
+const rulesContext = require.context('../lib', true, /^\.\/rules\/ensure-sprite\.js$/, 'lazy');
+
+const loadEnsureRulesSprite = () => {
+    const key = rulesContext.keys()[0];
+    if (!key) return Promise.resolve(null);
+    return rulesContext(key).then(mod => mod.ensureRulesSprite || mod.default || null);
+};
+
 const toLibraryItem = extension => {
     if (typeof extension === 'object') {
         return ({
             rawURL: extension.iconURL || extensionIcon,
+            tagChips: tagChipsFor(extension.tags),
             ...extension
         });
     }
@@ -55,7 +68,7 @@ const fetchLibrary = async () => {
         extensionId: extension.id,
         extensionURL: `https://extensions.turbowarp.org/${extension.slug}.js`,
         iconURL: `https://extensions.turbowarp.org/${extension.image || 'images/unknown.svg'}`,
-        tags: ['tw'],
+        tags: ['classic'],
         credits: [
             ...(extension.original || []),
             ...(extension.by || [])
@@ -88,7 +101,8 @@ class ExtensionLibrary extends React.PureComponent {
     constructor (props) {
         super(props);
         bindAll(this, [
-            'handleItemSelect'
+            'handleItemSelect',
+            'handleItemShowBlocks'
         ]);
         this.state = {
             gallery: cachedGallery,
@@ -140,26 +154,67 @@ class ExtensionLibrary extends React.PureComponent {
         }
 
         const url = item.extensionURL ? item.extensionURL : extensionId;
-        if (!item.disabled) {
-            if (this.props.vm.extensionManager.isExtensionLoaded(extensionId)) {
-                this.props.onCategorySelected(extensionId);
-            } else {
-                this.props.vm.extensionManager.loadExtensionURL(url)
-                    .then(() => {
-                        this.props.onCategorySelected(extensionId);
-                    })
-                    .catch(err => {
-                        log.error(err);
-                        // eslint-disable-next-line no-alert
-                        alert(err);
-                    });
-            }
+        if (item.disabled || this.isUnshippedKit(extensionId)) return;
+        if (this.props.vm.extensionManager.isExtensionLoaded(extensionId)) {
+            this.props.onCategorySelected(extensionId);
+            return;
         }
+        const togetherRequired = isTogetherRequired(item);
+        const ready = togetherRequired ?
+            this.loadExtension(TOGETHER_ID, TOGETHER_ID).then(() => this.loadExtension(url, extensionId)) :
+            this.loadExtension(url, extensionId);
+        ready
+            .then(() => {
+                this.props.onCategorySelected(extensionId);
+                if (togetherRequired) this.afterTogetherExpansion();
+            })
+            .catch(err => {
+                log.error(err);
+                showLoadError({intl: this.props.intl});
+            });
+    }
+    handleItemShowBlocks (item) {
+        if (item && this.props.vm.extensionManager.isExtensionLoaded(item.extensionId)) {
+            this.props.onCategorySelected(item.extensionId);
+            return;
+        }
+        this.handleItemSelect(item);
+    }
+    loadExtension (url, extensionId) {
+        if (this.props.vm.extensionManager.isExtensionLoaded(extensionId)) return Promise.resolve();
+        return this.props.vm.extensionManager.loadExtensionURL(url);
+    }
+    afterTogetherExpansion () {
+        const vm = this.props.vm;
+        loadEnsureRulesSprite()
+            .then(ensureRulesSprite => {
+                if (typeof ensureRulesSprite === 'function') return ensureRulesSprite(vm);
+                return null;
+            })
+            .catch(err => log.error(err));
+        if (!collab.roomName) showTogetherSheet({intl: this.props.intl});
+    }
+    isUnshippedKit (extensionId) {
+        if (!isKit(extensionId)) return false;
+        const kit = getKit(extensionId);
+        return !kit.extension && !this.props.vm.extensionManager.isBuiltinExtension(extensionId);
+    }
+    withState (item) {
+        if (typeof item !== 'object' || !item.extensionId || item.href) return item;
+        const manager = this.props.vm.extensionManager;
+        return {
+            ...item,
+            added: manager.isExtensionLoaded(item.extensionId),
+            disabled: item.disabled || this.isUnshippedKit(item.extensionId),
+            togetherRequired: isTogetherRequired(item)
+        };
     }
     render () {
         let library = null;
         if (this.state.gallery || this.state.galleryError || this.state.galleryTimedOut) {
-            library = extensionLibraryContent.map(toLibraryItem);
+            library = squiggleFirst(extensionLibraryContent)
+                .map(toLibraryItem)
+                .map(item => this.withState(item));
             library.push('---');
             if (this.state.gallery) {
                 library.push(toLibraryItem(galleryMore));
@@ -169,6 +224,7 @@ class ExtensionLibrary extends React.PureComponent {
                         .filter(i => i.extensionId !== 'faceSensing')
                         .map(i => translateGalleryItem(i, locale))
                         .map(toLibraryItem)
+                        .map(item => this.withState(item))
                 );
             } else if (this.state.galleryError) {
                 library.push(toLibraryItem(galleryError));
@@ -183,10 +239,12 @@ class ExtensionLibrary extends React.PureComponent {
                 filterable
                 persistableKey="extensionId"
                 id="extensionLibrary"
+                rememberTag
                 tags={extensionTags}
                 title={this.props.intl.formatMessage(messages.extensionTitle)}
                 visible={this.props.visible}
                 onItemSelected={this.handleItemSelect}
+                onItemShowBlocks={this.handleItemShowBlocks}
                 onRequestClose={this.props.onRequestClose}
             />
         );

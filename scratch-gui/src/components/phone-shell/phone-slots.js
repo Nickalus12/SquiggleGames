@@ -1,4 +1,5 @@
 const listeners = new Set();
+const sheetHosts = new Set();
 
 let state = {
     sheet: null,
@@ -10,6 +11,16 @@ const emit = () => {
 };
 
 const getState = () => state;
+
+const isSheetHostMounted = () => sheetHosts.size > 0;
+
+const registerSheetHost = () => {
+    const token = {};
+    sheetHosts.add(token);
+    return () => {
+        sheetHosts.delete(token);
+    };
+};
 
 const subscribe = listener => {
     listeners.add(listener);
@@ -49,7 +60,9 @@ export {
     addTopBarItem,
     closeSheet,
     getState,
+    isSheetHostMounted,
     openSheet,
+    registerSheetHost,
     removeTopBarItem,
     subscribe
 };

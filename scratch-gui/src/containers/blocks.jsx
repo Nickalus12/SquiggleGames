@@ -806,7 +806,7 @@ Blocks.defaultOptions = {
         startScale: BLOCKS_DEFAULT_SCALE
     },
     grid: {
-        spacing: 40,
+        spacing: 24,
         length: 2,
         colour: '#ddd'
     },

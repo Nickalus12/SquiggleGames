@@ -68,3 +68,36 @@
     align-items: center;
     justify-content: center;
 }
+
+@media (max-width: 600px) {
+    .filter-bar {
+        padding: 0 0.5rem;
+    }
+
+    .filter-bar-item {
+        margin-right: 0.5rem;
+    }
+
+    .filter-input,
+    .filter-input:focus,
+    .filter-input:not([value=""]) {
+        width: 7.5rem;
+    }
+
+    .divider {
+        display: none;
+    }
+
+    .tag-wrapper {
+        flex: 1 1 auto;
+        flex-wrap: nowrap;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+    }
+
+    .tag-wrapper > * {
+        flex-shrink: 0;
+    }
+}

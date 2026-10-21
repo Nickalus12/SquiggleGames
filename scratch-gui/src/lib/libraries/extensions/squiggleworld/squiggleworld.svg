@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="120" viewBox="0 0 192 120" role="img" aria-label="World">
+  <defs>
+    <linearGradient id="sq-squiggleworld-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b1f63"/>
+      <stop offset="1" stop-color="#150e30"/>
+    </linearGradient>
+    <radialGradient id="sq-squiggleworld-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="sq-squiggleworld-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="8" r="1" fill="#ffffff" fill-opacity="0.12"/>
+    </pattern>
+  </defs>
+  <rect width="192" height="120" rx="12" fill="url(#sq-squiggleworld-bg)"/>
+  <rect width="192" height="120" rx="12" fill="url(#sq-squiggleworld-grid)"/>
+  <ellipse cx="96" cy="60" rx="64" ry="48" fill="url(#sq-squiggleworld-halo)"/>
+  <g transform="translate(60 24) scale(3.6)" fill="none" stroke="#f6f2ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 11.5S6 7.8 6 5a4 4 0 0 1 8 0c0 2.8-4 6.5-4 6.5z"/>
+    <circle cx="10" cy="5" r="1.25"/>
+    <path d="M2.5 14h15M2.5 17.5h15M6 14v3.5M10 14v3.5M14 14v3.5"/>
+  </g>
+  <path d="M40 100 Q96 88 152 100" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-opacity="0.8"/>
+</svg>
