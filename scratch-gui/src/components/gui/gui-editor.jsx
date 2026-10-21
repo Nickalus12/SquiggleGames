@@ -34,7 +34,7 @@ import PhoneTopBar from '../phone-shell/phone-top-bar.jsx';
 import PhoneTabBar from '../phone-shell/phone-tab-bar.jsx';
 import PhoneSpriteRow from '../phone-shell/phone-sprite-row.jsx';
 import PhoneMiniStageButton from '../phone-shell/phone-mini-stage-button.jsx';
-import CollabPresence from '../menu-bar/collab-presence.jsx';
+import RoomPanelHost, {RoomPane} from '../room-panel/index.jsx';
 import CheckerPill from '../checker-pill/index.jsx';
 import CommandPalette from '../command-palette/index.jsx';
 import PipStage, {PIP_STAGE_WIDTH} from '../pip-stage/index.jsx';
@@ -467,12 +467,13 @@ const GUIEditor = props => {
                     )}
                     {isPhone && phoneTab === PHONE_TABS.room ? (
                         <Box className={styles.phoneRoomPane}>
-                            <CollabPresence variant="pane" />
+                            <RoomPane />
                         </Box>
                     ) : null}
                 </Box>
             </Box>
             {isPhone ? <PhoneTabBar /> : null}
+            <RoomPanelHost />
             <PipStage>
                 <StageWrapper
                     fixedWidth={PIP_STAGE_WIDTH}

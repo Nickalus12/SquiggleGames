@@ -1,106 +1,14 @@
 import PropTypes from 'prop-types';
 import React from 'react';
+import {connect} from 'react-redux';
 import overlay from '../../lib/collab/overlay';
-import client from '../../lib/collab/client';
-import chatRoom from '../../lib/collab/chat-room';
-import {listProjects} from '../../lib/collab/room-api.js';
-import ChatPanel from '../collab-chat/chat-panel.jsx';
+import {toggleRoomPanel} from '../../reducers/room-panel';
 import ChatToggle from '../collab-chat/chat-toggle.jsx';
 import chatStyles from '../collab-chat/collab-chat.css';
 
-/* Native menu-bar multiplayer panel.
- * Collapsed: one compact button — connection dot, people icon, player count.
- * Expanded: a proper panel — room header, invite link, player list with live status.
- * Renders nothing in solo mode. */
-
-const statusIcon = status => {
-    if (!status || status === 'here') return '🟢';
-    if (status.indexOf('playing') !== -1) return '▶️';
-    if (status.indexOf('painting') !== -1) return '🎨';
-    if (status.indexOf('sounds') !== -1) return '🎵';
-    return '✏️';
-};
-
-// Same tokens as the dashboard in collab-server/home.html — the panel is part
-// of the app, not part of the editor chrome it happens to hang off.
 const T = {
-    surface: '#161c36',
-    card: 'rgba(255, 255, 255, 0.055)',
-    line: 'rgba(255, 255, 255, 0.11)',
-    ink: '#f2f4fb',
-    dim: '#a3abc8',
-    faint: '#6d769a',
     good: '#34d399',
-    warn: '#fbbf24',
-    accentBg: 'linear-gradient(135deg, #7c5cff, #a855f7)',
-    font: 'ui-rounded, "SF Pro Rounded", "Segoe UI Variable", Nunito, system-ui, sans-serif'
-};
-
-const label = {
-    fontSize: '10.5px',
-    fontWeight: 800,
-    letterSpacing: '0.6px',
-    textTransform: 'uppercase',
-    color: T.faint
-};
-
-const btn = {
-    padding: '8px 13px',
-    borderRadius: '9px',
-    fontSize: '12.5px',
-    fontWeight: 700,
-    cursor: 'pointer',
-    color: T.ink,
-    background: T.card,
-    border: `1px solid ${T.line}`,
-    fontFamily: 'inherit'
-};
-
-const personRow = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '4px 0',
-    fontSize: '13px',
-    color: T.ink
-};
-
-const touchBtn = {
-    minHeight: '44px',
-    padding: '10px 16px',
-    fontSize: '15px'
-};
-
-const paneQuiet = {
-    color: T.dim,
-    fontSize: '13px'
-};
-
-const chip = {
-    flexShrink: 0,
-    minHeight: '28px',
-    padding: '4px 10px',
-    borderRadius: '8px',
-    fontSize: '12.5px',
-    fontWeight: 700,
-    cursor: 'pointer',
-    color: T.ink,
-    background: T.card,
-    border: `1px solid ${T.line}`,
-    fontFamily: 'inherit'
-};
-
-const touchChip = {
-    minHeight: '44px',
-    minWidth: '44px',
-    padding: '8px 12px',
-    fontSize: '14px'
-};
-
-const chipOn = {
-    color: T.warn,
-    borderColor: 'rgba(251, 191, 36, 0.55)',
-    background: 'rgba(251, 191, 36, 0.12)'
+    warn: '#fbbf24'
 };
 
 const dot = (color, size) => ({
@@ -115,134 +23,29 @@ const dot = (color, size) => ({
 class CollabPresence extends React.Component {
     constructor (props) {
         super(props);
-        this.state = {
-            ...overlay.getState(),
-            chat: chatRoom.getState(),
-            open: false,
-            copied: false,
-            saveName: '',
-            confirmOpenId: null
-        };
+        this.state = overlay.getState();
         this.handleChange = () => this.setState(overlay.getState());
-        this.handleChat = () => this.setState({chat: chatRoom.getState()});
-        this.handleMute = e => {
-            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
-            chatRoom.setMuted(userId, !chatRoom.isMuted(userId));
-        };
-        this.handleHide = e => {
-            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
-            chatRoom.setHidden(userId, this.state.chat.hidden.indexOf(userId) === -1);
-        };
-        this.handleToggle = () => {
-            this.setState(s => {
-                if (!s.open) this.loadProjects();
-                return {open: !s.open, copied: false, confirmOpenId: null};
-            });
-        };
-        this.handleCopy = this.handleCopy.bind(this);
-        this.loadProjects = () => listProjects()
-            .then(list => overlay.setProjects(list))
-            .catch(() => {});
-        this.handleSave = () => {
-            const name = this.state.saveName.trim();
-            if (!name) return;
-            client.send({type: 'save-project', name});
-            this.setState({saveName: ''});
-        };
-        this.handleOpenProject = id => {
-            if (this.state.confirmOpenId === id) {
-                client.send({type: 'load-project', id});
-                this.setState({confirmOpenId: null, open: false});
-            } else {
-                this.setState({confirmOpenId: id});
+        this.handleToggle = () => this.props.onToggleRoom();
+        this.handleKeyDown = e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.props.onToggleRoom();
             }
-        };
-        this.handleClickOutside = e => {
-            if (this.rootRef && !this.rootRef.contains(e.target) && this.state.open) {
-                this.setState({open: false});
-            }
-        };
-        this.setRootRef = el => {
-            this.rootRef = el;
         };
     }
     componentDidMount () {
         this.unsubscribe = overlay.subscribe(this.handleChange);
-        this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
-        document.addEventListener('mousedown', this.handleClickOutside);
         this.handleChange();
-        if (this.props.variant === 'pane') this.loadProjects();
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
-        if (this.unsubscribeChat) this.unsubscribeChat();
-        document.removeEventListener('mousedown', this.handleClickOutside);
-    }
-    renderChatControls (peer, pane) {
-        const {config, hidden, mutedUserIds} = this.state.chat;
-        const userId = config && typeof peer.userId === 'number' ? peer.userId : null;
-        if (userId === null) return null;
-        const size = pane ? touchChip : null;
-        const muted = mutedUserIds.indexOf(userId) !== -1;
-        const isHidden = hidden.indexOf(userId) !== -1;
-        return (
-            <span style={{display: 'flex', gap: '5px', flexShrink: 0}}>
-                {config.canModerate ? (
-                    <button
-                        aria-label={muted ? `Unmute ${peer.name} in chat` : `Mute ${peer.name} in chat`}
-                        aria-pressed={muted}
-                        data-chat-mute={userId}
-                        data-user-id={userId}
-                        onClick={this.handleMute}
-                        style={{...chip, ...(muted ? chipOn : null), ...size}}
-                        title={muted ? 'Let them chat again' : 'Stop them chatting in this room'}
-                        type="button"
-                    >
-                        {muted ? 'Unmute' : 'Mute'}
-                    </button>
-                ) : null}
-                <button
-                    aria-label={isHidden ? `Show chat from ${peer.name}` : `Hide chat from ${peer.name}`}
-                    aria-pressed={isHidden}
-                    data-chat-hide={userId}
-                    data-user-id={userId}
-                    onClick={this.handleHide}
-                    style={{...chip, ...(isHidden ? chipOn : null), ...size}}
-                    title={isHidden ? 'Show their chat messages again' : 'Hide their chat messages, just for you'}
-                    type="button"
-                >
-                    {isHidden ? 'Show' : 'Hide'}
-                </button>
-            </span>
-        );
-    }
-    inviteLink () {
-        const {self} = this.state;
-        return `${location.origin}/r/${self ? self.room : 'family'}`;
-    }
-    handleCopy () {
-        const link = this.inviteLink();
-        try {
-            navigator.clipboard.writeText(link);
-            this.setState({copied: true});
-            setTimeout(() => this.setState({copied: false}), 1800);
-        } catch (e) {
-            window.prompt('Copy this invite link:', link); // eslint-disable-line no-alert
-        }
     }
     render () {
-        const {self, connected, peers, open, copied} = this.state;
-        if (!self) return null; // solo mode
-        const pane = this.props.variant === 'pane';
-        const touch = pane ? touchBtn : null;
-        const quiet = pane ? paneQuiet : null;
-
-        // The slug is a URL detail — disambiguated with -2 when a name is
-        // taken — so it is the wrong thing to show a person.
+        const {self, connected, peers} = this.state;
+        const open = !!this.props.roomOpen;
+        if (!self) return null;
         const roomName = self.title || self.room;
 
-        // Always-available way back to the dashboard — the editor is otherwise
-        // a one-way door once you are in a room.
         const homeButton = (
             <a
                 aria-label={'Home'}
@@ -283,8 +86,13 @@ class CollabPresence extends React.Component {
 
         const button = (
             <div
+                aria-expanded={open}
+                aria-haspopup="dialog"
                 data-collab-people-toggle
+                role="button"
+                tabIndex={0}
                 onClick={this.handleToggle}
+                onKeyDown={this.handleKeyDown}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -300,7 +108,8 @@ class CollabPresence extends React.Component {
                     whiteSpace: 'nowrap',
                     userSelect: 'none'
                 }}
-                title={connected ? `${roomName} — click for details` : 'Reconnecting…'}
+                aria-label={`${roomName}: ${1 + peers.length}`}
+                title={connected ? roomName : 'Reconnecting…'}
             >
                 <span style={dot(connected ? T.good : T.warn, 8)} />
                 <span style={{fontSize: '14px', lineHeight: 1}}>{'👥'}</span>
@@ -309,261 +118,28 @@ class CollabPresence extends React.Component {
             </div>
         );
 
-        const sections = (open || pane) ? (
-            <React.Fragment>
-                <div style={{padding: '14px 15px 13px', borderBottom: `1px solid ${T.line}`}}>
-                    <div style={{...label, ...quiet}}>{'Room'}</div>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px'}}>
-                        <span
-                            style={{
-                                fontSize: '17px',
-                                fontWeight: 800,
-                                letterSpacing: '-0.01em',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                            }}
-                            title={roomName}
-                        >
-                            {roomName}
-                        </span>
-                        <span
-                            style={{
-                                marginLeft: 'auto',
-                                flexShrink: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                fontSize: '10px',
-                                fontWeight: 800,
-                                letterSpacing: '0.4px',
-                                textTransform: 'uppercase',
-                                color: connected ? T.good : T.warn
-                            }}
-                        >
-                            <span style={dot(connected ? T.good : T.warn, 7)} />
-                            {connected ? 'Live' : 'Reconnecting'}
-                        </span>
-                    </div>
-                    <button
-                        onClick={this.handleCopy}
-                        style={{
-                            ...btn,
-                            width: '100%',
-                            marginTop: '11px',
-                            background: copied ? 'rgba(52, 211, 153, 0.16)' : T.accentBg,
-                            borderColor: copied ? 'rgba(52, 211, 153, 0.5)' : 'transparent',
-                            color: '#fff',
-                            ...touch
-                        }}
-                    >
-                        {copied ? '✓ Copied! Send it to your partner' : 'Copy invite link'}
-                    </button>
-                </div>
-
-                {pane ? <ChatPanel variant="pane" /> : null}
-
-                <div
-                    data-collab-people
-                    style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}
-                >
-                    <div style={{...label, marginBottom: '7px', ...quiet}}>
-                        {`In here · ${1 + peers.length}`}
-                    </div>
-                    <div style={personRow}>
-                        <span style={dot(self.color)} />
-                        <span style={{fontWeight: 700}}>{self.name}</span>
-                        <span style={{color: T.faint, fontSize: '11.5px', ...quiet}}>{'you'}</span>
-                    </div>
-                    {peers.map(p => (
-                        <div
-                            key={p.id}
-                            style={personRow}
-                        >
-                            <span style={dot(p.color)} />
-                            <span style={{fontWeight: 700}}>{p.name}</span>
-                            <span
-                                style={{
-                                    marginLeft: 'auto',
-                                    fontSize: '11px',
-                                    color: T.faint,
-                                    textAlign: 'right',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    ...quiet
-                                }}
-                            >
-                                {p.sprite ? `${statusIcon(p.status)} ${p.sprite}` : statusIcon(p.status)}
-                            </span>
-                            {this.renderChatControls(p, pane)}
-                        </div>
-                    ))}
-                    {peers.length === 0 ? (
-                        <div
-                            style={{fontSize: '12px', color: T.faint, padding: '3px 0 1px', lineHeight: 1.5, ...quiet}}
-                        >
-                            {'Just you so far. Send the invite link and build together.'}
-                        </div>
-                    ) : null}
-                </div>
-
-                <div style={{padding: '11px 15px 14px'}}>
-                    <div style={{...label, marginBottom: '7px', ...quiet}}>{'Save to library'}</div>
-                    <div style={{display: 'flex', gap: '7px'}}>
-                        <input
-                            onChange={e => this.setState({saveName: e.target.value})}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') this.handleSave();
-                            }}
-                            placeholder="Name this copy…"
-                            style={{
-                                flex: 1,
-                                minWidth: 0,
-                                padding: pane ? '10px 12px' : '8px 10px',
-                                fontSize: pane ? '16px' : '12.5px',
-                                color: T.ink,
-                                background: 'rgba(0, 0, 0, 0.3)',
-                                border: `1.5px solid ${T.line}`,
-                                borderRadius: '9px',
-                                outline: 'none',
-                                fontFamily: 'inherit'
-                            }}
-                            type="text"
-                            value={this.state.saveName}
-                        />
-                        <button
-                            disabled={!this.state.saveName.trim()}
-                            onClick={this.handleSave}
-                            style={{
-                                ...btn,
-                                flexShrink: 0,
-                                opacity: this.state.saveName.trim() ? 1 : 0.45,
-                                cursor: this.state.saveName.trim() ? 'pointer' : 'default',
-                                ...touch
-                            }}
-                        >
-                            {'Save'}
-                        </button>
-                    </div>
-
-                    {(this.state.projects || []).length ? (
-                        <div style={{maxHeight: pane ? 'none' : '164px', overflowY: 'auto', marginTop: '11px'}}>
-                            {this.state.projects.map(p => (
-                                <div
-                                    key={p.id}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '7px 0',
-                                        borderTop: `1px solid ${T.line}`
-                                    }}
-                                >
-                                    <div style={{flex: 1, minWidth: 0}}>
-                                        <div
-                                            style={{
-                                                fontSize: '12.5px',
-                                                fontWeight: 700,
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                        >
-                                            {p.name}
-                                        </div>
-                                        <div style={{fontSize: '10.5px', color: T.faint, ...quiet}}>
-                                            {new Date(p.updatedAt).toLocaleDateString()}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => this.handleOpenProject(p.id)}
-                                        style={{
-                                            ...btn,
-                                            flexShrink: 0,
-                                            padding: '5px 10px',
-                                            fontSize: '11.5px',
-                                            background: this.state.confirmOpenId === p.id ?
-                                                'rgba(251, 191, 36, 0.18)' : T.card,
-                                            borderColor: this.state.confirmOpenId === p.id ?
-                                                'rgba(251, 191, 36, 0.55)' : T.line,
-                                            color: this.state.confirmOpenId === p.id ? T.warn : T.ink,
-                                            ...touch
-                                        }}
-                                        title={'Opening replaces what everyone in this room is looking at'}
-                                    >
-                                        {this.state.confirmOpenId === p.id ? 'Replace for all?' : 'Open'}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5, ...quiet}}>
-                            {'The room saves itself as you go. This is for keeping a named copy.'}
-                        </div>
-                    )}
-                </div>
-            </React.Fragment>
-        ) : null;
-
-        if (pane) {
-            return (
-                <div
-                    data-collab-room-pane
-                    style={{
-                        background: T.surface,
-                        border: `1px solid ${T.line}`,
-                        borderRadius: '16px',
-                        overflow: 'hidden',
-                        color: T.ink,
-                        fontFamily: T.font
-                    }}
-                >
-                    {sections}
-                </div>
-            );
-        }
-
-        const panel = open ? (
-            <div
-                style={{
-                    // fixed — the menu bar clips absolutely-positioned children
-                    position: 'fixed',
-                    top: '52px',
-                    right: '8px',
-                    width: '290px',
-                    background: T.surface,
-                    border: `1px solid ${T.line}`,
-                    borderRadius: '16px',
-                    boxShadow: '0 18px 50px -12px rgba(0, 0, 0, 0.7)',
-                    overflow: 'hidden',
-                    zIndex: 1000,
-                    cursor: 'default',
-                    color: T.ink,
-                    fontFamily: T.font
-                }}
-            >
-                {sections}
-            </div>
-        ) : null;
-
         return (
-            <div
-                ref={this.setRootRef}
-                style={{position: 'relative', display: 'flex', alignItems: 'center', padding: '0 8px'}}
-            >
+            <div style={{position: 'relative', display: 'flex', alignItems: 'center', padding: '0 8px'}}>
                 {homeButton}
                 {button}
                 {this.props.phoneSheet ? null : <ChatToggle />}
-                {panel}
             </div>
         );
     }
 }
 
 CollabPresence.propTypes = {
+    onToggleRoom: PropTypes.func.isRequired,
     phoneSheet: PropTypes.bool,
-    variant: PropTypes.oneOf(['menu', 'pane'])
+    roomOpen: PropTypes.bool
 };
 
-export default CollabPresence;
+const mapStateToProps = state => ({
+    roomOpen: state.scratchGui.roomPanel.open
+});
+
+const mapDispatchToProps = dispatch => ({
+    onToggleRoom: () => dispatch(toggleRoomPanel())
+});
+
+export default connect(mapStateToProps, mapDispatchToProps)(CollabPresence);

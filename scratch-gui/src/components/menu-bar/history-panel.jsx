@@ -63,15 +63,18 @@ class HistoryPanel extends React.Component {
         this.handleToggle = this.handleToggle.bind(this);
         this.handleListClick = this.handleListClick.bind(this);
         this.handleDocumentClick = this.handleDocumentClick.bind(this);
+        this.handleOpenRequest = this.handleOpenRequest.bind(this);
         this.rootRef = React.createRef();
     }
 
     componentDidMount () {
         document.addEventListener('mousedown', this.handleDocumentClick);
+        window.addEventListener('sq:open-history', this.handleOpenRequest);
     }
 
     componentWillUnmount () {
         document.removeEventListener('mousedown', this.handleDocumentClick);
+        window.removeEventListener('sq:open-history', this.handleOpenRequest);
     }
 
     handleDocumentClick (e) {
@@ -112,6 +115,12 @@ class HistoryPanel extends React.Component {
                 loading: false,
                 error: e.friendly || 'Could not reach the server — check your connection.'
             }));
+    }
+
+    handleOpenRequest () {
+        if (this.state.open) return;
+        this.setState({open: true, confirming: null});
+        this.load();
     }
 
     handleToggle () {

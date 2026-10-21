@@ -1,0 +1,21 @@
+@import "../../css/z-index.css";
+
+.sheet {
+    position: fixed;
+    top: 56px;
+    right: var(--sq-space-2, 8px);
+    bottom: var(--sq-space-2, 8px);
+    z-index: $z-index-modal;
+    display: flex;
+    width: min(340px, calc(100vw - 16px));
+    max-height: calc(100vh - 64px);
+    border: 1px solid var(--sq-line, #d9d5ea);
+    border-radius: var(--sq-radius-panel, 16px);
+    box-shadow: var(--sq-elevation-3, 0 8px 24px rgba(27, 31, 58, 0.18));
+    background: var(--sq-panel, #ffffff);
+    overflow: hidden;
+}
+
+.sheet > * {
+    flex: 1 1 auto;
+}
