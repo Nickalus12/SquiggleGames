@@ -1,28 +1,31 @@
-const guiColors = {
-    'motion-primary': '#7c5cff',
-    'motion-primary-transparent': 'rgba(124, 92, 255, 0.9)',
-    'motion-tertiary': '#5b3fd6',
+import {BRAND, MENU_BAR_FROM, MENU_BAR_GRADIENT} from '../tokens';
 
-    'looks-secondary': '#7c5cff',
-    'looks-transparent': 'rgba(124, 92, 255, 0.35)',
-    'looks-light-transparent': 'rgba(124, 92, 255, 0.15)',
-    'looks-secondary-dark': '#5b3fd6',
+const guiColors = {
+    'motion-primary': BRAND[600],
+    'motion-primary-transparent': 'rgba(133, 92, 214, 0.9)',
+    'motion-tertiary': BRAND[800],
+
+    'looks-secondary': BRAND[600],
+    'looks-transparent': 'rgba(133, 92, 214, 0.35)',
+    'looks-light-transparent': 'rgba(133, 92, 214, 0.15)',
+    'looks-secondary-dark': BRAND[800],
 
     'extensions-primary': '#22d3ee',
     'extensions-tertiary': '#0e94ab',
     'extensions-transparent': 'rgba(34, 211, 238, 0.35)',
     'extensions-light': 'rgba(34, 211, 238, 0.22)',
 
-    'drop-highlight': '#a855f7',
+    'drop-highlight': BRAND[500],
 
-    'library-tag-active': '#a855f7',
+    'library-tag-active': BRAND[500],
 
-    'menu-bar-background-image': 'linear-gradient(135deg, #7c5cff 0%, #a855f7 100%)'
+    'menu-bar-background': MENU_BAR_FROM,
+    'menu-bar-background-image': MENU_BAR_GRADIENT
 };
 
 const blockColors = {
-    checkboxActiveBackground: '#7c5cff',
-    checkboxActiveBorder: '#5b3fd6'
+    checkboxActiveBackground: BRAND[600],
+    checkboxActiveBorder: BRAND[800]
 };
 
 export {

@@ -9,6 +9,8 @@ import * as accentRainbow from './accent/rainbow';
 import * as guiLight from './gui/light';
 import * as guiDark from './gui/dark';
 import * as guiSquiggle from './gui/squiggle';
+import * as guiSquiggleDay from './gui/squiggle-day';
+import {sqTokens} from './tokens';
 
 import * as blocksThree from './blocks/three';
 import * as blocksHighContrast from './blocks/high-contrast';
@@ -32,12 +34,31 @@ const ACCENT_DEFAULT = ACCENT_SQUIGGLE;
 const GUI_LIGHT = 'light';
 const GUI_DARK = 'dark';
 const GUI_SQUIGGLE = 'squiggle';
+const GUI_SQUIGGLE_DAY = 'squiggle-day';
+const GUI_AUTO = 'auto';
 const GUI_MAP = {
     [GUI_LIGHT]: guiLight,
     [GUI_DARK]: guiDark,
-    [GUI_SQUIGGLE]: guiSquiggle
+    [GUI_SQUIGGLE]: guiSquiggle,
+    [GUI_SQUIGGLE_DAY]: guiSquiggleDay
 };
 const GUI_DEFAULT = GUI_SQUIGGLE;
+
+const mediaMatches = query => typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(query).matches;
+
+const prefersDark = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    return !mediaMatches('(prefers-color-scheme: light)');
+};
+
+const prefersReducedMotion = () => mediaMatches('(prefers-reduced-motion: reduce)');
+
+const resolveGui = gui => {
+    if (gui === GUI_AUTO) return prefersDark() ? GUI_SQUIGGLE : GUI_SQUIGGLE_DAY;
+    return gui;
+};
 
 const BLOCKS_THREE = 'three';
 const BLOCKS_DARK = 'dark';
@@ -95,12 +116,13 @@ class Theme {
         /** @readonly */
         this.accent = Object.prototype.hasOwnProperty.call(ACCENT_MAP, accent) ? accent : ACCENT_DEFAULT;
         /** @readonly */
-        this.gui = Object.prototype.hasOwnProperty.call(GUI_MAP, gui) ? gui : GUI_DEFAULT;
+        this.gui = (gui === GUI_AUTO || Object.prototype.hasOwnProperty.call(GUI_MAP, gui)) ? gui : GUI_DEFAULT;
         /** @readonly */
         this.blocks = Object.prototype.hasOwnProperty.call(BLOCKS_MAP, blocks) ? blocks : BLOCKS_DEFAULT;
     }
 
     static squiggle = new Theme(ACCENT_SQUIGGLE, GUI_SQUIGGLE, BLOCKS_DEFAULT);
+    static squiggleDay = new Theme(ACCENT_SQUIGGLE, GUI_SQUIGGLE_DAY, BLOCKS_DEFAULT);
     static light = new Theme(ACCENT_DEFAULT, GUI_LIGHT, BLOCKS_DEFAULT);
     static dark = new Theme(ACCENT_DEFAULT, GUI_DARK, BLOCKS_DEFAULT);
     // High contrast is a legibility choice, so it stays on the light chrome
@@ -122,20 +144,28 @@ class Theme {
         return BLOCKS_MAP[this.blocks].blocksMediaFolder;
     }
 
+    getResolvedGui () {
+        return resolveGui(this.gui);
+    }
+
     getGuiColors () {
-        return defaultsDeep(
+        const colors = defaultsDeep(
             {},
             ACCENT_MAP[this.accent].guiColors,
-            GUI_MAP[this.gui].guiColors,
+            GUI_MAP[this.getResolvedGui()].guiColors,
             guiLight.guiColors
         );
+        return defaultsDeep(colors, sqTokens({
+            dark: colors['color-scheme'] === 'dark',
+            reducedMotion: prefersReducedMotion()
+        }));
     }
 
     getBlockColors () {
         return defaultsDeep(
             {},
             ACCENT_MAP[this.accent].blockColors,
-            GUI_MAP[this.gui].blockColors,
+            GUI_MAP[this.getResolvedGui()].blockColors,
             BLOCKS_MAP[this.blocks].colors
         );
     }
@@ -174,6 +204,8 @@ export {
     GUI_LIGHT,
     GUI_DARK,
     GUI_SQUIGGLE,
+    GUI_SQUIGGLE_DAY,
+    GUI_AUTO,
     GUI_MAP,
 
     BLOCKS_THREE,
