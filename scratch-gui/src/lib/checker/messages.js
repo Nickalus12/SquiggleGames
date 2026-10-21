@@ -214,7 +214,28 @@ const limitMessages = defineMessages({
     teams: {id: 'sq.rules.limit.teams', defaultMessage: 'teams', description: 'Game Rules limit name'},
     boards: {id: 'sq.rules.limit.boards', defaultMessage: 'boards', description: 'Game Rules limit name'},
     repeat: {id: 'sq.rules.limit.repeat', defaultMessage: 'repeats', description: 'Game Rules limit name'},
-    string: {id: 'sq.rules.limit.string', defaultMessage: 'letters', description: 'Game Rules limit name'}
+    string: {id: 'sq.rules.limit.string', defaultMessage: 'letters', description: 'Game Rules limit name'},
+    listItems: {
+        id: 'sq.rules.limit.listItems',
+        defaultMessage: 'items in one list',
+        description: 'Game Rules limit name'
+    },
+    levels: {id: 'sq.rules.limit.levels', defaultMessage: 'levels', description: 'Game Rules limit name'},
+    levelSide: {
+        id: 'sq.rules.limit.levelSide',
+        defaultMessage: 'tiles across one level',
+        description: 'Game Rules limit name'
+    },
+    nameLength: {
+        id: 'sq.rules.limit.nameLength',
+        defaultMessage: 'letters in one name',
+        description: 'Game Rules limit name'
+    },
+    depth: {
+        id: 'sq.rules.limit.depth',
+        defaultMessage: 'blocks inside each other',
+        description: 'Game Rules limit name'
+    }
 });
 
 const otherMessages = defineMessages({

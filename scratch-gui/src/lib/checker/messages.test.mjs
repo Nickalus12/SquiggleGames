@@ -57,6 +57,11 @@ ok('loose blocks pluralise', itemText(intl, item('loose-blocks', 'loose-blocks',
     '3 stacks in Cat have no hat block, so they never run.');
 ok('the limit word comes from sq.rules.limit', itemText(intl, item('rules-wrong-place', 'rules-limit',
     {limit: 'teams', max: 8})) === 'Game Rules can have at most 8 teams. Remove some.');
+[['listItems', 'items in one list'], ['levels', 'levels'], ['levelSide', 'tiles across one level'],
+    ['nameLength', 'letters in one name'], ['depth', 'blocks inside each other']].forEach(([limit, words]) => {
+    ok(`the server limit ${limit} has kid words`, itemText(intl, item('rules-status', 'rules-limit',
+        {limit, max: 5, n: 1})) === `Game Rules can have at most 5 ${words}. Remove some.`);
+});
 ok('an unknown limit key uses the fallback', itemText(intl, item('rules-status', 'rules-limit',
     {limit: 'zz', max: 3, n: 1})) === 'This is more than the server allows. Make it smaller.');
 ok('a repeated server error says how often', itemText(intl, item('rules-status', 'rules-loop-cap', {n: 4})) ===
