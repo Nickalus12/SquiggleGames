@@ -104,6 +104,25 @@ section('in frames: leading edge, then 20 a second');
     clock.advance(200);
     ok('an unchanged avatar sends nothing', ins(ws).length === 2);
     ok('frames carry k and cid', second.k === -1 && second.cid === 0, second);
+    const slice = Array.prototype.slice;
+    let slices = 0;
+    Array.prototype.slice = function (...args) {
+        slices += 1;
+        return slice.apply(this, args);
+    };
+    const mine = [3, 0, 90, 1, 1, 0];
+    session.setAvatar(mine);
+    mine[0] = 99;
+    clock.advance(50);
+    session.setAvatar([4, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    session.setAvatar([5, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    Array.prototype.slice = slice;
+    ok('setAvatar copies into its own buffers without slicing', slices === 0, slices);
+    ok('a change to the caller array after setAvatar is not sent', ins(ws)[2].a[0] === 3, ins(ws)[2]);
+    ok('three avatars in a row go out in order', ins(ws).slice(2).map(f => f.a[0]).join() === '3,4,5',
+        ins(ws).map(f => f.a && f.a[0]));
 }
 
 section('ops are limited to 25 a second, burst 50');
@@ -143,7 +162,11 @@ section('ops are cut and frames are sized by bytes');
     ok('a long name is cut to 100', cut.name.length === 100, cut.name.length);
     ok('wireValue sends numbers as numbers and the rest as text', wireValue('42') === 42 && wireValue(' -3.5') === -3.5 &&
         wireValue('007') === '007' && wireValue('') === '' && wireValue('Infinity') === 'Infinity' &&
-        wireValue(NaN) === 'NaN' && wireValue('12345678') === 12345678, ['42', '007', '', 'Infinity'].map(wireValue));
+        wireValue(NaN) === 'NaN', ['42', '007', '', 'Infinity'].map(wireValue));
+    ok('typed text with 5 or more digits in a row stays text', wireValue('5551234567') === '5551234567' &&
+        wireValue('12345') === '12345' && wireValue(' 12345678 ') === ' 12345678 ', ['5551234567', '12345'].map(wireValue));
+    ok('shorter digit runs and numbers the VM holds still go as numbers', wireValue('123') === 123 &&
+        wireValue('1234') === 1234 && wireValue(5551234567) === 5551234567, [wireValue('123'), wireValue(5551234567)]);
     ok('cutOp leaves short ops alone', JSON.stringify(cutOp({action: 'msg', name: 'a', value: 'b'})) ===
         '{"action":"msg","name":"a","value":"b"}');
     clock.advance(5000);
@@ -221,6 +244,28 @@ section('a drop resumes and resends what was not acked');
     ok('frames from the old socket are ignored', session.k === -1);
     next.deliver({type: 'tick', t: 50, ack: 3});
     ok('rtt comes from the fresh frame, not the welcome or a resent frame', session.rtt === 60, session.rtt);
+}
+
+section('a resent frame keeps the avatar it was sent with');
+{
+    const {clock, session, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0, resume: 'tok'});
+    session.setAvatar([5, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    session.setAvatar([6, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    ok('two avatars went out 50 ms apart, neither acked', ins(ws).map(f => f.s).join() === '1,2' &&
+        session.unacked === 2, ins(ws));
+    ws.drop(1006);
+    session.setAvatar([7, 0, 90, 1, 1, 0]);
+    clock.advance(250);
+    const next = sockets[sockets.length - 1];
+    next.open();
+    next.deliver({type: 'welcome', slot: 1, ack: 0});
+    clock.advance(50);
+    const sent = ins(next).map(f => `${f.s}:${f.a && f.a[0]}`).join();
+    ok('the resent s=1 and s=2 carry their own avatars and the third follows under s=3', sent === '1:5,2:6,3:7',
+        ins(next));
 }
 
 section('a refused resume starts over');

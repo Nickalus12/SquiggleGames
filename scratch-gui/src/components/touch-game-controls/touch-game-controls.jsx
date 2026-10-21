@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
-import {TOUCH_KEYS} from '../../lib/touch-keys';
+import {touchLayoutFor} from '../../lib/touch-keys';
 
 import styles from './touch-game-controls.css';
 
@@ -33,31 +33,61 @@ const messages = defineMessages({
         id: 'gui.touchKeys.space',
         defaultMessage: 'Space',
         description: 'On-screen game button that acts like the space bar'
+    },
+    shift: {
+        id: 'sq.touchKeys.shift',
+        defaultMessage: 'Shift',
+        description: 'On-screen game button that acts like the Shift key'
+    },
+    enter: {
+        id: 'sq.touchKeys.enter',
+        defaultMessage: 'Enter',
+        description: 'On-screen game button that acts like the Enter key'
+    },
+    letter: {
+        id: 'sq.touchKeys.letter',
+        defaultMessage: '{key} key',
+        description: 'On-screen game button that acts like a letter or digit key, for example "E key"'
     }
 });
 
 const ARROW_PATHS = {
-    ArrowLeft: 'M15 5l-7 7 7 7',
-    ArrowUp: 'M5 15l7-7 7 7',
-    ArrowDown: 'M5 9l7 7 7-7',
-    ArrowRight: 'M9 5l7 7-7 7'
+    up: 'M5 15l7-7 7 7',
+    left: 'M15 5l-7 7 7 7',
+    right: 'M9 5l7 7-7 7',
+    down: 'M5 9l7 7 7-7'
 };
 
-const ARROW_SLOTS = {
-    ArrowUp: styles.up,
-    ArrowLeft: styles.left,
-    ArrowRight: styles.right,
-    ArrowDown: styles.down
+const ARROW_MESSAGES = {
+    up: messages.ArrowUp,
+    left: messages.ArrowLeft,
+    right: messages.ArrowRight,
+    down: messages.ArrowDown
+};
+
+const CELL_SLOTS = {
+    up: styles.up,
+    left: styles.left,
+    right: styles.right,
+    down: styles.down
+};
+
+const namesOf = el => {
+    const value = el && el.getAttribute('data-touch-key');
+    return value ? value.split(' ') : [];
 };
 
 class TouchGameControls extends React.Component {
     constructor (props) {
         super(props);
         bindAll(this, [
-            'handlePointerDown',
-            'handlePointerUp',
+            'handleActionDown',
             'handleContextMenu',
-            'releaseAll'
+            'handlePadDown',
+            'handlePadMove',
+            'handlePointerEnd',
+            'releaseAll',
+            'setPad'
         ]);
         this.pointers = new Map();
         this.held = new Map();
@@ -69,6 +99,9 @@ class TouchGameControls extends React.Component {
     componentWillUnmount () {
         window.removeEventListener('blur', this.releaseAll);
         this.releaseAll();
+    }
+    setPad (el) {
+        this.pad = el;
     }
     press (name) {
         const count = (this.held.get(name) || 0) + 1;
@@ -87,87 +120,142 @@ class TouchGameControls extends React.Component {
         this.props.onKey(name, false);
         this.setState(state => ({down: Object.assign({}, state.down, {[name]: false})}));
     }
+    hold (pointerId, names) {
+        const previous = this.pointers.get(pointerId) || [];
+        if (previous.join(' ') === names.join(' ')) return;
+        this.pointers.set(pointerId, names);
+        names.forEach(name => this.press(name));
+        previous.forEach(name => this.release(name));
+    }
+    drop (pointerId) {
+        const previous = this.pointers.get(pointerId);
+        if (!previous) return;
+        this.pointers.delete(pointerId);
+        previous.forEach(name => this.release(name));
+    }
     releaseAll () {
         for (const name of this.held.keys()) this.props.onKey(name, false);
         this.held.clear();
         this.pointers.clear();
         this.setState({down: {}});
     }
-    handlePointerDown (e) {
+    capture (e) {
         e.preventDefault();
-        const name = e.currentTarget.getAttribute('data-touch-key');
-        if (this.pointers.has(e.pointerId)) return;
         if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
-        this.pointers.set(e.pointerId, name);
-        this.press(name);
     }
-    handlePointerUp (e) {
-        const name = this.pointers.get(e.pointerId);
-        if (!name) return;
-        this.pointers.delete(e.pointerId);
-        this.release(name);
+    cellAt (x, y) {
+        const hit = document.elementFromPoint(x, y);
+        const el = hit && hit.closest && hit.closest('[data-touch-cell]');
+        return el && this.pad && this.pad.contains(el) ? el : null;
+    }
+    handlePadDown (e) {
+        if (this.pointers.has(e.pointerId)) return;
+        const cell = e.target.closest ? e.target.closest('[data-touch-cell]') : null;
+        this.capture(e);
+        this.hold(e.pointerId, namesOf(cell));
+    }
+    handlePadMove (e) {
+        if (!this.pointers.has(e.pointerId)) return;
+        this.hold(e.pointerId, namesOf(this.cellAt(e.clientX, e.clientY)));
+    }
+    handleActionDown (e) {
+        if (this.pointers.has(e.pointerId)) return;
+        this.capture(e);
+        this.hold(e.pointerId, namesOf(e.currentTarget));
+    }
+    handlePointerEnd (e) {
+        this.drop(e.pointerId);
     }
     handleContextMenu (e) {
         e.preventDefault();
     }
-    renderKey (touchKey, className) {
-        const down = !!this.state.down[touchKey.name];
-        const arrow = ARROW_PATHS[touchKey.name];
-        const label = this.props.intl.formatMessage(messages[touchKey.name]);
+    isDown (names) {
+        return names.some(name => this.state.down[name]);
+    }
+    renderCell (cell) {
+        const down = this.isDown(cell.names);
+        const label = this.props.intl.formatMessage(ARROW_MESSAGES[cell.direction]);
         return (
             <button
                 aria-label={label}
                 aria-pressed={down}
-                className={classNames(styles.key, className, {[styles.isDown]: down})}
-                data-touch-key={touchKey.name}
-                key={touchKey.name}
+                className={classNames(styles.key, CELL_SLOTS[cell.direction], {[styles.isDown]: down})}
+                data-touch-cell={cell.direction}
+                data-touch-key={cell.names.join(' ')}
+                key={cell.direction}
+                tabIndex={-1}
+                type="button"
+            >
+                <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        d={ARROW_PATHS[cell.direction]}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="3"
+                    />
+                </svg>
+            </button>
+        );
+    }
+    renderAction (name) {
+        const down = this.isDown([name]);
+        const {intl} = this.props;
+        const named = messages[name];
+        const text = named ? intl.formatMessage(named) : name.toUpperCase();
+        const label = named ? text : intl.formatMessage(messages.letter, {key: text});
+        return (
+            <button
+                aria-label={label}
+                aria-pressed={down}
+                className={classNames(styles.key, styles.action, {[styles.isDown]: down})}
+                data-touch-key={name}
+                key={name}
                 tabIndex={-1}
                 type="button"
                 onContextMenu={this.handleContextMenu}
-                onLostPointerCapture={this.handlePointerUp}
-                onPointerCancel={this.handlePointerUp}
-                onPointerDown={this.handlePointerDown}
-                onPointerUp={this.handlePointerUp}
+                onLostPointerCapture={this.handlePointerEnd}
+                onPointerCancel={this.handlePointerEnd}
+                onPointerDown={this.handleActionDown}
+                onPointerUp={this.handlePointerEnd}
             >
-                {arrow ? (
-                    <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d={arrow}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="3"
-                        />
-                    </svg>
-                ) : (
-                    <span className={styles.keyLabel}>{label}</span>
-                )}
+                <span className={styles.keyLabel}>{text}</span>
             </button>
         );
     }
     render () {
         const {className, keys, layout} = this.props;
-        const shown = keys && keys.length ? TOUCH_KEYS.filter(k => keys.indexOf(k.scratchKey) !== -1) : TOUCH_KEYS;
-        const arrows = shown.filter(k => ARROW_PATHS[k.name]);
-        const actions = shown.filter(k => !ARROW_PATHS[k.name]);
+        const {pad, actions} = touchLayoutFor(keys);
         return (
             <div
                 className={classNames(styles.controls, styles[layout], className)}
                 data-touch-controls={layout}
                 onContextMenu={this.handleContextMenu}
             >
-                {arrows.length ? (
-                    <div className={styles.pad}>
-                        {arrows.map(k => this.renderKey(k, ARROW_SLOTS[k.name]))}
+                {pad.length ? (
+                    <div
+                        className={styles.pad}
+                        data-touch-pad
+                        ref={this.setPad}
+                        onLostPointerCapture={this.handlePointerEnd}
+                        onPointerCancel={this.handlePointerEnd}
+                        onPointerDown={this.handlePadDown}
+                        onPointerMove={this.handlePadMove}
+                        onPointerUp={this.handlePointerEnd}
+                    >
+                        {pad.map(cell => this.renderCell(cell))}
                     </div>
                 ) : null}
                 {actions.length ? (
-                    <div className={styles.actions}>
-                        {actions.map(k => this.renderKey(k, styles.action))}
+                    <div
+                        className={classNames(styles.actions, {[styles.multi]: actions.length > 1})}
+                        data-touch-actions={actions.length}
+                    >
+                        {actions.map(name => this.renderAction(name))}
                     </div>
                 ) : null}
             </div>
@@ -179,7 +267,7 @@ TouchGameControls.propTypes = {
     className: PropTypes.string,
     intl: intlShape.isRequired,
     keys: PropTypes.arrayOf(PropTypes.string),
-    layout: PropTypes.oneOf(['bottom', 'sides', 'overlay']),
+    layout: PropTypes.oneOf(['bottom', 'sides', 'overlay', 'stage']),
     onKey: PropTypes.func.isRequired
 };
 

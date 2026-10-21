@@ -11,7 +11,7 @@ import TWRestorePointModal from '../components/tw-restore-point-modal/restore-po
 import RestorePointAPI from '../lib/tw-restore-point-api';
 import log from '../lib/log';
 import downloadBlob from '../lib/download-blob.js';
-import collab from '../lib/collab';
+import {mayReplaceProject} from '../components/gui/collab-handle.js';
 
 /* eslint-disable no-alert */
 
@@ -192,7 +192,7 @@ class TWRestorePointManager extends React.Component {
     }
 
     handleClickLoad (id) {
-        if (!this.canLoadProject() || !collab.mayReplaceProject()) {
+        if (!this.canLoadProject() || !mayReplaceProject()) {
             return;
         }
 

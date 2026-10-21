@@ -24,6 +24,7 @@ import {gameServerReady} from '../rules/flags.js';
 import {createGameLink} from '../together2/session.js';
 import {VOCAB_LOCK} from '../together2/net.js';
 import {lockedNames} from '../together2/vocab-lock.js';
+import {BAD_FRAME_TEXT, RELOAD_TEXT} from '../together2/texts.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
@@ -713,11 +714,11 @@ const gameLink = () => {
                 if (msg && msg.reason === 'reload') overlay.toast(`🔄 ${RELOAD_TEXT}`, '#f0912b');
                 else if (msg && msg.reason === 'bad-frame') {
                     log.warn('[collab] game socket bad-frame close', state.gameLink && state.gameLink.badFrames);
-                    overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
+                    if (msg.final) endBadFrame();
                 } else if (msg && msg.reason !== 'stopped') log.warn('[collab] game socket closed', msg.code);
             }
         });
-        state.gameLink.onTick(tick => netEmit('tick', tick));
+        state.gameLink.onTick((tick, result) => netEmit('tick', tick, result));
         state.gameLinkRoom = state.snapshotHttpRoom;
     }
     return state.gameLink;
@@ -2078,6 +2079,13 @@ const endSession = text => {
     applyEditability();
 };
 
+const endBadFrame = () => {
+    if (state.ended) return;
+    client.disconnect();
+    endSession(BAD_FRAME_TEXT);
+    overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
+};
+
 // ------------------------------------------------- incoming: application ---
 
 const nameClash = (kind, name, fromPeer) => {
@@ -2576,12 +2584,12 @@ const rebuildPeerCache = () => {
     cachedPeerNamesStr = cachedPeerNames.join(', ');
 };
 
-const netEmit = (type, msg) => {
+const netEmit = (type, msg, extra) => {
     const list = netHandlers[type];
     if (!list || !list.length) return;
     for (let i = 0; i < list.length; i++) {
         try {
-            list[i](msg);
+            list[i](msg, extra);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[collab] SquiggleNet handler error', type, e);
@@ -2625,6 +2633,9 @@ const installNetBridge = () => {
         },
         get tickHz () {
             return state.gameLink ? state.gameLink.tickHz : null;
+        },
+        get game () {
+            return state.gameLink ? state.gameLink.game : null;
         },
         on (type, cb) {
             if (typeof cb !== 'function') return () => {};
@@ -2765,7 +2776,7 @@ const applyMaskedVmAction = m => {
 const applyModerated = msg => {
     if (!msg) return;
     const locked = msg.of === 'game' && msg.reason === 'locked';
-    overlay.toast(`🧹 ${locked ? GAME_LOCKED_TEXT : moderated.moderatedText(msg)}`, '#f0912b');
+    overlay.toast(`🧹 ${locked ? GAME_LOCKED_TEXT : refusalText(msg.category)}`, '#f0912b');
     const m = msg.masked && typeof msg.masked === 'object' ? msg.masked : null;
     if (m && m.type === 'block-event') {
         for (const event of moderated.maskedBlockEvents(m)) applyBlockEvent(event);
@@ -2831,10 +2842,22 @@ const CLOSE_TEXT = {
     1013: 'The connection is running slow. Reconnecting…',
     4008: 'The connection is running slow. Reconnecting…'
 };
-const RELOAD_TEXT = 'Squiggle has a new version. Reload the page to keep working together.';
-const BAD_FRAME_TEXT = 'The room could not read something this editor sent. Reload the page to fix it.';
 const GAME_LOCKED_TEXT = 'That game message was not sent. While a guest or younger player is here, ' +
     `names and words must be ${VOCAB_LOCK.text} letters or fewer with no ${VOCAB_LOCK.digitRun} numbers in a row.`;
+const REFUSAL_TEXTS = Object.freeze({
+    profanity: 'That was not sent because it had words that are not allowed here.',
+    hate: 'That was not sent because it could hurt someone. Try kinder words.',
+    contact: 'That was not sent because it looked like contact details. Keep phone numbers and addresses private.',
+    link: 'That was not sent because links are not allowed here.',
+    spam: 'That was not sent because it looked like spam.',
+    noise: 'That was not sent because it looked like random letters.',
+    language: 'That was not sent because it had words this room does not allow.',
+    strict: 'That was not sent because this room only allows simple words right now.',
+    empty: 'That was not sent because it was empty.'
+});
+const REFUSAL_DEFAULT = 'That was not sent because it had words that are not allowed here.';
+const refusalText = category => (typeof category === 'string' &&
+    Object.prototype.hasOwnProperty.call(REFUSAL_TEXTS, category) ? REFUSAL_TEXTS[category] : REFUSAL_DEFAULT);
 const LOCK_SCAN_MS = 600;
 const lockNameText = found => {
     const shown = found.name.length > 40 ? `${found.name.slice(0, 40)}…` : found.name;
@@ -3045,11 +3068,11 @@ const wireSocket = () => {
     });
     client.on('bad-frame', msg => {
         log.warn('[collab] bad-frame close', msg && msg.count);
-        endSession(BAD_FRAME_TEXT);
-        overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
+        if (msg && msg.final) endBadFrame();
     });
     client.on('room-chat-config', msg => {
-        state.lockedRoom = !!msg && msg.mode === 'quick';
+        state.lockedRoom = client.proto >= 2 && !!msg &&
+            (typeof msg.locked === 'boolean' ? msg.locked : msg.mode === 'quick');
         scheduleLockScan();
     });
     client.on('error', msg => {

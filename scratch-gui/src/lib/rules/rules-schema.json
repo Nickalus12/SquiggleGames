@@ -10,6 +10,7 @@
     "repeat": 100,
     "string": 4096,
     "messages": 64,
+    "eventsPerSecond": 10,
     "vars": 64,
     "events": 32,
     "phases": 16,
@@ -684,6 +685,11 @@
     ],
     "squigglearena": [
       {
+        "opcode": "whenPlayerFires",
+        "type": "hat",
+        "text": "when a player fires"
+      },
+      {
         "opcode": "setSpeedLimit",
         "type": "command",
         "text": "players can move [STEPS] steps a second",
@@ -710,6 +716,21 @@
           "Y": {
             "type": "number",
             "default": 0
+          }
+        }
+      },
+      {
+        "opcode": "hitPlayer",
+        "type": "command",
+        "text": "hit [PLAYER] by [BY]",
+        "args": {
+          "PLAYER": {
+            "type": "number",
+            "default": ""
+          },
+          "BY": {
+            "type": "number",
+            "default": ""
           }
         }
       },
@@ -764,7 +785,8 @@
             "type": "number",
             "default": 10
           }
-        }
+        },
+        "needsLevels": true
       },
       {
         "opcode": "canSee",
@@ -779,7 +801,8 @@
             "type": "number",
             "default": ""
           }
-        }
+        },
+        "needsLevels": true
       }
     ]
   }

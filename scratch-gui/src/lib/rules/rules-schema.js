@@ -10,6 +10,7 @@ export default {
         repeat: 100,
         string: 4096,
         messages: 64,
+        eventsPerSecond: 10,
         vars: 64,
         events: 32,
         phases: 16,
@@ -304,6 +305,7 @@ export default {
             }
         ],
         squigglearena: [
+            {opcode: 'whenPlayerFires', type: 'hat', text: 'when a player fires'},
             {
                 opcode: 'setSpeedLimit',
                 type: 'command',
@@ -319,6 +321,12 @@ export default {
                     X: {type: 'number', default: 0},
                     Y: {type: 'number', default: 0}
                 }
+            },
+            {
+                opcode: 'hitPlayer',
+                type: 'command',
+                text: 'hit [PLAYER] by [BY]',
+                args: {PLAYER: {type: 'number', default: ''}, BY: {type: 'number', default: ''}}
             },
             '---',
             {opcode: 'xOf', type: 'reporter', text: 'x of [PLAYER]', args: {PLAYER: {type: 'number', default: ''}}},
@@ -337,13 +345,15 @@ export default {
                     PLAYER: {type: 'number', default: ''},
                     STEPS: {type: 'number', default: 300},
                     DEGREES: {type: 'number', default: 10}
-                }
+                },
+                needsLevels: true
             },
             {
                 opcode: 'canSee',
                 type: 'boolean',
                 text: 'can [PLAYER] see [OTHER]?',
-                args: {PLAYER: {type: 'number', default: ''}, OTHER: {type: 'number', default: ''}}
+                args: {PLAYER: {type: 'number', default: ''}, OTHER: {type: 'number', default: ''}},
+                needsLevels: true
             }
         ]
     }

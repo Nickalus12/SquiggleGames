@@ -16,7 +16,8 @@ const {installRulesGuard, settle} = await import('./guard.js');
 const {ruleOpcodeSet, menuItems} = await import('./rule-blocks.js');
 const {filterCategories, tokenize, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
 const {createRulesStatus, kidText, parseRulesStatus, rulesStatus} = await import('./status.js');
-const {buildRulesUpload, createRulesUploader, putRules, uploadRules, OPCODE_SET} = await import('./package.js');
+const {buildRulesUpload, createRulesUploader, levelOpcodes, putRules, uploadLevels, uploadRules,
+    OPCODE_SET} = await import('./package.js');
 const TogetherBlocks = (await import('../libraries/extensions/together/index.js')).default;
 const expansions = {
     squigglescores: (await import('../libraries/extensions/squigglescores/index.js')).default,
@@ -212,6 +213,38 @@ const raised = await buildRulesUpload(vm, {raise: true});
 ok('an edit raises an older mark to the newest set', raised.opcodeSet === OPCODE_SET &&
     target.extensionStorage[RULES_KEY].opcodeSet === OPCODE_SET);
 ok('the hash covers the raised mark', raised.hash === body.hash);
+
+section('a card that needs levels uploads the solid grid');
+{
+    const asked = [];
+    const level = {id: 'L1', cols: 2, rows: 1, tile: 16, origin: [0, 0]};
+    const hadWindow = globalThis.window;
+    globalThis.window = {SquiggleWorld: {levelsForUpload: ({solid} = {}) => {
+        asked.push(solid);
+        return [solid ? Object.assign({solid: 'AQ'}, level) : level];
+    }}};
+    const loaded = {has: id => id === 'squiggleworld'};
+    const worldVm = {extensionManager: {_loadedExtensions: loaded}};
+    const arena = (await import('./rules-schema.js')).default.cards.squigglearena;
+    ok('the schema marks aiming and sight as needing levels', JSON.stringify([...levelOpcodes({squigglearena: arena})]
+        .sort()) === '["squigglearena_aimingAt","squigglearena_canSee"]');
+    const aiming = {blocks: {a: {opcode: 'squigglearena_aimingAt'}}};
+    const seeing = {blocks: {a: {opcode: 'squigglearena_canSee'}}};
+    const plain = {blocks: {a: {opcode: 'together_ruleWhenGameStarts'}}};
+    const withCard = uploadLevels(worldVm, aiming);
+    ok('a needsLevels card asks the world for solid and carries it', asked[0] === true &&
+        withCard[0].solid === 'AQ' && withCard[0].cols === 2, [asked, withCard]);
+    const without = uploadLevels(worldVm, plain);
+    ok('a program without one asks for none and carries none', asked[1] === false && !('solid' in without[0]),
+        [asked, without]);
+    ok('can see asks for solid too', uploadLevels(worldVm, seeing)[0].solid === 'AQ' && asked[2] === true);
+    const fires = arena.find(card => card && card.opcode === 'whenPlayerFires');
+    const hit = arena.find(card => card && card.opcode === 'hitPlayer');
+    ok('when a player fires is a hat', fires && fires.type === 'hat' && fires.text === 'when a player fires');
+    ok('hit takes the player and who hit them', hit && hit.type === 'command' &&
+        JSON.stringify(Object.keys(hit.args)) === '["PLAYER","BY"]' && hit.text === 'hit [PLAYER] by [BY]');
+    globalThis.window = hadWindow;
+}
 let clock = 0;
 const timers = [];
 let editRights = true;
@@ -282,6 +315,17 @@ ok('unknown codes fall back to plain words', parseRulesStatus({errors: [{code: '
         errorText('limit', {limit: 'timers', max: 4}, 1) === 'Game Rules can have at most 4 timers. Remove some.',
         errorText('limit', {limit: 'timers', max: 4}, 1));
     ok('an unknown limit falls back to plain words', !/\{/.test(errorText('limit', {limit: 'zzz', max: 4}, 1)));
+    const server = {code: 'limit', blockId: null, detail: {kind: 'vars', max: 64}};
+    const read = parseRulesStatus({errors: [server]}).errors[0];
+    ok('a server limit names its key as kind', read.text === 'Game Rules can have at most 64 game values. Remove some.' &&
+        read.detail.limit === 'vars', read);
+    ok('the server detail is left as it came', !('limit' in server.detail));
+    const kinds = ['vars', 'lists', 'listItems', 'playerValues', 'teams', 'boards', 'inputNames', 'events', 'timers',
+        'rulesPerEvent', 'levels', 'levelSide', 'nameLength', 'depth', 'repeat'];
+    const plainWords = kinds.filter(kind => /server allows/.test(errorText('limit', {limit: kind, max: 3}, 1)));
+    ok('every limit kind the compiler sends has words', plainWords.length === 0, plainWords);
+    const big = parseRulesStatus({errors: [{code: 'too-big', detail: {kind: 'levels', bytes: 9, max: 8}}]}).errors[0];
+    ok('kind stays kind outside a limit', !('limit' in big.detail));
     ok('repeats are counted', /Happened 3 times\.$/.test(errorText('deferred', null, 3)));
     ok('one time says nothing extra', errorText('deferred', null, 1) === 'The game was busy, so this rule ran a moment late.');
 }

@@ -33,6 +33,8 @@ import vmStatusReducer, {vmStatusInitialState} from './vm-status';
 import workspaceMetricsReducer, {workspaceMetricsInitialState} from './workspace-metrics';
 import worldUiReducer, {worldUiInitialState} from './world-ui';
 import checkerReducer, {checkerInitialState} from './checker';
+import commandPaletteReducer, {commandPaletteInitialState} from './command-palette';
+import focusModeReducer, {focusModeInitialState} from './focus-mode';
 import throttle from 'redux-throttle';
 
 import decks from '../lib/libraries/decks/index.jsx';
@@ -73,7 +75,9 @@ const guiInitialState = {
     vmStatus: vmStatusInitialState,
     workspaceMetrics: workspaceMetricsInitialState,
     worldUi: worldUiInitialState,
-    checker: checkerInitialState
+    checker: checkerInitialState,
+    commandPalette: commandPaletteInitialState,
+    focusMode: focusModeInitialState
 };
 
 const initPlayer = function (currentState) {
@@ -182,7 +186,9 @@ const guiReducer = combineReducers({
     vmStatus: vmStatusReducer,
     workspaceMetrics: workspaceMetricsReducer,
     worldUi: worldUiReducer,
-    checker: checkerReducer
+    checker: checkerReducer,
+    commandPalette: commandPaletteReducer,
+    focusMode: focusModeReducer
 });
 
 export {

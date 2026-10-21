@@ -63,6 +63,9 @@ const fakeSession = () => {
         },
         get tickHz () {
             return link.tickHz;
+        },
+        get game () {
+            return link.game;
         }
     };
     global.window = {SquiggleNet: net, addEventListener () {}, removeEventListener () {}};
@@ -205,6 +208,36 @@ section('Arena: fire, when I get hit, who hit me last');
     ext.fire();
     env.clock.advance(2000);
     ok('fire outside a game sends nothing', env.ops().length === before);
+}
+
+section('every card reads the one game the session parsed');
+{
+    const env = fakeSession();
+    const together = new TogetherBlocks(env.runtime);
+    const scores = new ScoresBlocks(env.runtime);
+    env.welcome(1);
+    env.tick({t: 10, kf: 1, v: {score: 1}, y: {round: [1, 1], names: {1: 'Me', 2: 'Pal'},
+        teams: {1: 1, 2: 2}, boards: [{n: 'Best', top: [[2, 50]]}], places: {Best: 1}}});
+    env.tick({t: 11, v: {score: 4}});
+    ok('the cards hold no game of their own', scores._device.game === env.link.game &&
+        together.gameValue({NAME: 'score'}) === 4);
+    const late = new TeamsBlocks(env.runtime);
+    const arena = new ArenaBlocks(env.runtime);
+    ok('a card made mid-game reads the game at once', late.teamOfPlayer({PLAYER: 2}) === 'Blue' &&
+        late._device.game === env.link.game && arena._device.game === env.link.game);
+    const lateScores = new ScoresBlocks(env.runtime);
+    ok('without waiting for the next keyframe', lateScores.boardPlace({BOARD: 'Best', N: 1, PART: 'name'}) === 'Pal' &&
+        lateScores.myPlace({BOARD: 'Best'}) === 1);
+    env.tick({t: 12, y: {round: [2, 1]}});
+    ok('a card bound late still fires its hats from the shared tick', env.named('squigglescores_whenTheRoundStarts')
+        .length === 3 && env.named('squigglescores_whenTheRoundEnds').length === 2);
+    env.link.stop();
+    ok('a stopped game reads empty on every card', together.gameValue({NAME: 'score'}) === '' &&
+        late.teamOfPlayer({PLAYER: 2}) === '' && lateScores.boardPlace({BOARD: 'Best', N: 1, PART: 'name'}) === '');
+    lateScores._device.dispose();
+    global.window = {};
+    ok('with no bridge a card reads an empty game', scores.myPlace({BOARD: 'Best'}) === 0 &&
+        scores._device.game.round === 0);
 }
 
 done();

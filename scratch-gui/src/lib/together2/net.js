@@ -15,17 +15,21 @@ const FRAME_HEAD_BYTES = 128;
 const MAX_OP_NAME = 100;
 const MAX_OP_VALUE = 4096;
 const VOCAB_LOCK = Object.freeze({text: 32, digitRun: 5});
+const DIGIT_RUN = new RegExp(`\\d{${VOCAB_LOCK.digitRun},}`);
 const BAD_FRAME_CODE = 1007;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
-const OUT_ACTIONS = new Set(['input', 'fire', 'msg']);
+const OUT_ACTIONS = new Set(['input', 'fire', 'msg', 'set', 'change']);
 
-const gameSocketUrl = (base, slug) => {
-    const origin = String(base || '').replace(/\/+$/, '')
-        .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
-    return `${origin}/ws/room/${encodeURIComponent(slug)}/game`;
-};
+const socketOrigin = base => String(base || '').replace(/\/+$/, '')
+    .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
+
+const gameSocketUrl = (base, slug) => `${socketOrigin(base)}/ws/room/${encodeURIComponent(slug)}/game`;
+
+const pageSocketBase = page => `${page.protocol === 'https:' ? 'wss:' : 'ws:'}//${page.host}`;
+
+const playSocketUrl = (base, code) => `${socketOrigin(base)}/ws/play/${encodeURIComponent(code)}`;
 
 const encoder = new TextEncoder();
 
@@ -35,6 +39,7 @@ const wireValue = value => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
+    if (DIGIT_RUN.test(trimmed)) return value;
     const number = Number(trimmed);
     return trimmed && Number.isFinite(number) && String(number) === trimmed ? number : value;
 };
@@ -61,6 +66,12 @@ const createOpBucket = ({rate = OPS_PER_SECOND, burst = OPS_BURST, now}) => {
             return true;
         }
     };
+};
+
+const ownAvatar = a => {
+    const out = new Array(a.length);
+    for (let i = 0; i < a.length; i++) out[i] = a[i];
+    return out;
 };
 
 const createGameSession = ({
@@ -92,6 +103,7 @@ const createGameSession = ({
     let joinedWithResume = false;
     let pendingA = null;
     let lastSentA = null;
+    const avatarBuffer = [];
     const pendingG = [];
     let mode = null;
     let tickHz = null;
@@ -131,9 +143,9 @@ const createGameSession = ({
         if (!open || (!pendingA && !pendingG.length)) return null;
         s += 1;
         const frame = {type: 'in', s, k, cid};
-        if (pendingA) frame.a = pendingA;
+        if (pendingA) frame.a = ownAvatar(pendingA);
         if (pendingG.length) frame.g = takeOps(byteLength(JSON.stringify(frame)));
-        if (pendingA) lastSentA = pendingA;
+        if (pendingA) lastSentA = frame.a;
         pendingA = null;
         lastFlushAt = now();
         unacked.push({s, frame, at: lastFlushAt, resent: false});
@@ -306,7 +318,9 @@ const createGameSession = ({
         setAvatar (a) {
             if (!Array.isArray(a)) return false;
             if (sameAvatar(a, pendingA || lastSentA)) return false;
-            pendingA = a.slice();
+            avatarBuffer.length = a.length;
+            for (let i = 0; i < a.length; i++) avatarBuffer[i] = a[i];
+            pendingA = avatarBuffer;
             schedule();
             return true;
         },
@@ -389,9 +403,13 @@ export {
     MAX_OP_VALUE,
     OUT_ACTIONS,
     VOCAB_LOCK,
+    DIGIT_RUN,
     BAD_FRAME_CODE,
+    RECONNECT_MIN_MS,
     cutOp,
     wireValue,
     gameSocketUrl,
+    pageSocketBase,
+    playSocketUrl,
     createGameSession
 };
