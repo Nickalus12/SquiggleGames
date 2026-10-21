@@ -62,14 +62,6 @@
     background-color: $ui-black-transparent;
 }
 
-.stop-button img {
-    opacity: 0.6;
-}
-
-.stop-button.is-running img {
-    opacity: 1;
-}
-
 .title {
     flex: 1;
     min-width: 0;
@@ -81,7 +73,7 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    height: 40px;
+    height: 44px;
     font-size: 16px;
 }
 
@@ -170,10 +162,11 @@
 }
 
 .tab-button.is-active {
-    color: $looks-secondary;
+    color: $text-primary;
 }
 
 .tab-button.is-active .tab-icon {
+    color: $looks-secondary;
     background-color: $looks-transparent;
 }
 

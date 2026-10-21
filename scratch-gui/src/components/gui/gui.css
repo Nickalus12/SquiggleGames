@@ -549,6 +549,16 @@ $fade-out-distance: 15px;
     min-width: 0;
 }
 
+.phone[data-phone-tab="sprites"] .target-wrapper input {
+    box-sizing: border-box;
+    min-height: 44px;
+}
+
+.phone .target-wrapper [role="button"][aria-label="Delete"] {
+    padding: 8px;
+    margin: -8px;
+}
+
 .phone-touch-controls {
     margin-top: auto;
 }

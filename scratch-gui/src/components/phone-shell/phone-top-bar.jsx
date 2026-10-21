@@ -13,6 +13,9 @@ import stopAllIcon from '../stop-all/icon--stop-all.svg';
 
 import styles from './phone-shell.css';
 
+const SHEET_ID = 'phone-menu-sheet';
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 const messages = defineMessages({
     menu: {
         id: 'gui.phone.menu',
@@ -38,8 +41,34 @@ class PhoneTopBar extends React.Component {
             'handleGreenFlag',
             'handleStop',
             'handleToggleMenu',
-            'handleContextMenu'
+            'handleContextMenu',
+            'handleKeyDown',
+            'setMenuButton'
         ]);
+    }
+    componentDidUpdate (prevProps) {
+        if (this.props.menuOpen === prevProps.menuOpen) return;
+        const sheet = document.getElementById(SHEET_ID);
+        if (this.props.menuOpen) {
+            document.addEventListener('keydown', this.handleKeyDown);
+            const first = sheet && Array.from(sheet.querySelectorAll(FOCUSABLE))
+                .find(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+            if (first) first.focus();
+            return;
+        }
+        document.removeEventListener('keydown', this.handleKeyDown);
+        const active = document.activeElement;
+        const focusLost = !active || active === document.body || (sheet && sheet.contains(active));
+        if (focusLost && this.menuButton) this.menuButton.focus();
+    }
+    componentWillUnmount () {
+        document.removeEventListener('keydown', this.handleKeyDown);
+    }
+    setMenuButton (el) {
+        this.menuButton = el;
+    }
+    handleKeyDown (e) {
+        if (e.key === 'Escape') this.props.onSetMenuOpen(false);
     }
     handleGreenFlag () {
         if (!this.props.isStarted) this.props.vm.start();
@@ -59,10 +88,12 @@ class PhoneTopBar extends React.Component {
         return (
             <div className={styles.topBar}>
                 <button
+                    aria-controls={SHEET_ID}
                     aria-expanded={menuOpen}
                     aria-label={intl.formatMessage(messages.menu)}
                     className={styles.iconButton}
                     data-phone-menu-button
+                    ref={this.setMenuButton}
                     type="button"
                     onClick={this.handleToggleMenu}
                 >
@@ -118,7 +149,7 @@ class PhoneTopBar extends React.Component {
                     </button>
                     <button
                         aria-label={intl.formatMessage(messages.stop)}
-                        className={classNames(styles.iconButton, styles.stopButton, {
+                        className={classNames(styles.iconButton, {
                             [styles.isRunning]: projectRunning
                         })}
                         data-phone-stop

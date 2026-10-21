@@ -327,3 +327,16 @@
     min-height: 48px;
     padding: 0 8px;
 }
+
+.phone-sheet .menu-bar-item > [class*="button_outlined-button_"],
+.phone-sheet .feedback-link,
+.phone-sheet .feedback-link > [class*="button_outlined-button_"],
+.phone-sheet .account-info-group > div > div,
+.phone-sheet .account-info-group > div > button {
+    box-sizing: border-box;
+    min-height: 44px;
+}
+
+.phone-sheet .feedback-link {
+    display: flex;
+}

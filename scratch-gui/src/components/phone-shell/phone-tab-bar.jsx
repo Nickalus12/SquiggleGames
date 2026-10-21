@@ -133,6 +133,7 @@ class PhoneTabBar extends React.Component {
         return (
             <button
                 aria-current={active ? 'page' : null}
+                aria-label={badge ? `${label} (${badge})` : null}
                 className={classNames(styles.tabButton, {[styles.isActive]: active})}
                 data-phone-tab-button={tab}
                 key={tab}

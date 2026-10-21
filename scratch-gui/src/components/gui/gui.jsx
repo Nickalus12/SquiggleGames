@@ -390,7 +390,10 @@ const GUIComponent = props => {
                     onStartSelectingFileUpload={onStartSelectingFileUpload}
                     onToggleLoginOpen={onToggleLoginOpen}
                 />
-                <Box className={styles.bodyWrapper}>
+                <Box
+                    className={styles.bodyWrapper}
+                    inert={isPhone && phoneMenuOpen ? '' : null}
+                >
                     <Box className={styles.flexWrapper}>
                         <Box className={styles.editorWrapper}>
                             {isPhone && phoneTab === PHONE_TABS.code ? <PhoneMiniStageButton /> : null}

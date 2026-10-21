@@ -498,6 +498,7 @@ class MenuBar extends React.Component {
                     styles.menuBar,
                     {[styles.phoneSheet]: this.props.isPhoneSheet}
                 )}
+                id={this.props.isPhoneSheet ? 'phone-menu-sheet' : null}
             >
                 <div className={styles.mainMenu}>
                     <div className={styles.fileGroup}>
