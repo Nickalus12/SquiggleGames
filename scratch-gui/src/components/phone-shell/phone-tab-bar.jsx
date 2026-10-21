@@ -6,6 +6,7 @@ import {connect} from 'react-redux';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import overlay from '../../lib/collab/overlay';
+import chatRoom from '../../lib/collab/chat-room';
 import {PHONE_TABS} from '../../lib/layout-mode';
 import {setPhoneTab} from '../../reducers/layout-mode';
 import {activateTab, BLOCKS_TAB_INDEX, COSTUMES_TAB_INDEX} from '../../reducers/editor-tab';
@@ -47,6 +48,11 @@ const messages = defineMessages({
         id: 'gui.phone.tab.room',
         defaultMessage: 'Room',
         description: 'Phone tab that shows the people in a shared room'
+    },
+    roomUnread: {
+        id: 'gui.phone.tab.roomUnread',
+        defaultMessage: '{label} ({count}), new chat messages',
+        description: 'Accessible name of the Room tab when chat messages arrived while another tab was open'
     }
 });
 
@@ -88,14 +94,16 @@ class PhoneTabBar extends React.Component {
         super(props);
         bindAll(this, [
             'handleOverlayChange',
+            'handleChat',
             'handleClick'
         ]);
         const {self, peers} = overlay.getState();
-        this.state = {self, peerCount: peers.length};
+        this.state = {self, peerCount: peers.length, unread: chatRoom.getState().unread};
         this.landed = false;
     }
     componentDidMount () {
         this.unsubscribe = overlay.subscribe(this.handleOverlayChange);
+        this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
         this.handleOverlayChange();
     }
     componentDidUpdate (prevProps) {
@@ -107,6 +115,11 @@ class PhoneTabBar extends React.Component {
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.unsubscribeChat) this.unsubscribeChat();
+    }
+    handleChat () {
+        const unread = chatRoom.getState().unread;
+        if (unread !== this.state.unread) this.setState({unread});
     }
     handleOverlayChange () {
         const {self, peers} = overlay.getState();
@@ -128,12 +141,15 @@ class PhoneTabBar extends React.Component {
         }
         this.props.onSelectTab(tab);
     }
-    renderTab (tab, label, badge) {
+    renderTab (tab, label, badge, unread) {
         const active = this.props.phoneTab === tab;
+        const named = unread ?
+            this.props.intl.formatMessage(messages.roomUnread, {label, count: badge}) :
+            `${label} (${badge})`;
         return (
             <button
                 aria-current={active ? 'page' : null}
-                aria-label={badge ? `${label} (${badge})` : null}
+                aria-label={badge ? named : null}
                 className={classNames(styles.tabButton, {[styles.isActive]: active})}
                 data-phone-tab-button={tab}
                 key={tab}
@@ -141,6 +157,13 @@ class PhoneTabBar extends React.Component {
                 onClick={this.handleClick}
             >
                 <TabIcon name={tab} />
+                {unread ? (
+                    <span
+                        aria-hidden="true"
+                        className={styles.unreadDot}
+                        data-phone-unread-dot
+                    />
+                ) : null}
                 <span className={styles.tabLabel}>{label}</span>
                 {badge ? (
                     <span
@@ -172,7 +195,8 @@ class PhoneTabBar extends React.Component {
                 {self ? this.renderTab(
                     PHONE_TABS.room,
                     intl.formatMessage(messages.room),
-                    peerCount + 1
+                    peerCount + 1,
+                    this.state.unread > 0 && this.props.phoneTab !== PHONE_TABS.room
                 ) : null}
             </nav>
         );

@@ -186,6 +186,18 @@
     text-align: center;
 }
 
+.unread-dot {
+    position: absolute;
+    top: 6px;
+    right: calc(50% + 14px);
+    width: 12px;
+    height: 12px;
+    box-sizing: border-box;
+    border: 2px solid $ui-primary;
+    border-radius: 50%;
+    background-color: #e8386d;
+}
+
 .sprite-row {
     display: flex;
     align-items: center;

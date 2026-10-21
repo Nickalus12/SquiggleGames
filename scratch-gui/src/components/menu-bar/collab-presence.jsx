@@ -2,6 +2,10 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import overlay from '../../lib/collab/overlay';
 import client from '../../lib/collab/client';
+import chatRoom from '../../lib/collab/chat-room';
+import ChatPanel from '../collab-chat/chat-panel.jsx';
+import ChatToggle from '../collab-chat/chat-toggle.jsx';
+import chatStyles from '../collab-chat/collab-chat.css';
 
 /* Native menu-bar multiplayer panel.
  * Collapsed: one compact button — connection dot, people icon, player count.
@@ -71,6 +75,32 @@ const paneQuiet = {
     fontSize: '13px'
 };
 
+const chip = {
+    flexShrink: 0,
+    padding: '3px 8px',
+    borderRadius: '8px',
+    fontSize: '11.5px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    color: T.ink,
+    background: T.card,
+    border: `1px solid ${T.line}`,
+    fontFamily: 'inherit'
+};
+
+const touchChip = {
+    minHeight: '44px',
+    minWidth: '44px',
+    padding: '8px 12px',
+    fontSize: '14px'
+};
+
+const chipOn = {
+    color: T.warn,
+    borderColor: 'rgba(251, 191, 36, 0.55)',
+    background: 'rgba(251, 191, 36, 0.12)'
+};
+
 const dot = (color, size) => ({
     display: 'inline-block',
     width: `${size || 10}px`,
@@ -83,8 +113,24 @@ const dot = (color, size) => ({
 class CollabPresence extends React.Component {
     constructor (props) {
         super(props);
-        this.state = {...overlay.getState(), open: false, copied: false, saveName: '', confirmOpenId: null};
+        this.state = {
+            ...overlay.getState(),
+            chat: chatRoom.getState(),
+            open: false,
+            copied: false,
+            saveName: '',
+            confirmOpenId: null
+        };
         this.handleChange = () => this.setState(overlay.getState());
+        this.handleChat = () => this.setState({chat: chatRoom.getState()});
+        this.handleMute = e => {
+            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
+            chatRoom.setMuted(userId, !chatRoom.isMuted(userId));
+        };
+        this.handleHide = e => {
+            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
+            chatRoom.setHidden(userId, this.state.chat.hidden.indexOf(userId) === -1);
+        };
         this.handleToggle = () => {
             this.setState(s => {
                 if (!s.open) client.send({type: 'list-projects'});
@@ -118,13 +164,59 @@ class CollabPresence extends React.Component {
     }
     componentDidMount () {
         this.unsubscribe = overlay.subscribe(this.handleChange);
+        this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
         document.addEventListener('mousedown', this.handleClickOutside);
         this.handleChange();
         if (this.props.variant === 'pane') client.send({type: 'list-projects'});
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.unsubscribeChat) this.unsubscribeChat();
         document.removeEventListener('mousedown', this.handleClickOutside);
+    }
+    chatUserId (peer) {
+        if (typeof peer.userId === 'number') return peer.userId;
+        const said = this.state.chat.messages.filter(m => m.userId !== null &&
+            (peer.handle ? m.handle === peer.handle : m.name === peer.name && m.color === peer.color));
+        return said.length ? said[said.length - 1].userId : null;
+    }
+    renderChatControls (peer, pane) {
+        const {config, hidden, mutedUserIds} = this.state.chat;
+        const userId = config ? this.chatUserId(peer) : null;
+        if (userId === null) return null;
+        const size = pane ? touchChip : null;
+        const muted = mutedUserIds.indexOf(userId) !== -1;
+        const isHidden = hidden.indexOf(userId) !== -1;
+        return (
+            <span style={{display: 'flex', gap: '5px', flexShrink: 0}}>
+                {config.canModerate ? (
+                    <button
+                        aria-label={muted ? `Unmute ${peer.name} in chat` : `Mute ${peer.name} in chat`}
+                        aria-pressed={muted}
+                        data-chat-mute={userId}
+                        data-user-id={userId}
+                        onClick={this.handleMute}
+                        style={{...chip, ...(muted ? chipOn : null), ...size}}
+                        title={muted ? 'Let them chat again' : 'Stop them chatting in this room'}
+                        type="button"
+                    >
+                        {muted ? 'Unmute' : 'Mute'}
+                    </button>
+                ) : null}
+                <button
+                    aria-label={isHidden ? `Show chat from ${peer.name}` : `Hide chat from ${peer.name}`}
+                    aria-pressed={isHidden}
+                    data-chat-hide={userId}
+                    data-user-id={userId}
+                    onClick={this.handleHide}
+                    style={{...chip, ...(isHidden ? chipOn : null), ...size}}
+                    title={isHidden ? 'Show their chat messages again' : 'Hide their chat messages, just for you'}
+                    type="button"
+                >
+                    {isHidden ? 'Show' : 'Hide'}
+                </button>
+            </span>
+        );
     }
     inviteLink () {
         const {self} = this.state;
@@ -155,6 +247,7 @@ class CollabPresence extends React.Component {
         // a one-way door once you are in a room.
         const homeButton = (
             <a
+                aria-label={'Home'}
                 href={'/'}
                 title={'Back to Squiggle'}
                 style={{
@@ -186,12 +279,13 @@ class CollabPresence extends React.Component {
                         strokeLinecap={'round'}
                     />
                 </svg>
-                {'Home'}
+                <span className={this.props.phoneSheet ? null : chatStyles.homeLabel}>{'Home'}</span>
             </a>
         );
 
         const button = (
             <div
+                data-collab-people-toggle
                 onClick={this.handleToggle}
                 style={{
                     display: 'flex',
@@ -269,7 +363,12 @@ class CollabPresence extends React.Component {
                     </button>
                 </div>
 
-                <div style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}>
+                {pane ? <ChatPanel variant="pane" /> : null}
+
+                <div
+                    data-collab-people
+                    style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}
+                >
                     <div style={{...label, marginBottom: '7px', ...quiet}}>
                         {`In here · ${1 + peers.length}`}
                     </div>
@@ -299,6 +398,7 @@ class CollabPresence extends React.Component {
                             >
                                 {p.sprite ? `${statusIcon(p.status)} ${p.sprite}` : statusIcon(p.status)}
                             </span>
+                            {this.renderChatControls(p, pane)}
                         </div>
                     ))}
                     {peers.length === 0 ? (
@@ -456,6 +556,7 @@ class CollabPresence extends React.Component {
             >
                 {homeButton}
                 {button}
+                {this.props.phoneSheet ? null : <ChatToggle />}
                 {panel}
             </div>
         );
@@ -463,6 +564,7 @@ class CollabPresence extends React.Component {
 }
 
 CollabPresence.propTypes = {
+    phoneSheet: PropTypes.bool,
     variant: PropTypes.oneOf(['menu', 'pane'])
 };
 
