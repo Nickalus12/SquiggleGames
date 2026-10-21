@@ -188,6 +188,8 @@ section('the player bridge has the editor bridge surface');
 section('the green flag starts the game socket and stop closes it');
 {
     const {sockets, runtime, net, clock} = playFixture();
+    const stopEnds = [];
+    net.on('game-ended', msg => stopEnds.push(msg));
     ok('nothing opens before the flag', sockets.length === 0);
     runtime.emit('PROJECT_START');
     ok('the flag opens /ws/play/<code>', sockets.length === 1 && sockets[0].url === 'wss://sq.test/ws/play/AB12',
@@ -201,6 +203,7 @@ section('the green flag starts the game socket and stop closes it');
     runtime.emit('PROJECT_STOP_ALL');
     clock.advance(10);
     ok('stop leaves the game', net.inGame === false && net.connected === false);
+    ok('a local stop is no game end for the blocks', stopEnds.length === 0, stopEnds);
 }
 
 section('a project already running starts the game at install');
@@ -209,6 +212,12 @@ section('a project already running starts the game at install');
     const runtime = fakeRuntime({threads: [{}]});
     createPlayClient({vm: {runtime}, code: 'AB12', win: fakeWin(), WebSocketImpl: FakeSocket}).install();
     ok('the socket opens without another flag', sockets.length === 1);
+    const flagless = fakeRuntime({frameLoop: {running: true}});
+    createPlayClient({vm: {runtime: flagless}, code: 'AB12', win: fakeWin(), WebSocketImpl: FakeSocket}).install();
+    ok('an autoplayed project with no flag scripts starts it too', sockets.length === 2);
+    const idle = fakeRuntime({frameLoop: {running: false}});
+    createPlayClient({vm: {runtime: idle}, code: 'AB12', win: fakeWin(), WebSocketImpl: FakeSocket}).install();
+    ok('a project not started yet waits for the flag', sockets.length === 2);
 }
 
 section('shared variables round trip');
@@ -227,13 +236,13 @@ section('shared variables round trip');
     ok('it goes out as an in.g set once the game opens', first && JSON.stringify(first.g) ===
         '[{"action":"set","name":"score","value":12}]', first);
     net.send({type: 'game', action: 'var-add', name: 'score', delta: 3});
+    ok('the change adds to the cached value', net.sharedVars.score === 15, net.sharedVars.score);
     net.send({type: 'game', action: 'msg', name: 'go', value: 'now'});
     clock.advance(50);
     ws.deliver({type: 'tick', t: 1, kf: 1, ack: 1});
     const second = ws.sent.filter(f => f.type === 'in')[1];
     ok('var-add goes out as change and a message as msg', second && JSON.stringify(second.g) ===
         '[{"action":"change","name":"score","delta":3},{"action":"msg","name":"go","value":"now"}]', second);
-    ok('the change adds to the cached value', net.sharedVars.score === 15, net.sharedVars.score);
     ws.deliver({type: 'game', action: 'var', name: 'lives', value: 2, from: 2, fromName: 'Player Two'});
     ok('a var frame lands in sharedVars', net.sharedVars.lives === 2);
     ok('and reaches the Together extension as a game message', games.length === 1 && games[0].action === 'var' &&
@@ -249,6 +258,9 @@ section('shared variables round trip');
     ok('the keyframe sv replaces every shared variable', Object.keys(net.sharedVars).sort()
         .join() === 'round,score' && net.sharedVars.score === 20, net.sharedVars);
     ok('and is announced as the game state', states.length === 2 && states[1].vars.round === 'two');
+    ws.deliver({type: 'tick', t: 80, kf: 1, ack: 1});
+    ok('a keyframe without sv empties the cache', Object.keys(net.sharedVars).length === 0 && states.length === 3 &&
+        Object.keys(states[2].vars).length === 0, net.sharedVars);
 }
 
 section('each close code has its kid-safe sentence');
@@ -293,6 +305,8 @@ section('the page hears joined, left and ended from the game socket');
 {
     const {open, posted, win, net} = playFixture();
     const peerEvents = [];
+    const ends = [];
+    net.on('game-ended', msg => ends.push(msg));
     net.on('peer-joined', msg => peerEvents.push(['joined', msg.peer.name]));
     net.on('peer-left', msg => peerEvents.push(['left', msg.name]));
     const ws = open(1);
@@ -326,6 +340,7 @@ section('the page hears joined, left and ended from the game socket');
     ok('the game ending posts the 1.8 ended error once', JSON.stringify(posted('error')) ===
         '[{"error":"no-such-session","message":"The game ended. Play again from the page."}]', posted('error'));
     ok('and status goes to not connected', posted('status').slice(-1)[0].connected === false);
+    ok('the blocks hear the game end once, with the frame', ends.length === 1 && ends[0].reason === 'over', ends);
     const late = playFixture();
     const lateWs = late.open(4);
     lateWs.deliver({type: 'tick', t: 1, kf: 1, ack: 0, y: {names: {1: 'Player One'}}});
@@ -333,7 +348,11 @@ section('the page hears joined, left and ended from the game socket');
     ok('the own name arriving late is not a join', late.posted('joined').length === 0 &&
         late.net.playerName === 'Player Four');
     const bare = playFixture();
+    const bareEnds = [];
+    bare.net.on('game-ended', msg => bareEnds.push(msg));
     bare.open(1).close(1000, 'game-ended');
+    ok('a bare 1000 close is one game end for the blocks', bareEnds.length === 1 && bareEnds[0].code === 1000,
+        bareEnds);
     ok('a 1000 close without a game-ended frame ends it too', bare.posted('error').length === 1 &&
         bare.posted('error')[0].error === 'no-such-session');
 }

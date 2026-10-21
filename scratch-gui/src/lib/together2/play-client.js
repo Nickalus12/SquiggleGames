@@ -149,7 +149,7 @@ const createPlayClient = ({
             end();
         },
         onClosed: msg => {
-            emit('game-ended', msg);
+            if (msg.reason !== 'stopped') emit('game-ended', msg);
             chrome('status', {connected: false, code});
             if (msg.reason === 'stopped' || (msg.reason === 'bad-frame' && !msg.final)) return;
             if (msg.code === GAME_ENDED_CODE) end();
@@ -159,8 +159,8 @@ const createPlayClient = ({
 
     link.onTick((tick, result) => {
         if (result && result.applied) {
-            if (result.keyframe && tick.sv && typeof tick.sv === 'object') {
-                sharedVars = Object.assign(Object.create(null), tick.sv);
+            if (result.keyframe) {
+                sharedVars = Object.assign(Object.create(null), tick.sv && typeof tick.sv === 'object' ? tick.sv : {});
                 emit('game-state', {vars: sharedVars});
             }
             syncNames();
@@ -272,7 +272,9 @@ const createPlayClient = ({
                     log.warn('[play] bridge ready event failed');
                 }
             }
-            if (runtime.threads && runtime.threads.length) link.start();
+            if ((runtime.threads && runtime.threads.length) || (runtime.frameLoop && runtime.frameLoop.running)) {
+                link.start();
+            }
             return this;
         }
     };
