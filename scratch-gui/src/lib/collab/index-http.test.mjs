@@ -171,14 +171,19 @@ section('welcome with proto 2 seeds the room over http');
 section('an unchanged project is not sent again');
 {
     emit('server-restarting', {});
-    await new Promise(resolve => setTimeout(resolve, 50));
-    ok('no second upload', puts().length === 1, puts().length);
-    ok('no second frame', snapshots().length === 1);
+    const cat = vm.runtime.targets.find(t => t.getName && t.getName() === 'Cat');
+    vm.renameSprite(cat.id, 'Lynx');
+    emit('server-restarting', {});
+    ok('the next change goes out', await waitFor(() => snapshots().length >= 2), snapshots().length);
+    ok('only the change was uploaded', puts().length === 2, puts().length);
+    ok('only the change was framed', snapshots().length === 2 &&
+        snapshots()[1].sha === await sha256Hex(vm.toJSON()), snapshots().length);
+    emit('snapshot-ack', {ref: snapshots()[1].ref, version: 1});
 }
 
 section('our own snapshot echoed back is not fetched');
 {
-    const own = snapshots()[0].sha;
+    const own = snapshots()[snapshots().length - 1].sha;
     emit('snapshot', {type: 'snapshot', sha: own, version: 1});
     await tick();
     ok('no fetch for our own sha', gets().length === 0);
@@ -267,12 +272,22 @@ section('a builtin extension travels as a vm-action');
         sent.slice(before2).find(m => m && m.action === 'spriteAdd');
     ok('a new sprite travels as json', add && add.format === 'json' && JSON.parse(add.sprite).name === 'Bee', add);
 
-    const remote = JSON.parse(add.sprite);
-    remote.name = 'Ant';
+    const remote = sprite('Ant');
     emit('vm-action', {type: 'vm-action', action: 'spriteAdd', format: 'json', sprite: JSON.stringify(remote),
         name: 'Ant', from: 'pal', fromName: 'Pal'});
     ok('a json sprite from a peer installs',
         await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Ant')));
+
+    const whale = sprite('Whale');
+    whale.variables = {big: ['big', 'w'.repeat(1100 * 1024)]};
+    const before4 = sent.length;
+    const frames4 = snapshots().length;
+    await vm.addSprite(JSON.stringify(whale)).catch(() => null);
+    ok('a sprite over 1 MiB goes as a full snapshot instead',
+        await waitFor(() => snapshots().length > frames4 && !snapshots()[snapshots().length - 1].cacheOnly),
+        snapshots().length - frames4);
+    ok('and never as a spriteAdd', !sent.slice(before4).some(m => m && m.action === 'spriteAdd'));
+    vm.deleteSprite(vm.runtime.targets.find(t => t.getName && t.getName() === 'Whale').id);
 
     const bee = vm.runtime.targets.find(t => t.getName && t.getName() === 'Bee');
     const soundId = 'b'.repeat(32);
@@ -317,6 +332,26 @@ section('a project over the limit shows the too-big banner');
     delete status['/api/rooms/blue%20fox/pj'];
 }
 
+section('a refused save shows why and stops retrying');
+{
+    status['/api/rooms/blue%20fox/pj'] = 403;
+    banners.length = 0;
+    const putsBefore = puts().length;
+    const hawk = vm.runtime.targets.find(t => t.getName && t.getName() === 'Hawk');
+    vm.renameSprite(hawk.id, 'Kite');
+    emit('server-restarting', {});
+    ok('the banner says why', await waitFor(() => banners.some(b => /cannot save in this room/.test(b.text || ''))),
+        banners);
+    const afterFirst = puts().length;
+    ok('it tried once', afterFirst === putsBefore + 1, afterFirst - putsBefore);
+    vm.renameSprite(hawk.id, 'Hawk');
+    emit('server-restarting', {});
+    await tick();
+    ok('a later edit does not put again', puts().length === afterFirst, puts().length - afterFirst);
+    ok('the banner shows once', banners.filter(b => /cannot save/.test(b.text || '')).length === 1, banners.length);
+    delete status['/api/rooms/blue%20fox/pj'];
+}
+
 section('a v1 room keeps the b64 frame');
 {
     emit('welcome', welcome({proto: 1, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}]}));
@@ -349,10 +384,6 @@ section('a replay welcome keeps the local project and checks drift');
     client.rs = 20;
     emit('welcome', welcome({proto: 2, replay: true, rs: 25, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}],
         version: 10, snap: {sha: headSha, size: 10, version: 10, atSeq: 20, hashes}}));
-    await new Promise(r => setTimeout(r, 50));
-    ok('the head is not fetched when the ring replays', gets().length === getsBefore, gets().slice(getsBefore));
-    ok('matching hashes ask for nothing', !sent.slice(sentBefore).some(m => m && m.type === 'resync'));
-
     const realNow = Date.now;
     Date.now = () => realNow() + 60000;
     const logWarn = console.warn;
@@ -364,7 +395,9 @@ section('a replay welcome keeps the local project and checks drift');
     console.warn = logWarn;
     Date.now = realNow;
     ok('a drifted target asks the room for a resync', resynced);
-    ok('still without fetching the head first', gets().length === getsBefore);
+    ok('matching hashes asked for nothing before it',
+        sent.slice(sentBefore).filter(m => m && m.type === 'resync').length === 1);
+    ok('the head is not fetched when the ring replays', gets().length === getsBefore, gets().slice(getsBefore));
 }
 
 section('with no room seq the snapshot still claims atSeq 0');

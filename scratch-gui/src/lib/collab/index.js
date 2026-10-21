@@ -87,6 +87,7 @@ const state = {
     snapshotHttpRoom: null,
     snapshotShaKeys: new Map(),
     snapshotRetries: 0,
+    snapshotBlocked: false,
     urgentSnapshot: false,
     snapshotPromise: null,
     ended: false,
@@ -236,6 +237,10 @@ const exportAddedSprite = target => {
     return state.snapshotHttp.uploadAssets(projectAssets({runtime: {targets: [target]}}))
         .then(() => ({sprite: state.vm.toJSON(target.id), format: 'json'}));
 };
+
+const SPRITE_ADD_MAX_BYTES = 1024 * 1024;
+
+const frameBytes = frame => new TextEncoder().encode(JSON.stringify(frame)).length;
 
 const md5extOf = (asset, dataFormat) => `${asset.assetId}.${dataFormat}`.toLowerCase();
 
@@ -686,11 +691,18 @@ const snapshotUploadFailed = (e, cacheOnly) => {
         return;
     }
     log.error('[collab] snapshot upload failed', e && e.code, e && e.status);
+    const blocked = e && (SAVE_BLOCKED_TEXT[e.status] || SAVE_BLOCKED_TEXT[e.code]);
+    if (blocked) {
+        if (state.canEdit) state.offlineEdits = true;
+        if (!state.snapshotBlocked) overlay.banner(blocked, {kind: 'update'});
+        state.snapshotBlocked = true;
+        return;
+    }
     retrySnapshotLater(cacheOnly);
 };
 
 const zipAndSendSnapshot = async cacheOnly => {
-    if (!state.active || state.applyingRemote || !state.vm) return;
+    if (!state.active || state.applyingRemote || !state.vm || state.snapshotBlocked) return;
     installProjectSeam(state.vm);
     // One zip at a time — overlapping saveProjectSb3 janks the editor hard.
     if (state.snapshotInFlight) {
@@ -741,8 +753,8 @@ const zipAndSendSnapshot = async cacheOnly => {
             snapshotFrame(Object.assign(fields, uploaded)) :
             Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
     } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] snapshot failed', e);
+        if (e && e.code === 'no-crypto') snapshotUploadFailed(e, cacheOnly);
+        else log.error('[collab] snapshot failed', e && e.code);
     } finally {
         snapshotDone();
     }
@@ -1227,7 +1239,13 @@ const wrapVm = vm => {
                         if (hasPeers()) {
                             state.exportingSprites.add(name);
                             exportAddedSprite(t).then(out => {
-                                client.send(Object.assign({type: 'vm-action', action: 'spriteAdd', name}, out));
+                                const frame = Object.assign({type: 'vm-action', action: 'spriteAdd', name}, out);
+                                if (state.httpSnapshots && frameBytes(frame) > SPRITE_ADD_MAX_BYTES) {
+                                    releaseSpriteEvents(name);
+                                    scheduleSnapshot(false);
+                                    return;
+                                }
+                                client.send(frame);
                                 rememberSpriteAdd(name, out.sprite);
                                 releaseSpriteEvents(name);
                             }, () => {
@@ -2548,6 +2566,12 @@ const applyModerated = msg => {
 };
 
 const TOO_BIG_TEXT = 'This project is too big to save. Delete a few costumes or sounds to fix it.';
+const SAVE_BLOCKED_TEXT = {
+    '401': 'You are signed out, so this room cannot save. Sign in again to keep saving.',
+    '403': 'You cannot save in this room now. Download a copy to keep your work.',
+    '404': 'This room is gone, so it cannot save. Download a copy to keep your work.',
+    'no-crypto': 'This browser cannot save to rooms. Try a newer browser, or download a copy to keep your work.'
+};
 
 const retryAfterTooLarge = dropped => {
     const type = dropped ? dropped.type : 'snapshot';
@@ -2630,6 +2654,7 @@ const wireSocket = () => {
         state.everConnected = true;
         state.active = true;
         state.ended = false;
+        state.snapshotBlocked = false;
         startHousekeeping();
         overlay.setConnected(true);
         state.selfId = msg.id;
