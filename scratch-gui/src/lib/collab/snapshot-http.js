@@ -262,8 +262,23 @@ const createSnapshotHttp = ({slug, base, fetchImpl, concurrency}) => {
 
     const assetUrl = asset => `${root}/api/assets/${md5extOf(asset)}`;
 
+    const patch = (path, body) => run(path, {
+        method: 'PATCH',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(response => {
+        if (!response.ok) {
+            const error = snapshotError('http', String(response.status));
+            error.status = response.status;
+            throw error;
+        }
+        return response.json().catch(() => null);
+    });
+
     return {
         known,
+        patchRoom: fields => patch(roomPath, fields),
+        patchMe: fields => patch('/api/me', fields),
         uploadAssets,
         uploadProject,
         upload,

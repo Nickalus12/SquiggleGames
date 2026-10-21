@@ -73,11 +73,12 @@ const calls = [];
 const status = {};
 const rulesPuts = [];
 globalThis.fetch = async (url, init) => {
-    calls.push({url, method: init.method, headers: init.headers});
+    calls.push({url, method: init.method, headers: init.headers, body: init.body});
     const path = url.replace('https://sq.test', '');
     if (status[path]) return new Response('', {status: status[path]});
     if (path === '/api/assets/have') return Response.json({missing: JSON.parse(init.body).md5ext});
     if (/^\/api\/assets\//.test(path)) return Response.json({ok: true});
+    if (init.method === 'PATCH') return Response.json({});
     if (/\/rules$/.test(path) && init.method === 'PUT') {
         rulesPuts.push(JSON.parse(init.body));
         return Response.json({hash: JSON.parse(init.body).hash, ok: true, errors: []});
@@ -563,6 +564,16 @@ section('the green flag opens the game socket');
     ok('stop closes the game socket', ws.closed === 1000 && net.inGame === false);
     emit('game-started', {type: 'game-started', name: 'Pal'});
     ok('otherwise it says how to join', toasts.length === 1 && /Pal started a test game/.test(toasts[0]), toasts);
+    emit('game-ended', {type: 'game-ended'});
+    emit('role-changed', {type: 'role-changed', role: 'viewer', canEdit: false});
+    vm.runtime.emit('PROJECT_START');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    ok('a viewer\'s green flag opens nothing while no room game runs', gameSockets.length === 1, gameSockets.length);
+    emit('game-started', {type: 'game-started', name: 'Pal'});
+    vm.runtime.emit('PROJECT_START');
+    ok('once a room game runs the viewer joins it', await waitFor(() => gameSockets.length === 2), gameSockets.length);
+    vm.runtime.emit('PROJECT_STOP_ALL');
+    emit('role-changed', {type: 'role-changed', role: 'owner', canEdit: true});
     offTick();
     offGame();
 }
@@ -586,6 +597,22 @@ section('game setup changes travel as kit-set');
         value: ['Green'], from: 'pal', rs: 30});
     ok('an inbound kit-set lands on the mark', rules.extensionStorage.together.teams.join() === 'Green');
     ok('and is not sent back', kitSets().length === first);
+}
+
+section('room settings and appearance go over HTTP');
+{
+    const before = sent.length;
+    collab.setRoomTitle('Space race');
+    ok('the title is a PATCH on the room', await waitFor(() => calls.some(c => c.method === 'PATCH' &&
+        c.url === 'https://sq.test/api/rooms/blue%20fox' && JSON.parse(c.body).title === 'Space race')),
+    calls.filter(c => c.method === 'PATCH'));
+    collab.setAppearance({color: '#ff8800', style: 'star'});
+    const presence = sent.slice(before).find(m => m && m.type === 'presence' && m.color === '#ff8800');
+    ok('the colour and cursor ride on presence', presence && presence.cursor === 'star' &&
+        typeof presence.status === 'string', sent.slice(before));
+    ok('and are kept with a PATCH on /api/me', await waitFor(() => calls.some(c => c.method === 'PATCH' &&
+        c.url === 'https://sq.test/api/me' && JSON.parse(c.body).cursor === 'star')));
+    ok('no moved frame goes out', !sent.slice(before).some(m => m && /^(appearance|set-room-title)$/.test(m.type)));
 }
 
 section('a 4010 close ends the session with a reload message');

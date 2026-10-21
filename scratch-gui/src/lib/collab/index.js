@@ -719,6 +719,7 @@ const rulesGameStart = () => {
     const uploader = canWrite() && rulesUploader();
     const sent = uploader ? uploader.sendNow() : Promise.resolve(null);
     if (!state.active || !state.httpSnapshots || !hasRuleScripts()) return sent;
+    if (!state.canEdit && !state.roomGame) return sent;
     return sent.then(() => {
         const link = state.active && gameLink();
         if (link) link.start();
@@ -2930,6 +2931,7 @@ const wireSocket = () => {
         state.lastPresence = {status: null, sprite: null, sentAt: 0};
         client.send({type: 'presence', sprite: editingTargetName(), status: 'here'});
         // Seed Together shared variables for late joiners / reconnects.
+        state.roomGame = msg.game === true;
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
@@ -3105,7 +3107,11 @@ const wireSocket = () => {
         }
         netEmit('game', msg);
     });
+    client.on('game-ended', () => {
+        state.roomGame = false;
+    });
     client.on('game-started', msg => {
+        state.roomGame = true;
         if (state.gameLink && state.gameLink.inGame) return;
         const who = msg && typeof msg.name === 'string' && msg.name ? msg.name : 'Someone';
         overlay.toast(`▶ ${who} ${GAME_STARTED_TEXT}`, '#6d4ae0');
@@ -3187,11 +3193,19 @@ const detachWorkspace = () => {
     state.ScratchBlocks = null;
 };
 
-// Appearance changes go over the socket so peers repaint immediately; the
-// server persists them to the account.
 const setAppearance = ({color, style}) => {
     if (!state.active) return false;
-    client.send({type: 'appearance', color, cursor: style});
+    client.send({
+        type: 'presence',
+        sprite: state.lastPresence.sprite || editingTargetName(),
+        status: state.lastPresence.status || 'here',
+        color,
+        cursor: style
+    });
+    if (state.snapshotHttp) {
+        state.snapshotHttp.patchMe({color, cursor: style})
+            .catch(e => log.warn('[collab] appearance not saved', e && e.status));
+    }
     return true;
 };
 
@@ -3207,14 +3221,17 @@ const applyRoomTitle = title => {
     }
 };
 
-// Renaming the project renames the room. Owner-gated on the server.
 const setRoomTitle = title => {
     const clean = String(title || '')
         .trim()
         .slice(0, 60);
-    if (!state.active || !clean || clean === state.appliedTitle) return;
+    if (!state.active || !clean || clean === state.appliedTitle || !state.snapshotHttp) return;
+    const previous = state.appliedTitle;
     state.appliedTitle = clean;
-    client.send({type: 'set-room-title', title: clean});
+    state.snapshotHttp.patchRoom({title: clean}).catch(e => {
+        if (state.appliedTitle === clean) state.appliedTitle = previous;
+        log.warn('[collab] room title not saved', e && e.status);
+    });
 };
 
 export default {
