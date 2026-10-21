@@ -33,6 +33,7 @@ import ChangeUsername from '../../containers/tw-change-username.jsx';
 import CloudVariablesToggler from '../../containers/tw-cloud-toggler.jsx';
 import TWSaveStatus from './tw-save-status.jsx';
 import CollabPresence from './collab-presence.jsx';
+import MessagesButton from '../collab-chat/messages-button.jsx';
 import OutlinePanel from './outline-panel.jsx';
 import HistoryPanel from './history-panel.jsx';
 import TWNews from './tw-news.jsx';
@@ -1050,7 +1051,8 @@ class MenuBar extends React.Component {
                 <div className={styles.accountInfoGroup}>
                     <OutlinePanel />
                     <HistoryPanel />
-                    <CollabPresence />
+                    <MessagesButton sheet={this.props.isPhoneSheet} />
+                    <CollabPresence phoneSheet={this.props.isPhoneSheet} />
                     <TWSaveStatus
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
