@@ -161,13 +161,15 @@ class CollabClient {
             this._backoff = 1000;
             // Persistent device identity: token issued by the server on first
             // join, kept in localStorage — name-only login stays that simple.
-            let token;
+            let token = null;
             try {
-                token = localStorage.getItem('st_token') || undefined;
+                token = localStorage.getItem('st_token');
             } catch (e) {
-                token = undefined;
+                token = null;
             }
-            ws.send(JSON.stringify({type: 'join', room, name, token}));
+            const join = {type: 'join', room, name};
+            if (token) join.token = token;
+            ws.send(JSON.stringify(join));
         };
         ws.onmessage = evt => {
             if (gen !== this._openGen) return;
