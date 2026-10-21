@@ -171,6 +171,11 @@ class Blocks extends React.Component {
         );
         this.workspace = this.ScratchBlocks.inject(this.blocks, workspaceConfig);
         AddonHooks.blocklyWorkspace = this.workspace;
+        if (this.props.flyoutWidth) {
+            const flyout = this.workspace.getFlyout();
+            this.workspace.getToolbox().width -= flyout.DEFAULT_WIDTH - this.props.flyoutWidth;
+            flyout.DEFAULT_WIDTH = this.props.flyoutWidth;
+        }
 
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
@@ -682,6 +687,7 @@ class Blocks extends React.Component {
             customStageSize,
             customProceduresVisible,
             extensionLibraryVisible,
+            flyoutWidth,
             options,
             stageSize,
             vm,
@@ -756,6 +762,7 @@ Blocks.propTypes = {
     }),
     customProceduresVisible: PropTypes.bool,
     extensionLibraryVisible: PropTypes.bool,
+    flyoutWidth: PropTypes.number,
     isRtl: PropTypes.bool,
     isVisible: PropTypes.bool,
     locale: PropTypes.string.isRequired,
