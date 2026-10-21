@@ -47,7 +47,10 @@ class CommandPaletteContainer extends React.Component {
     }
     componentDidUpdate (prevProps) {
         if (this.props.vm !== prevProps.vm) this.fixer = null;
-        if (this.props.open && !prevProps.open) this.collect();
+        if (this.props.open && !prevProps.open) {
+            if (!this.returnFocus) this.returnFocus = document.activeElement;
+            this.collect();
+        }
         if (!this.props.open && prevProps.open) this.forget();
     }
     componentWillUnmount () {
