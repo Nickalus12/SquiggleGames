@@ -496,6 +496,7 @@ class Overlay {
             'position:fixed', `top:${60 + this._topInset()}px`,
             'left:50%', 'transform:translateX(-50%)', 'z-index:99998',
             'display:flex', 'align-items:center', 'gap:9px',
+            'box-sizing:border-box', 'max-width:calc(100vw - 32px)', 'width:max-content',
             'background:#161c36', 'color:#f2f4fb', 'padding:10px 18px', 'border-radius:14px',
             'border:1px solid rgba(255,255,255,.11)',
             'font:600 13.5px ui-rounded,"Segoe UI",Helvetica,Arial,sans-serif',

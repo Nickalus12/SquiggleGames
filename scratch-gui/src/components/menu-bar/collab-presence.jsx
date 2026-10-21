@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import React from 'react';
 import overlay from '../../lib/collab/overlay';
 import client from '../../lib/collab/client';
@@ -59,6 +60,12 @@ const personRow = {
     color: T.ink
 };
 
+const touchBtn = {
+    minHeight: '44px',
+    padding: '10px 16px',
+    fontSize: '15px'
+};
+
 const dot = (color, size) => ({
     display: 'inline-block',
     width: `${size || 10}px`,
@@ -108,6 +115,7 @@ class CollabPresence extends React.Component {
         this.unsubscribe = overlay.subscribe(this.handleChange);
         document.addEventListener('mousedown', this.handleClickOutside);
         this.handleChange();
+        if (this.props.variant === 'pane') client.send({type: 'list-projects'});
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
@@ -130,6 +138,8 @@ class CollabPresence extends React.Component {
     render () {
         const {self, connected, peers, open, copied} = this.state;
         if (!self) return null; // solo mode
+        const pane = this.props.variant === 'pane';
+        const touch = pane ? touchBtn : null;
 
         // The slug is a URL detail — disambiguated with -2 when a name is
         // taken — so it is the wrong thing to show a person.
@@ -201,25 +211,8 @@ class CollabPresence extends React.Component {
             </div>
         );
 
-        const panel = open ? (
-            <div
-                style={{
-                    // fixed — the menu bar clips absolutely-positioned children
-                    position: 'fixed',
-                    top: '52px',
-                    right: '8px',
-                    width: '290px',
-                    background: T.surface,
-                    border: `1px solid ${T.line}`,
-                    borderRadius: '16px',
-                    boxShadow: '0 18px 50px -12px rgba(0, 0, 0, 0.7)',
-                    overflow: 'hidden',
-                    zIndex: 1000,
-                    cursor: 'default',
-                    color: T.ink,
-                    fontFamily: T.font
-                }}
-            >
+        const sections = (open || pane) ? (
+            <React.Fragment>
                 <div style={{padding: '14px 15px 13px', borderBottom: `1px solid ${T.line}`}}>
                     <div style={label}>{'Room'}</div>
                     <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px'}}>
@@ -262,10 +255,11 @@ class CollabPresence extends React.Component {
                             marginTop: '11px',
                             background: copied ? 'rgba(52, 211, 153, 0.16)' : T.accentBg,
                             borderColor: copied ? 'rgba(52, 211, 153, 0.5)' : 'transparent',
-                            color: '#fff'
+                            color: '#fff',
+                            ...touch
                         }}
                     >
-                        {copied ? '✓ Copied — send it to your partner' : 'Copy invite link'}
+                        {copied ? '✓ Copied! Send it to your partner' : 'Copy invite link'}
                     </button>
                 </div>
 
@@ -319,8 +313,8 @@ class CollabPresence extends React.Component {
                             style={{
                                 flex: 1,
                                 minWidth: 0,
-                                padding: '8px 10px',
-                                fontSize: '12.5px',
+                                padding: pane ? '10px 12px' : '8px 10px',
+                                fontSize: pane ? '16px' : '12.5px',
                                 color: T.ink,
                                 background: 'rgba(0, 0, 0, 0.3)',
                                 border: `1.5px solid ${T.line}`,
@@ -338,7 +332,8 @@ class CollabPresence extends React.Component {
                                 ...btn,
                                 flexShrink: 0,
                                 opacity: this.state.saveName.trim() ? 1 : 0.45,
-                                cursor: this.state.saveName.trim() ? 'pointer' : 'default'
+                                cursor: this.state.saveName.trim() ? 'pointer' : 'default',
+                                ...touch
                             }}
                         >
                             {'Save'}
@@ -346,7 +341,7 @@ class CollabPresence extends React.Component {
                     </div>
 
                     {(this.state.projects || []).length ? (
-                        <div style={{maxHeight: '164px', overflowY: 'auto', marginTop: '11px'}}>
+                        <div style={{maxHeight: pane ? 'none' : '164px', overflowY: 'auto', marginTop: '11px'}}>
                             {this.state.projects.map(p => (
                                 <div
                                     key={p.id}
@@ -385,7 +380,8 @@ class CollabPresence extends React.Component {
                                                 'rgba(251, 191, 36, 0.18)' : T.card,
                                             borderColor: this.state.confirmOpenId === p.id ?
                                                 'rgba(251, 191, 36, 0.55)' : T.line,
-                                            color: this.state.confirmOpenId === p.id ? T.warn : T.ink
+                                            color: this.state.confirmOpenId === p.id ? T.warn : T.ink,
+                                            ...touch
                                         }}
                                         title={'Opening replaces what everyone in this room is looking at'}
                                     >
@@ -396,10 +392,51 @@ class CollabPresence extends React.Component {
                         </div>
                     ) : (
                         <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5}}>
-                            {'The room saves itself as you go — this is for keeping a named copy.'}
+                            {'The room saves itself as you go. This is for keeping a named copy.'}
                         </div>
                     )}
                 </div>
+            </React.Fragment>
+        ) : null;
+
+        if (pane) {
+            return (
+                <div
+                    data-collab-room-pane
+                    style={{
+                        background: T.surface,
+                        border: `1px solid ${T.line}`,
+                        borderRadius: '16px',
+                        overflow: 'hidden',
+                        color: T.ink,
+                        fontFamily: T.font
+                    }}
+                >
+                    {sections}
+                </div>
+            );
+        }
+
+        const panel = open ? (
+            <div
+                style={{
+                    // fixed — the menu bar clips absolutely-positioned children
+                    position: 'fixed',
+                    top: '52px',
+                    right: '8px',
+                    width: '290px',
+                    background: T.surface,
+                    border: `1px solid ${T.line}`,
+                    borderRadius: '16px',
+                    boxShadow: '0 18px 50px -12px rgba(0, 0, 0, 0.7)',
+                    overflow: 'hidden',
+                    zIndex: 1000,
+                    cursor: 'default',
+                    color: T.ink,
+                    fontFamily: T.font
+                }}
+            >
+                {sections}
             </div>
         ) : null;
 
@@ -415,5 +452,9 @@ class CollabPresence extends React.Component {
         );
     }
 }
+
+CollabPresence.propTypes = {
+    variant: PropTypes.oneOf(['menu', 'pane'])
+};
 
 export default CollabPresence;
