@@ -105,7 +105,7 @@ try {
     ok('a guest locks chat for everyone', la.mode === 'quick');
     g.ws.close();
     const left = await a.next('peer-left');
-    ok('leaving tells the room', left.id === wg.id);
+    ok('leaving tells the room with the name', left.id === wg.id && left.name === 'Guest Cy');
     const ua = await a.next('room-chat-config', m => m.locked === false);
     ok('the lock lifts when the guest goes', ua.mode === 'free');
 
@@ -115,6 +115,10 @@ try {
     ok('a phrase reaches the room by id', line.phrase === 'hi' && line.text === '' && line.mine === false);
     const own = await b.next('room-chat');
     ok('the sender sees its own line as mine', own.mine === true);
+    a.send({type: 'save-project', name: 'Copy one'});
+    const saved = await a.next('project-saved');
+    ok('a save answers with the owner and a project list',
+        saved.name === 'Copy one' && saved.owner === 'Ada Test' && Array.isArray(saved.projects));
     a.send({type: 'ping', t: 5});
     const pong = await a.next('pong');
     ok('ping answers pong', pong.t === 5);
