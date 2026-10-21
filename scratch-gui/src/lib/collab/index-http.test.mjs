@@ -128,7 +128,12 @@ const gets = () => calls.filter(c => c.method === 'GET');
 const vm = new VM();
 const webStores = [];
 vm.runtime.storage = {
-    AssetType: {ImageVector: 'svg-type', ImageBitmap: 'png-type', Sound: 'sound-type'},
+    AssetType: {ImageVector: 'svg-type', ImageBitmap: 'png-type', Sound: 'sound-type', SoundWav: 'wav-type'},
+    loads: [],
+    load: (type, id, fmt) => {
+        vm.runtime.storage.loads.push(`${id}.${fmt}`);
+        return Promise.resolve({assetId: id, dataFormat: fmt, data: new Uint8Array([1, 2, 3])});
+    },
     addWebStore: (types, getUrl) => webStores.push({types, getUrl}),
     scratchFetch: {setMetadata: noop, RequestMetadata: {}}
 };
@@ -263,6 +268,33 @@ section('a builtin extension travels as a vm-action');
         name: 'Ant', from: 'pal', fromName: 'Pal'});
     ok('a json sprite from a peer installs',
         await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Ant')));
+
+    const bee = vm.runtime.targets.find(t => t.getName && t.getName() === 'Bee');
+    const soundId = 'b'.repeat(32);
+    const before3 = sent.length;
+    await vm.addSound({
+        name: 'buzz', dataFormat: 'wav', assetId: soundId, md5: `${soundId}.wav`,
+        asset: {assetId: soundId, dataFormat: 'wav', data: new Uint8Array([9, 9])}
+    }, bee.id);
+    const soundAdd = await waitFor(() => sent.slice(before3).some(m => m && m.action === 'soundAdd')) &&
+        sent.slice(before3).find(m => m && m.action === 'soundAdd');
+    ok('a new sound travels by md5ext', soundAdd && soundAdd.md5ext === `${soundId}.wav` && !('data' in soundAdd), soundAdd);
+    ok('its bytes went up first', calls.some(c => c.method === 'PUT' && c.url.endsWith(`/api/assets/${soundId}.wav`)));
+
+    const ant = vm.runtime.targets.find(t => t.getName && t.getName() === 'Ant');
+    const peerId = 'c'.repeat(32);
+    emit('vm-action', {type: 'vm-action', action: 'soundAdd', target: 'Ant', sound: {name: 'chirp', dataFormat: 'wav'},
+        md5ext: `${peerId}.wav`, from: 'pal'});
+    ok('a peer sound loads from the asset store',
+        await waitFor(() => ant.getSounds().some(snd => snd.name === 'chirp')), ant.getSounds().map(snd => snd.name));
+    ok('by its md5ext', vm.runtime.storage.loads.includes(`${peerId}.wav`), vm.runtime.storage.loads);
+    const quietError = console.error;
+    console.error = noop;
+    emit('vm-action', {type: 'vm-action', action: 'soundAdd', target: 'Ant', sound: {name: 'bad', dataFormat: 'wav'},
+        md5ext: '../../x.wav', from: 'pal'});
+    await tick();
+    console.error = quietError;
+    ok('a malformed md5ext is never loaded', !vm.runtime.storage.loads.some(id => id.includes('..')));
     overlay.peers.clear();
 }
 

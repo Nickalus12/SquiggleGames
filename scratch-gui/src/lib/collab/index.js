@@ -227,6 +227,38 @@ const exportAddedSprite = target => {
         .then(() => ({sprite: state.vm.toJSON(target.id), format: 'json'}));
 };
 
+const MD5EXT = /^([0-9a-f]{32})\.([a-z0-9]{2,5})$/;
+
+const md5extOf = (asset, dataFormat) => `${asset.assetId}.${dataFormat}`.toLowerCase();
+
+const sendAssetAction = (msg, asset, dataFormat) => {
+    if (!state.httpSnapshots || !state.snapshotHttp) {
+        client.send(Object.assign(msg, {data: b64FromBuffer(asset.data)}));
+        return;
+    }
+    const md5ext = md5extOf(asset, dataFormat);
+    state.snapshotHttp.uploadAssets([{md5ext, dataFormat, data: asset.data}])
+        .then(() => client.send(Object.assign(msg, {md5ext})), e => {
+            // eslint-disable-next-line no-console
+            console.error('[collab] asset upload failed', e && e.code, e && e.status);
+            scheduleSnapshot(false);
+        });
+};
+
+const remoteAsset = (msg, assetType, fmt) => {
+    const storage = state.vm.runtime.storage;
+    if (typeof msg.data === 'string') {
+        const bytes = new Uint8Array(bufferFromB64(msg.data));
+        return Promise.resolve(storage.createAsset(assetType, fmt, bytes, null, true));
+    }
+    const match = typeof msg.md5ext === 'string' && msg.md5ext.match(MD5EXT);
+    if (!match) return Promise.reject(new Error('asset action without data or md5ext'));
+    return Promise.resolve(storage.load(assetType, match[1], match[2])).then(asset => {
+        if (!asset) throw new Error(`asset ${msg.md5ext} not found`);
+        return asset;
+    });
+};
+
 const sendBlockEvent = msg => {
     if (state.exportingSprites.has(msg.target)) {
         if (state.heldSpriteEvents.length < 500) state.heldSpriteEvents.push(msg);
@@ -1233,20 +1265,20 @@ const wrapVm = vm => {
                         (optTargetId ? targetNameById(optTargetId) : editingTargetName());
                     const asset = costumeObject && costumeObject.asset;
                     if (targetName && asset && asset.data && hasPeers()) {
-                        client.send({
+                        const dataFormat = costumeObject.dataFormat || asset.dataFormat;
+                        sendAssetAction({
                             type: 'vm-action',
                             action: 'costumeAdd',
                             target: targetName,
                             version: typeof fixedVersion === 'number' ? fixedVersion : optVersion,
                             costume: {
                                 name: costumeObject.name,
-                                dataFormat: costumeObject.dataFormat || asset.dataFormat,
+                                dataFormat,
                                 bitmapResolution: costumeObject.bitmapResolution,
                                 rotationCenterX: costumeObject.rotationCenterX,
                                 rotationCenterY: costumeObject.rotationCenterY
-                            },
-                            data: b64FromBuffer(asset.data)
-                        });
+                            }
+                        }, asset, dataFormat);
                     }
                     scheduleSnapshot(true);
                 }, () => {});
@@ -1268,16 +1300,13 @@ const wrapVm = vm => {
                 const targetName = optTargetId ? targetNameById(optTargetId) : editingTargetName();
                 const asset = soundObject && soundObject.asset;
                 if (targetName && asset && asset.data && hasPeers()) {
-                    client.send({
+                    const dataFormat = soundObject.dataFormat || asset.dataFormat;
+                    sendAssetAction({
                         type: 'vm-action',
                         action: 'soundAdd',
                         target: targetName,
-                        sound: {
-                            name: soundObject.name,
-                            dataFormat: soundObject.dataFormat || asset.dataFormat
-                        },
-                        data: b64FromBuffer(asset.data)
-                    });
+                        sound: {name: soundObject.name, dataFormat}
+                    }, asset, dataFormat);
                 }
                 scheduleSnapshot(true);
             }, () => {});
@@ -1996,16 +2025,18 @@ const applyCostumeAdd = msg => {
     const storage = state.vm.runtime.storage;
     const fmt = (msg.costume && msg.costume.dataFormat) || 'png';
     const assetType = fmt === 'svg' ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
-    const asset = storage.createAsset(assetType, fmt, new Uint8Array(bufferFromB64(msg.data)), null, true);
-    const costumeObj = Object.assign({}, msg.costume, {
-        asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
-    });
     // addCostume selects the new costume on the target's OWNER — only relevant
     // if this user is editing the same sprite, which matches solo behavior.
-    state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version).catch(e => {
-        // eslint-disable-next-line no-console
-        console.error('[collab] costume install failed', e);
-    });
+    remoteAsset(msg, assetType, fmt).then(asset => {
+        const costumeObj = Object.assign({}, msg.costume, {
+            asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
+        });
+        return state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version);
+    })
+        .catch(e => {
+            // eslint-disable-next-line no-console
+            console.error('[collab] costume install failed', e);
+        });
 };
 
 const applySoundAdd = msg => {
@@ -2014,14 +2045,16 @@ const applySoundAdd = msg => {
     const storage = state.vm.runtime.storage;
     const fmt = (msg.sound && msg.sound.dataFormat) || 'wav';
     const assetType = fmt === 'mp3' ? storage.AssetType.SoundMP3 : storage.AssetType.SoundWav;
-    const asset = storage.createAsset(assetType, fmt, new Uint8Array(bufferFromB64(msg.data)), null, true);
-    const soundObj = Object.assign({}, msg.sound, {
-        asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
-    });
-    Promise.resolve(state.vm.addSound(soundObj, target.id)).catch(e => {
-        // eslint-disable-next-line no-console
-        console.error('[collab] sound install failed', e);
-    });
+    remoteAsset(msg, assetType, fmt).then(asset => {
+        const soundObj = Object.assign({}, msg.sound, {
+            asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
+        });
+        return state.vm.addSound(soundObj, target.id);
+    })
+        .catch(e => {
+            // eslint-disable-next-line no-console
+            console.error('[collab] sound install failed', e);
+        });
 };
 
 const applyRemoteDuplicate = (target, index, isSound) => {
@@ -2422,14 +2455,18 @@ const onSnapshotRefused = msg => {
 
 const renameMaskedAsset = (m, list, rename) => {
     const asset = m.action === 'costumeAdd' ? m.costume : m.sound;
-    if (!asset || typeof asset.name !== 'string' || typeof m.data !== 'string') return;
+    const hasRef = typeof m.data === 'string' || typeof m.md5ext === 'string';
+    if (!asset || typeof asset.name !== 'string' || !hasRef) return;
     const target = findTargetByName(m.target);
     if (!target) return;
     const items = list(target);
     for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i];
         if (item.name === asset.name || !item.asset || !item.asset.data) continue;
-        if (b64FromBuffer(item.asset.data) !== m.data) continue;
+        const same = typeof m.md5ext === 'string' ?
+            md5extOf(item.asset, item.asset.dataFormat) === m.md5ext :
+            b64FromBuffer(item.asset.data) === m.data;
+        if (!same) continue;
         state.applyingRemote++;
         try {
             rename(target, i, asset.name);
