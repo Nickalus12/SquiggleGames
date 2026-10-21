@@ -119,6 +119,15 @@ try {
     const pong = await a.next('pong');
     ok('ping answers pong', pong.t === 5);
 
+    console.log('inject');
+    ok('peers lists the room', server.peers('stub-room').map(p => p.id)
+        .join() === [wa.id, wb.id].join());
+    ok('peers of an unknown room is empty', server.peers('nope').length === 0);
+    const sent = server.inject('stub-room', {type: 'drag', from: wb.id, blockId: 'x', phase: 'move'}, wb.id);
+    const injected = await a.next('drag', m => m.blockId === 'x');
+    ok('inject reaches everyone but the excepted peer', sent === 1 && injected.from === wb.id);
+    ok('inject into an unknown room sends nothing', server.inject('nope', {type: 'drag'}) === 0);
+
     a.ws.close();
     b.ws.close();
     await new Promise(r => setTimeout(r, 50));

@@ -152,6 +152,18 @@ const createTestServer = ({port = 0, host = '127.0.0.1', log = () => {}} = {}) =
         wss.on('listening', () => resolve({
             port: wss.address().port,
             rooms,
+            peers: slug => (rooms.has(slug) ? [...rooms.get(slug).peers.values()].map(peerCard) : []),
+            inject: (slug, msg, exceptId) => {
+                const room = rooms.get(slug);
+                if (!room) return 0;
+                let sent = 0;
+                room.peers.forEach((peer, ws) => {
+                    if (peer.id === exceptId) return;
+                    send(ws, msg);
+                    sent++;
+                });
+                return sent;
+            },
             close: () => new Promise(done => {
                 wss.clients.forEach(c => c.terminate());
                 wss.close(() => done());
