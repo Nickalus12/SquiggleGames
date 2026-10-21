@@ -1,14 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import {IntlProvider} from 'react-intl';
+import {FormattedMessage, IntlProvider} from 'react-intl';
 
 import extensionLibraryContent from '../../lib/libraries/extensions/index.jsx';
 import {isSquiggleItem} from '../../lib/libraries/tw-extension-tags';
 import {listKits, TOGETHER_ID} from '../../lib/kits/registry.js';
-import SquiggleOnlyNotice from './squiggle-only-notice.jsx';
+import {closeSheet, getState, isSheetHostMounted, openSheet} from '../phone-shell/phone-slots';
+import SquiggleOnlyNotice, {messages, TogetherSheetBody} from './squiggle-only-notice.jsx';
 
 const TOGETHER_SEEN_KEY = 'sq:notice:together-seen';
 const PORTABILITY_SEEN_KEY = 'sq:notice:portability-seen';
+const TOGETHER_SHEET_ID = 'sq-together';
 
 const defaultStartRoom = () => {
     window.location.assign('/');
@@ -43,7 +45,12 @@ const close = () => {
     showing = null;
 };
 
-const mount = (kind, onStartRoom) => {
+const intlConfig = intl => ({
+    locale: (intl && intl.locale) || 'en',
+    messages: (intl && intl.messages) || {}
+});
+
+const mount = (kind, {intl, onStartRoom} = {}) => {
     close();
     host = document.createElement('div');
     host.setAttribute('data-sq-notice', kind);
@@ -51,7 +58,7 @@ const mount = (kind, onStartRoom) => {
     showing = kind;
     ReactDOM.render(React.createElement(
         IntlProvider,
-        {locale: 'en', messages: {}},
+        intlConfig(intl),
         React.createElement(SquiggleOnlyNotice, {kind, onClose: close, onStartRoom})
     ), host);
 };
@@ -60,12 +67,35 @@ const setStartRoomHandler = handler => {
     startRoomHandler = typeof handler === 'function' ? handler : defaultStartRoom;
 };
 
-const showTogetherSheet = ({force} = {}) => {
+const openPhoneTogetherSheet = () => {
+    const closeTogether = () => closeSheet(TOGETHER_SHEET_ID);
+    openSheet({
+        id: TOGETHER_SHEET_ID,
+        title: React.createElement(FormattedMessage, messages.togetherTitle),
+        render: () => React.createElement(TogetherSheetBody, {
+            onClose: closeTogether,
+            onStartRoom: () => {
+                closeTogether();
+                startRoomHandler();
+            }
+        })
+    });
+};
+
+const showTogetherSheet = ({force, intl} = {}) => {
     if (!force && storageGet('localStorage', TOGETHER_SEEN_KEY)) return false;
     storageSet('localStorage', TOGETHER_SEEN_KEY);
-    mount('together', () => {
+    if (isSheetHostMounted()) {
         close();
-        startRoomHandler();
+        openPhoneTogetherSheet();
+        return true;
+    }
+    mount('together', {
+        intl,
+        onStartRoom: () => {
+            close();
+            startRoomHandler();
+        }
     });
     return true;
 };
@@ -81,27 +111,39 @@ const squiggleExtensionIds = () => {
 
 const usesSquiggleBlocks = vm => {
     const manager = vm && vm.extensionManager;
-    if (!manager || !manager._loadedExtensions) return false;
-    const ids = squiggleExtensionIds();
-    return Array.from(manager._loadedExtensions.keys()).some(id => ids.has(id));
+    if (!manager || typeof manager.isExtensionLoaded !== 'function') return false;
+    return Array.from(squiggleExtensionIds()).some(id => manager.isExtensionLoaded(id));
 };
 
-const showPortabilityNote = (vm, {force} = {}) => {
+const showPortabilityNote = (vm, {force, intl} = {}) => {
     if (!force && storageGet('sessionStorage', PORTABILITY_SEEN_KEY)) return false;
     if (!force && !usesSquiggleBlocks(vm)) return false;
     storageSet('sessionStorage', PORTABILITY_SEEN_KEY);
-    mount('portability');
+    mount('portability', {intl});
     return true;
 };
 
-const closeNotice = close;
+const showLoadError = ({intl} = {}) => {
+    mount('loadError', {intl});
+    return true;
+};
 
-const currentNotice = () => showing;
+const closeNotice = () => {
+    close();
+    closeSheet(TOGETHER_SHEET_ID);
+};
+
+const currentNotice = () => {
+    if (showing) return showing;
+    const sheet = getState().sheet;
+    return sheet && sheet.id === TOGETHER_SHEET_ID ? 'together' : null;
+};
 
 export {
     closeNotice,
     currentNotice,
     setStartRoomHandler,
+    showLoadError,
     showPortabilityNote,
     showTogetherSheet,
     usesSquiggleBlocks

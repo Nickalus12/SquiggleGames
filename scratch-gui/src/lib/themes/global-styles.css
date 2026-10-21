@@ -15,6 +15,16 @@ body {
     font-family: var(--sq-font);
 }
 
+*:focus-visible {
+    outline: 2px solid var(--sq-focus-ring, var(--sq-focus));
+    outline-offset: 2px;
+}
+
+::placeholder {
+    color: var(--sq-text-muted);
+    opacity: 1;
+}
+
 /* This is for overriding some styles that don't really "belong" to any existing stylesheets */
 /* Try to use this sparingly, otherwise this will become unmaintainable again... */
 

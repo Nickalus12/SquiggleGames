@@ -19,6 +19,7 @@
     */
     box-sizing: border-box;
     height: $menu-bar-height;
+    padding: 0 0.5rem;
 
     /*
         @todo: This adds ~20px in Chrome, when scrolling to the right,
@@ -101,14 +102,33 @@
 }
 
 .feedback-link {
-    color: $menu-bar-background;
+    color: var(--sq-menu-bar-text, #ffffff);
     text-decoration: none;
 }
 
-.feedback-button {
-    background-color: white;
-    color: inherit;
+.menu-bar .feedback-button,
+.menu-bar .menu-bar-button {
     height: 34px;
+    border-radius: var(--sq-radius-panel, 10px);
+    background-color: var(--sq-menu-bar-control);
+    box-shadow: none;
+    color: var(--sq-menu-bar-text, #ffffff);
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.menu-bar .feedback-button:hover,
+.menu-bar .menu-bar-button:hover {
+    background-color: var(--sq-menu-bar-control-active);
+}
+
+.menu-bar {
+    --sq-focus-ring: var(--sq-menu-bar-focus, #ffffff);
+}
+
+.menu-bar .menu-bar-menu {
+    --sq-focus-ring: var(--sq-focus);
 }
 
 .divider {
@@ -210,7 +230,7 @@
 }
 
 .about-icon {
-    height: 1.25rem;
+    height: 1.5rem;
     margin: 0.5rem;
     vertical-align: middle;
 }
@@ -239,6 +259,24 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
+    }
+
+    .menu-bar:not(.phone-sheet) .menu-bar-item.growable {
+        min-width: 7.5rem;
+    }
+
+    .menu-bar:not(.phone-sheet) .community-button-wrapper .menu-bar-button {
+        padding: 0 0.5rem;
+    }
+
+    .menu-bar:not(.phone-sheet) .community-button-wrapper [class*="button_content_"] {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
     }
 }
 

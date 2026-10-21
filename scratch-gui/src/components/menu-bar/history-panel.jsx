@@ -178,14 +178,16 @@ class HistoryPanel extends React.Component {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        padding: '5px 11px',
-                        borderRadius: '9px',
+                        height: '34px',
+                        boxSizing: 'border-box',
+                        padding: '0 12px',
+                        borderRadius: 'var(--sq-radius-panel, 10px)',
                         cursor: 'pointer',
-                        background: open ? 'rgba(124,92,255,.22)' : T.card,
-                        border: `1px solid ${open ? T.accent : T.line}`,
-                        color: T.ink,
+                        background: open ? 'var(--sq-menu-bar-control-active)' : 'var(--sq-menu-bar-control)',
+                        border: '1px solid transparent',
+                        color: 'var(--sq-menu-bar-text, #ffffff)',
                         font: 'inherit',
-                        fontSize: '13px',
+                        fontSize: 'var(--sq-text-sm, 14px)',
                         fontWeight: 700
                     }}
                 >

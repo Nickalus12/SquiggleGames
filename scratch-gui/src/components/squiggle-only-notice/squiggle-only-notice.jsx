@@ -32,10 +32,58 @@ const messages = defineMessages({
         defaultMessage: 'This file opens in Squiggle. Scratch and TurboWarp cannot run Squiggle blocks.',
         description: 'Note shown once per session when a project with Squiggle blocks is saved to the computer',
         id: 'sq.notice.portability'
+    },
+    loadError: {
+        defaultMessage: 'Those blocks did not load. Check your internet and try again.',
+        description: 'Note shown when an extension fails to load from the extension library',
+        id: 'sq.notice.loadError'
     }
 });
 
+const NOTE_MESSAGES = {
+    loadError: messages.loadError,
+    portability: messages.portability
+};
+
 const FOCUSABLE = 'button:not([disabled])';
+
+const TogetherSheetBodyComponent = ({bodyId, initialFocusRef, intl, onClose, onStartRoom}) => (
+    <React.Fragment>
+        <p
+            className={styles.body}
+            id={bodyId}
+        >
+            {intl.formatMessage(messages.togetherBody)}
+        </p>
+        <div className={styles.actions}>
+            <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={onStartRoom}
+            >
+                {intl.formatMessage(messages.startRoom)}
+            </button>
+            <button
+                type="button"
+                className={styles.secondaryButton}
+                ref={initialFocusRef}
+                onClick={onClose}
+            >
+                {intl.formatMessage(messages.gotIt)}
+            </button>
+        </div>
+    </React.Fragment>
+);
+
+TogetherSheetBodyComponent.propTypes = {
+    bodyId: PropTypes.string,
+    initialFocusRef: PropTypes.func,
+    intl: intlShape.isRequired,
+    onClose: PropTypes.func.isRequired,
+    onStartRoom: PropTypes.func
+};
+
+const TogetherSheetBody = injectIntl(TogetherSheetBodyComponent);
 
 class SquiggleOnlyNotice extends React.Component {
     constructor (props) {
@@ -88,14 +136,14 @@ class SquiggleOnlyNotice extends React.Component {
     }
     render () {
         const {intl, kind, onClose, onStartRoom} = this.props;
-        if (kind === 'portability') {
+        if (NOTE_MESSAGES[kind]) {
             return (
                 <div
                     className={styles.note}
                     role="status"
                     aria-live="polite"
                 >
-                    <p className={styles.noteText}>{intl.formatMessage(messages.portability)}</p>
+                    <p className={styles.noteText}>{intl.formatMessage(NOTE_MESSAGES[kind])}</p>
                     <button
                         type="button"
                         className={styles.secondaryButton}
@@ -126,29 +174,12 @@ class SquiggleOnlyNotice extends React.Component {
                     >
                         {intl.formatMessage(messages.togetherTitle)}
                     </h2>
-                    <p
-                        className={styles.body}
-                        id="sq-notice-together-body"
-                    >
-                        {intl.formatMessage(messages.togetherBody)}
-                    </p>
-                    <div className={styles.actions}>
-                        <button
-                            type="button"
-                            className={styles.primaryButton}
-                            onClick={onStartRoom}
-                        >
-                            {intl.formatMessage(messages.startRoom)}
-                        </button>
-                        <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            ref={this.setInitialFocusRef}
-                            onClick={onClose}
-                        >
-                            {intl.formatMessage(messages.gotIt)}
-                        </button>
-                    </div>
+                    <TogetherSheetBody
+                        bodyId="sq-notice-together-body"
+                        initialFocusRef={this.setInitialFocusRef}
+                        onClose={onClose}
+                        onStartRoom={onStartRoom}
+                    />
                 </div>
             </div>
         );
@@ -157,11 +188,11 @@ class SquiggleOnlyNotice extends React.Component {
 
 SquiggleOnlyNotice.propTypes = {
     intl: intlShape.isRequired,
-    kind: PropTypes.oneOf(['together', 'portability']).isRequired,
+    kind: PropTypes.oneOf(['together', 'portability', 'loadError']).isRequired,
     onClose: PropTypes.func.isRequired,
     onStartRoom: PropTypes.func
 };
 
-export {messages};
+export {messages, TogetherSheetBody};
 
 export default injectIntl(SquiggleOnlyNotice);

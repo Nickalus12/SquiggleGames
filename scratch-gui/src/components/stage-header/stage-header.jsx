@@ -23,6 +23,8 @@ import styles from './stage-header.css';
 
 import FullscreenAPI from '../../lib/tw-fullscreen-api';
 
+const SLOT_INLINE_MIN_STAGE_WIDTH = 320;
+
 const messages = defineMessages({
     largeStageSizeMessage: {
         defaultMessage: 'Switch to large stage',
@@ -195,6 +197,7 @@ const StageHeaderComponent = function (props) {
                     />
                 </div>
             );
+        const slotStacked = stageDimensions.width < SLOT_INLINE_MIN_STAGE_WIDTH;
         header = (
             <Box
                 className={styles.stageHeaderWrapper}
@@ -206,6 +209,13 @@ const StageHeaderComponent = function (props) {
                         hideFramerateIndicator={hideFramerateIndicator}
                         vm={vm}
                         isSmall={stageSizeMode === STAGE_SIZE_MODES.small}
+                    />
+                    <div
+                        className={classNames(styles.stageHeaderSlot, {
+                            [styles.stageHeaderSlotStacked]: slotStacked
+                        })}
+                        data-stacked={slotStacked ? 'true' : null}
+                        id="sq-stage-header-slot"
                     />
                     <div
                         className={styles.stageSizeRow}
