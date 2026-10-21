@@ -1,5 +1,6 @@
 import LazyScratchBlocks from './tw-lazy-scratch-blocks';
 import {defaultBlockColors} from './themes';
+import {MODE_DEVICE, MODE_RULES, filterCategories} from './rules/toolbox-mode.js';
 
 const categorySeparator = '<sep gap="36"/>';
 
@@ -447,6 +448,34 @@ const control = function (isInitialSetup, isStage, targetId, colors) {
     `;
 };
 
+const rulesControl = function (colors) {
+    return `
+    <category
+        name="%{BKY_CATEGORY_CONTROL}"
+        id="control"
+        colour="${colors.primary}"
+        secondaryColour="${colors.tertiary}">
+        <block type="control_repeat">
+            <value name="TIMES">
+                <shadow type="math_whole_number">
+                    <field name="NUM">10</field>
+                </shadow>
+            </value>
+        </block>
+        <block type="control_repeat_until"/>
+        ${blockSeparator}
+        <block type="control_if"/>
+        <block type="control_if_else"/>
+        ${blockSeparator}
+        <block type="control_stop">
+            <field name="STOP_OPTION">this script</field>
+            <mutation hasnext="false"/>
+        </block>
+        ${categorySeparator}
+    </category>
+    `;
+};
+
 const sensing = function (isInitialSetup, isStage, targetId, colors) {
     const name = translate('SENSING_ASK_TEXT', 'What\'s your name?');
     // Note: the category's secondaryColour matches up with the blocks' tertiary color, both used for border color.
@@ -770,18 +799,20 @@ const xmlClose = '</xml>';
  * @param {?string} backdropName - The name of the default selected backdrop dropdown.
  * @param {?string} soundName -  The name of the default selected sound dropdown.
  * @param {?object} colors - The colors for the theme.
+ * @param {?string} mode - 'rules' for the Game Rules sprite, 'device' for everything else.
  * @returns {string} - a ScratchBlocks-style XML document for the contents of the toolbox.
  */
 const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categoriesXML = [],
-    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors) {
+    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors, mode = MODE_DEVICE) {
     isStage = isInitialSetup || isStage;
     const gap = [categorySeparator];
+    const rulesMode = mode === MODE_RULES && !isStage;
 
     costumeName = xmlEscape(costumeName);
     backdropName = xmlEscape(backdropName);
     soundName = xmlEscape(soundName);
 
-    categoriesXML = categoriesXML.slice();
+    categoriesXML = filterCategories(categoriesXML, rulesMode ? MODE_RULES : mode);
     const moveCategory = categoryId => {
         const index = categoriesXML.findIndex(categoryInfo => categoryInfo.id === categoryId);
         if (index >= 0) {
@@ -807,6 +838,22 @@ const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categ
     let turbowarpXML = moveCategory('tw');
     if (turbowarpXML && !turbowarpXML.includes(extraTurboWarpBlocks)) {
         turbowarpXML = turbowarpXML.replace('<block', `${extraTurboWarpBlocks}<block`);
+    }
+
+    if (rulesMode) {
+        const rulesEverything = [
+            xmlOpen,
+            rulesControl(colors.control), gap,
+            operatorsXML, gap,
+            variablesXML, gap,
+            myBlocksXML
+        ];
+        for (const extensionCategory of categoriesXML) {
+            if (extensionCategory.id === 'tw') continue;
+            rulesEverything.push(gap, extensionCategory.xml);
+        }
+        rulesEverything.push(xmlClose);
+        return rulesEverything.join('\n');
     }
 
     const everything = [

@@ -1,0 +1,83 @@
+{
+    "sprite": {
+        "isStage": false,
+        "name": "Game Rules",
+        "variables": {
+            "v1": [
+                "coins left",
+                12.5
+            ],
+            "v2": [
+                "pièce",
+                0
+            ]
+        },
+        "lists": {
+            "l1": [
+                "winners",
+                []
+            ]
+        },
+        "broadcasts": {},
+        "blocks": {
+            "a": {
+                "opcode": "together_ruleWhenGameStarts",
+                "next": "b",
+                "parent": null,
+                "inputs": {},
+                "fields": {},
+                "shadow": false,
+                "topLevel": true,
+                "x": 40,
+                "y": -12
+            },
+            "b": {
+                "opcode": "data_setvariableto",
+                "next": null,
+                "parent": "a",
+                "inputs": {
+                    "VALUE": [
+                        1,
+                        [
+                            10,
+                            "100"
+                        ]
+                    ]
+                },
+                "fields": {
+                    "VARIABLE": [
+                        "coins left",
+                        "v1"
+                    ]
+                },
+                "shadow": false,
+                "topLevel": false
+            }
+        },
+        "extensionStorage": {
+            "together": {
+                "role": "rules",
+                "v": 1,
+                "players": [
+                    {
+                        "name": "score",
+                        "default": 0,
+                        "see": "all",
+                        "save": true
+                    }
+                ],
+                "teams": [
+                    "Red",
+                    "Blue"
+                ],
+                "opcodeSet": 1
+            }
+        },
+        "costumes": [],
+        "sounds": [],
+        "x": 0,
+        "y": 0
+    },
+    "canonical": "{\"blocks\":{\"a\":{\"fields\":{},\"inputs\":{},\"next\":\"b\",\"opcode\":\"together_ruleWhenGameStarts\",\"parent\":null,\"shadow\":false,\"topLevel\":true,\"x\":40,\"y\":-12},\"b\":{\"fields\":{\"VARIABLE\":[\"coins left\",\"v1\"]},\"inputs\":{\"VALUE\":[1,[10,\"100\"]]},\"next\":null,\"opcode\":\"data_setvariableto\",\"parent\":\"a\",\"shadow\":false,\"topLevel\":false}},\"levels\":[],\"lists\":{\"l1\":[\"winners\",[]]},\"opcodeSet\":1,\"together\":{\"opcodeSet\":1,\"players\":[{\"default\":0,\"name\":\"score\",\"save\":true,\"see\":\"all\"}],\"role\":\"rules\",\"teams\":[\"Red\",\"Blue\"],\"v\":1},\"variables\":{\"v1\":[\"coins left\",12.5],\"v2\":[\"pièce\",0]}}",
+    "sha256": "7cb740b3756b324425804e8189147732efb049e53cb7e2380643db12fe8d7f9b"
+}
