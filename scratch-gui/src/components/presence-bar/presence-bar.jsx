@@ -6,6 +6,7 @@ import {connect} from 'react-redux';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import chatRoom from '../../lib/collab/chat-room';
+import syncRoom from '../../lib/collab/sync-room.js';
 import {PHRASES} from '../../lib/collab/quick-phrases.js';
 import {openRoomPanel} from '../../reducers/room-panel';
 import {PeerMark} from '../room-panel/room-panel.jsx';
@@ -35,22 +36,25 @@ class PresenceBar extends React.Component {
         super(props);
         bindAll(this, [
             'handleChange', 'handleChat', 'handleFollow', 'handlePhrasesToggle', 'handlePhrase',
-            'handleKeyDown', 'handleDocumentDown', 'setRoot', 'setToggle'
+            'handleKeyDown', 'handleDocumentDown', 'handleSync', 'setRoot', 'setToggle'
         ]);
         this.state = Object.assign({}, props.overlay.getState(), {
             locked: this.isLocked(),
             picking: false,
+            sync: syncRoom.getState(),
             waiting: false
         });
     }
     componentDidMount () {
         this.unsubscribe = this.props.overlay.subscribe(this.handleChange);
         this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
+        this.unsubscribeSync = syncRoom.subscribe(this.handleSync);
         document.addEventListener('mousedown', this.handleDocumentDown, true);
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
         if (this.unsubscribeChat) this.unsubscribeChat();
+        if (this.unsubscribeSync) this.unsubscribeSync();
         document.removeEventListener('mousedown', this.handleDocumentDown, true);
         clearTimeout(this.waitTimer);
     }
@@ -67,6 +71,9 @@ class PresenceBar extends React.Component {
             this.props.overlay.toast(this.props.intl.formatMessage(roomMessages.lockHelp), 'var(--sq-info, #0a7089)');
         }
         if (locked !== this.state.locked) this.setState({locked});
+    }
+    handleSync (sync) {
+        this.setState({sync});
     }
     handleFollow (e) {
         const id = e.currentTarget.getAttribute('data-peer-id');
@@ -105,6 +112,22 @@ class PresenceBar extends React.Component {
     }
     setToggle (el) {
         this.toggle = el;
+    }
+    renderSync () {
+        const {intl} = this.props;
+        const {kind, pending} = this.state.sync;
+        const label = kind === 'synced' ? roomMessages.synced : roomMessages[kind];
+        return (
+            <span
+                className={classNames(styles.sync, styles[kind])}
+                data-sync-chip={kind}
+                role="status"
+                title={kind === 'synced' ? null : intl.formatMessage(roomMessages.syncHelp)}
+            >
+                <span className={styles.syncDot} />
+                {intl.formatMessage(label || roomMessages.reconnecting, {count: pending})}
+            </span>
+        );
     }
     renderPicker () {
         const {intl} = this.props;
@@ -194,6 +217,7 @@ class PresenceBar extends React.Component {
                         {extra > 0 ? intl.formatMessage(messages.more, {count: extra}) : 1 + peers.length}
                     </span>
                 </button>
+                {this.renderSync()}
                 {this.state.locked ? (
                     <span
                         className={styles.lock}

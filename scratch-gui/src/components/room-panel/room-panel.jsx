@@ -7,6 +7,7 @@ import {injectIntl, intlShape} from 'react-intl';
 import overlay from '../../lib/collab/overlay';
 import client from '../../lib/collab/client';
 import chatRoom from '../../lib/collab/chat-room';
+import syncRoom from '../../lib/collab/sync-room.js';
 import {createInvite, listProjects} from '../../lib/collab/room-api.js';
 import ChatPanel from '../collab-chat/chat-panel.jsx';
 import messages, {colorMessages, shapeMessages} from './room-panel-messages.js';
@@ -44,25 +45,19 @@ PeerMark.propTypes = {
 
 PeerMark.defaultProps = {size: 18};
 
-const onlineNow = () => {
-    try {
-        return navigator.onLine !== false;
-    } catch (e) {
-        return true;
-    }
-};
+const STATUS_KEYS = {synced: 'live', syncing: 'syncing', reconnecting: 'reconnecting', offline: 'offline'};
 
 class RoomPanel extends React.Component {
     constructor (props) {
         super(props);
         bindAll(this, [
             'handleChange', 'handleChat', 'handleCopy', 'handleInvite', 'handleFollow', 'handleMute',
-            'handleHide', 'handleSave', 'handleSaveName', 'handleSaveKey', 'handleOpenProject', 'handleOnline',
+            'handleHide', 'handleSave', 'handleSaveName', 'handleSaveKey', 'handleOpenProject', 'handleSync',
             'handleFallbackFocus'
         ]);
         this.state = Object.assign({}, overlay.getState(), {
             chat: chatRoom.getState(),
-            online: onlineNow(),
+            sync: syncRoom.getState(),
             copied: null,
             fallback: null,
             inviteError: false,
@@ -73,8 +68,7 @@ class RoomPanel extends React.Component {
     componentDidMount () {
         this.unsubscribe = overlay.subscribe(this.handleChange);
         this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
-        window.addEventListener('online', this.handleOnline);
-        window.addEventListener('offline', this.handleOnline);
+        this.unsubscribeSync = syncRoom.subscribe(this.handleSync);
         this.handleChange();
         listProjects().then(list => overlay.setProjects(list))
             .catch(() => {});
@@ -82,8 +76,7 @@ class RoomPanel extends React.Component {
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
         if (this.unsubscribeChat) this.unsubscribeChat();
-        window.removeEventListener('online', this.handleOnline);
-        window.removeEventListener('offline', this.handleOnline);
+        if (this.unsubscribeSync) this.unsubscribeSync();
         clearTimeout(this.copiedTimer);
     }
     handleChange () {
@@ -92,8 +85,8 @@ class RoomPanel extends React.Component {
     handleChat () {
         this.setState({chat: chatRoom.getState()});
     }
-    handleOnline () {
-        this.setState({online: onlineNow()});
+    handleSync (sync) {
+        this.setState({sync});
     }
     copy (link, which) {
         const done = () => {
@@ -174,9 +167,8 @@ class RoomPanel extends React.Component {
         return this.say(ROLES[role] || ROLES.editor);
     }
     renderStatus () {
-        const {connected, online} = this.state;
-        let key = 'live';
-        if (!connected) key = online ? 'reconnecting' : 'offline';
+        const {sync} = this.state;
+        const key = STATUS_KEYS[sync.kind] || 'reconnecting';
         return (
             <span
                 className={classNames(styles.status, styles[key])}
@@ -184,7 +176,7 @@ class RoomPanel extends React.Component {
                 role="status"
             >
                 <span className={styles.statusDot} />
-                {this.say(messages[key])}
+                {this.say(messages[key], {count: sync.pending})}
             </span>
         );
     }

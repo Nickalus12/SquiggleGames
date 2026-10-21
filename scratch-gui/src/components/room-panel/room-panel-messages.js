@@ -11,6 +11,17 @@ const messages = defineMessages({
         description: 'Room status while the connection comes back'
     },
     offline: {id: 'sq.room.status.offline', defaultMessage: 'Offline', description: 'Room status with no network'},
+    syncing: {
+        id: 'sq.room.status.syncing',
+        defaultMessage: '{count, plural, =0 {Syncing} one {Syncing # change} other {Syncing # changes}}',
+        description: 'Room status while changes are on their way'
+    },
+    synced: {id: 'sq.room.status.synced', defaultMessage: 'Synced', description: 'Sync chip when every change is in'},
+    syncHelp: {
+        id: 'sq.room.syncHelp',
+        defaultMessage: 'Your changes keep coming with you. They go to the room when you are back.',
+        description: 'Tooltip on the sync chip while not synced'
+    },
     lockChip: {
         id: 'sq.room.lockChip',
         defaultMessage: 'Quick phrases only',

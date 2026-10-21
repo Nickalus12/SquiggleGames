@@ -89,6 +89,38 @@
     white-space: nowrap;
 }
 
+.sync {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sq-space-1, 4px);
+    padding: 2px var(--sq-space-2, 8px);
+    font-weight: var(--sq-weight-bold, 700);
+    white-space: nowrap;
+}
+
+.sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.synced {
+    color: var(--sq-success, #167443);
+}
+
+.syncing {
+    color: var(--sq-info, #0a7089);
+}
+
+.reconnecting {
+    color: var(--sq-warn, #9a5b00);
+}
+
+.offline {
+    color: var(--sq-danger, #c62839);
+}
+
 .phrase-wrap {
     position: relative;
 }

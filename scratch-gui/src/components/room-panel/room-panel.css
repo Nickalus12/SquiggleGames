@@ -70,6 +70,10 @@
     color: var(--sq-success, #167443);
 }
 
+.syncing {
+    color: var(--sq-info, #0a7089);
+}
+
 .reconnecting {
     color: var(--sq-warn, #9a5b00);
 }
