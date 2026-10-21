@@ -1,0 +1,198 @@
+@import "../../css/z-index.css";
+
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: $z-index-modal;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 12vh var(--sq-space-4, 16px) var(--sq-space-4, 16px);
+    background: rgba(12, 8, 24, 0.4);
+    animation: scrim-in var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.dialog {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 600px;
+    max-height: min(70vh, 560px);
+    border: 1px solid var(--sq-line);
+    border-radius: var(--sq-radius-panel, 12px);
+    background: var(--sq-panel);
+    box-shadow: var(--sq-elevation-3);
+    color: var(--sq-text);
+    font-family: var(--sq-font);
+    text-align: left;
+    overflow: hidden;
+    animation: dialog-in var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+@keyframes scrim-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes dialog-in {
+    from {
+        opacity: 0;
+        transform: translateY(calc(-6px * var(--sq-motion-shift, 1)));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.field {
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    padding: 0 var(--sq-space-4, 16px);
+    border-bottom: 1px solid var(--sq-line);
+}
+
+.search-icon {
+    flex: 0 0 auto;
+    color: var(--sq-text-muted);
+}
+
+.input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 52px;
+    border: 0;
+    background: transparent;
+    color: var(--sq-text);
+    font-family: inherit;
+    font-size: var(--sq-text-md, 16px);
+    outline: none;
+}
+
+.input::placeholder {
+    color: var(--sq-text-muted);
+}
+
+.list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sq-space-2, 8px);
+}
+
+.group + .group {
+    margin-top: var(--sq-space-1, 4px);
+}
+
+.group-title {
+    padding: var(--sq-space-2, 8px) var(--sq-space-2, 8px) var(--sq-space-1, 4px);
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-xs, 12px);
+    font-weight: var(--sq-weight-heavy, 800);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    min-height: var(--sq-target, 36px);
+    padding: var(--sq-space-1, 4px) var(--sq-space-2, 8px);
+    border-radius: var(--sq-radius-card, 10px);
+    font-size: var(--sq-text-sm, 14px);
+    cursor: pointer;
+}
+
+.option.active {
+    background: var(--sq-raised);
+    box-shadow: inset 3px 0 0 var(--sq-brand-600);
+}
+
+.label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail {
+    flex: 0 0 auto;
+    max-width: 40%;
+    overflow: hidden;
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-xs, 12px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--sq-info);
+}
+
+.dot.error {
+    background: var(--sq-danger);
+}
+
+.dot.warn {
+    background: var(--sq-warn);
+}
+
+.empty {
+    margin: 0;
+    padding: var(--sq-space-6, 24px) var(--sq-space-4, 16px);
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-sm, 14px);
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sq-space-3, 12px);
+    padding: var(--sq-space-2, 8px) var(--sq-space-4, 16px);
+    border-top: 1px solid var(--sq-line);
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-xs, 12px);
+}
+
+.count {
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px), (max-height: 500px) and (pointer: coarse) {
+    .scrim {
+        padding: var(--sq-space-2, 8px);
+        padding-top: max(var(--sq-space-2, 8px), env(safe-area-inset-top, 0));
+    }
+
+    .dialog {
+        max-height: calc(100vh - 16px);
+    }
+
+    .option {
+        min-height: var(--sq-target-touch, 44px);
+    }
+
+    .footer span[aria-hidden="true"] {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scrim,
+    .dialog {
+        animation: none;
+    }
+}
