@@ -376,17 +376,8 @@ const createView3d = (runtime, world, options) => {
         return forward(drawableID, properties);
     };
 
-    const wrapEffect = renderer => {
-        const original = renderer.updateDrawableEffect;
-        const wrapped = (drawableID, effect, value) => {
-            const forced = effect === 'ghost' && ghosting(drawableID) ? 100 : value;
-            return original.call(renderer, drawableID, effect, forced);
-        };
-        renderer.updateDrawableEffect = wrapped;
-        return () => {
-            if (renderer.updateDrawableEffect === wrapped) renderer.updateDrawableEffect = original;
-        };
-    };
+    const hookEffect = (forward, drawableID, effect, value) =>
+        forward(drawableID, effect, effect === 'ghost' && ghosting(drawableID) ? 100 : value);
 
     const pointerDocument = canvas => opts.document || canvas.ownerDocument ||
         (typeof document === 'undefined' ? null : document);
@@ -509,9 +500,9 @@ const createView3d = (runtime, world, options) => {
                 seam.onBeforeExecute(onBefore),
                 seam.onAfterExecute(onAfter),
                 chainHook(seam, 'drawableProperties', hookProperties),
+                chainHook(seam, 'drawableEffect', hookEffect),
                 world.addDrawables(() => gpu.drawable)
             );
-            if (runtime.renderer) link.disposers.push(wrapEffect(runtime.renderer));
             return view;
         },
         detach,

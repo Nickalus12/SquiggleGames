@@ -153,7 +153,10 @@ const view = createView3d(runtime, world, {
         };
     }
 });
+const seamEffect = renderer.updateDrawableEffect;
 view.attach(seam);
+ok('3D ghosts through the seam drawableEffect hook, not its own renderer wrap',
+    renderer.updateDrawableEffect === seamEffect && typeof seam.hooks.drawableEffect === 'function');
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 const centre = () => view.frame.pixels[((HEIGHT / 2) * WIDTH) + (WIDTH / 2)];
 
@@ -344,6 +347,8 @@ view.show(hero);
 const detachedUploads = view.stats().uploads;
 runtime._step();
 ok('after detach the steps no longer reach the view', view.stats().uploads === detachedUploads);
+guard.setEffect('ghost', 20);
+ok('after detach the drawableEffect hook is gone', !seam.hooks.drawableEffect && ghosts.get(guard.drawableID) === 20);
 view.dispose();
 ok('dispose turns it off', !view.isOn());
 
