@@ -220,11 +220,20 @@ const stageTarget = runtime.getTargetForStage();
 ext.setBackdrop({MODE: 'fixed', F: 0});
 drawFrame();
 ok('a fixed backdrop follows the camera', renderer.positions.get(stageTarget.drawableID).join() === '300,20');
+stageTarget.getCostumes()[0].skinId = 777;
 ext.setBackdrop({MODE: 'parallax', F: 50});
 drawFrame();
-ok('parallax 50 moves at half speed', renderer.positions.get(stageTarget.drawableID).join() === '150,10');
+ok('parallax 50 wraps half the screen scroll into the stage width',
+    renderer.positions.get(stageTarget.drawableID).join() === '390,20', renderer.positions.get(stageTarget.drawableID));
+const echoId = Array.from(renderer.skinOf.keys()).find(id => renderer.skinOf.get(id) === 777);
+ok('an echo copy of the backdrop fills the other side', typeof echoId === 'number' &&
+    renderer.positions.get(echoId).join() === '150,20', echoId && renderer.positions.get(echoId));
+ok('the echo shares the backdrop skin and keeps screen size', renderer.visible.get(echoId) === true &&
+    renderer.scales.get(echoId).join() === '50,50');
 ext.setBackdrop({MODE: 'scrolls', F: 0});
+drawFrame();
 ok('scrolls puts the backdrop back at the origin', renderer.positions.get(stageTarget.drawableID).join() === '0,0');
+ok('scrolls hides the echo', renderer.visible.get(echoId) === false);
 runtime.ioDevices.mouse._scratchX = 40;
 runtime.ioDevices.mouse._scratchY = -30;
 ok('mouse screen x and y are stage space', ext.mouseScreen({AXIS: 'x'}) === 40 && ext.mouseScreen({AXIS: 'y'}) === -30);

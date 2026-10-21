@@ -1,7 +1,7 @@
 import {FLAGS, MAX_LEVELS, addTexture, cellAt, cloneGrid, createGrid, flagsAt, levelRect, setCell,
     toRulesLevel} from './tilemap.js';
 import {moveBy, onGround, overlapFlags} from './collision.js';
-import {createCamera, toWorld} from './camera.js';
+import {STAGE_WIDTH, createCamera, toWorld} from './camera.js';
 import {createTileRenderer} from './render.js';
 import {createTextureCache, browserCanvas, browserImageLoader} from './textures.js';
 import {SCENES_KEY, WORLD_KEY, readLevels, readScenes, removeLevel, writeLevel} from './storage.js';
@@ -57,6 +57,8 @@ const createWorldState = (runtime, options) => {
         applied: null,
         pinned: new Set(),
         backdrop: {mode: 'scrolls', speed: 50},
+        echo: null,
+        echoSkin: null,
         hitboxes: new WeakMap(),
         hits: new WeakMap(),
         disposers: [],
@@ -109,10 +111,15 @@ const createWorldState = (runtime, options) => {
 
     const currentView = progress => (camera.isActive() ? camera.view(progress) : IDENTITY_VIEW);
 
+    const parallaxShift = view => {
+        const speed = Math.max(0, Math.min(100, state.backdrop.speed)) / 100;
+        const raw = -view.x * speed * view.zoom;
+        return (((raw % STAGE_WIDTH) + STAGE_WIDTH + (STAGE_WIDTH / 2)) % STAGE_WIDTH) - (STAGE_WIDTH / 2);
+    };
+
     const backdropPosition = view => {
         if (state.backdrop.mode === 'fixed') return [view.x, view.y];
-        const keep = 1 - (Math.max(0, Math.min(100, state.backdrop.speed)) / 100);
-        return [view.x * keep, view.y * keep];
+        return [view.x + (parallaxShift(view) / view.zoom), view.y];
     };
 
     const stageDrawable = () => {
@@ -132,9 +139,50 @@ const createWorldState = (runtime, options) => {
         return {direction: target.direction, scale: [target.size, target.size]};
     };
 
+    const hideEcho = () => {
+        if (state.echo !== null && runtime.renderer) runtime.renderer.updateDrawableVisible(state.echo, false);
+    };
+
+    const destroyEcho = () => {
+        if (state.echo !== null && runtime.renderer) runtime.renderer.destroyDrawable(state.echo, 'background');
+        state.echo = null;
+        state.echoSkin = null;
+    };
+
+    const stageSkin = () => {
+        const stage = runtime.getTargetForStage && runtime.getTargetForStage();
+        const costume = stage && stage.getCostumes()[stage.currentCostume];
+        return costume && typeof costume.skinId === 'number' ? costume.skinId : null;
+    };
+
+    const updateEcho = (view, moved) => {
+        const renderer = runtime.renderer;
+        const skin = stageSkin();
+        if (!renderer || view === IDENTITY_VIEW || state.backdrop.mode !== 'parallax' || skin === null) {
+            hideEcho();
+            return;
+        }
+        if (state.echo === null) {
+            state.echo = renderer.createDrawable('background');
+            moved = true;
+        }
+        if (skin !== state.echoSkin) {
+            state.echoSkin = skin;
+            renderer.updateDrawableSkinId(state.echo, skin);
+        }
+        if (!moved) return;
+        const shift = parallaxShift(view);
+        const other = shift < 0 ? shift + STAGE_WIDTH : shift - STAGE_WIDTH;
+        renderer.updateDrawablePosition(state.echo, [view.x + (other / view.zoom), view.y]);
+        renderer.updateDrawableDirectionScale(state.echo, 90, [100 / view.zoom, 100 / view.zoom]);
+        renderer.updateDrawableVisible(state.echo, true);
+    };
+
     const applyScreenSpace = view => {
         const renderer = runtime.renderer;
-        if (!renderer || sameView(view, state.applied)) return;
+        const moved = !sameView(view, state.applied);
+        updateEcho(view, moved);
+        if (!renderer || !moved) return;
         state.applied = view;
         state.view = view;
         for (const target of Array.from(state.pinned)) {
@@ -226,6 +274,7 @@ const createWorldState = (runtime, options) => {
         detach () {
             state.disposers.splice(0).reverse()
                 .forEach(dispose => dispose());
+            destroyEcho();
             state.seam = null;
         },
         isAttached: () => !!state.seam,
