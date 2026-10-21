@@ -18,6 +18,7 @@ import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
 import {installProjectSeam} from './project-seam.js';
+import {attachAssetStore, createSnapshotHttp, projectAssets, sha256Hex, snapshotFrame} from './snapshot-http.js';
 
 /*
  * Small preferences that belong to the person rather than the project, kept
@@ -66,11 +67,16 @@ const state = {
     pendingSpriteInfo: null, // trailing sprite-info so the final drag position always lands
     spriteInfoTimer: null,
     lastPresence: {status: null, sprite: null, sentAt: 0},
-    lastSnapshotB64: null, // dedup — skip re-broadcasting identical project state
+    lastSnapshotKey: null, // dedup — skip re-broadcasting identical project state
     snapshotRef: 0,
     unackedSnapshots: [],
-    sentSnapshotB64: null,
+    sentSnapshotKey: null,
     sentSnapshotGen: -1,
+    httpSnapshots: false,
+    snapshotHttp: null,
+    snapshotHttpRoom: null,
+    snapshotShaKeys: new Map(),
+    snapshotRetries: 0,
     urgentSnapshot: false,
     snapshotPromise: null,
     ended: false,
@@ -79,6 +85,7 @@ const state = {
     sentSpriteAdds: [],
     heldSpriteEvents: [],
     rescuedB64: null,
+    rescuedKey: null,
     rescueTimes: [],
     bitmapChain: Promise.resolve(),
     snapshotsSeen: 0,
@@ -535,13 +542,105 @@ const ackSnapshot = msg => {
     if (at < 0) return null;
     const entry = list[at];
     state.unackedSnapshots = list.slice(at + 1);
-    state.lastSnapshotB64 = entry.b64;
+    state.lastSnapshotKey = entry.key;
     return entry;
 };
 
 const hasUnsavedEdits = () => !!(state.snapshotTimer || state.snapshotInFlight ||
     typeof state.deferredSnapshot === 'boolean' || state.offlineEdits ||
     state.unackedSnapshots.some(entry => !entry.cacheOnly));
+
+const SNAPSHOT_SHA_MEMORY = 16;
+const SNAPSHOT_RETRY_BASE_MS = 2000;
+const SNAPSHOT_RETRY_MAX_MS = 60000;
+
+const rememberSnapshotSha = (sha, key) => {
+    const keys = state.snapshotShaKeys;
+    keys.delete(sha);
+    keys.set(sha, key);
+    while (keys.size > SNAPSHOT_SHA_MEMORY) keys.delete(keys.keys().next().value);
+};
+
+const snapshotUploaded = (sha, key) => {
+    state.snapshotRetries = 0;
+    rememberSnapshotSha(sha, key);
+};
+
+const snapshotFetched = (msg, key) => {
+    msg._key = key;
+    rememberSnapshotSha(msg.sha, key);
+};
+
+const snapshotDone = () => {
+    state.snapshotInFlight = false;
+    if (typeof state.snapshotAgain !== 'undefined') {
+        const again = state.snapshotAgain;
+        delete state.snapshotAgain;
+        scheduleSnapshot(again);
+    }
+};
+
+const snapshotKeyOf = msg => {
+    if (msg.b64) return msg.b64;
+    return state.snapshotShaKeys.get(msg.sha) || msg.sha;
+};
+
+const useHttpSnapshots = (on, room) => {
+    state.httpSnapshots = on === true;
+    if (!state.httpSnapshots) return;
+    if (!state.snapshotHttp || state.snapshotHttpRoom !== room) {
+        state.snapshotHttp = createSnapshotHttp({slug: room, base: showLogin.apiBase()});
+        state.snapshotHttpRoom = room;
+        state.snapshotShaKeys.clear();
+    }
+    if (state.vm && state.vm.runtime) attachAssetStore(state.vm.runtime.storage, state.snapshotHttp);
+};
+
+const zipProject = async () => {
+    try {
+        return await state.vm.saveProjectSb3('base64');
+    } catch (e) {
+        const out = await state.vm.saveProjectSb3();
+        return typeof out.arrayBuffer === 'function' ? blobToB64(out) : b64FromBuffer(out);
+    }
+};
+
+const readProject = async () => {
+    if (state.httpSnapshots && state.snapshotHttp) {
+        const json = state.vm.toJSON();
+        return {json, key: await sha256Hex(json)};
+    }
+    // Ask JSZip for base64 directly — skips the blob -> FileReader -> b64
+    // copy chain (one less multi-MB pass on the main thread per snapshot).
+    const b64 = await zipProject();
+    return {b64, key: b64};
+};
+
+const uploadProject = async json => {
+    const http = state.snapshotHttp;
+    await http.uploadAssets(projectAssets(state.vm));
+    return http.uploadProject(json);
+};
+
+const retrySnapshotLater = cacheOnly => {
+    const wait = Math.min(SNAPSHOT_RETRY_MAX_MS, SNAPSHOT_RETRY_BASE_MS * (2 ** state.snapshotRetries));
+    state.snapshotRetries++;
+    if (state.canEdit) state.offlineEdits = true;
+    setTimeout(() => {
+        if (state.active) scheduleSnapshot(cacheOnly === true);
+    }, wait);
+};
+
+const snapshotUploadFailed = (e, cacheOnly) => {
+    if (e && (e.code === 'project-too-big' || e.code === 'asset-too-big' || e.status === 413)) {
+        if (state.canEdit) state.offlineEdits = true;
+        overlay.banner(TOO_BIG_TEXT, {kind: 'update'});
+        return;
+    }
+    // eslint-disable-next-line no-console
+    console.error('[collab] snapshot upload failed', e && e.code, e && e.status);
+    retrySnapshotLater(cacheOnly);
+};
 
 const zipAndSendSnapshot = async cacheOnly => {
     if (!state.active || state.applyingRemote || !state.vm) return;
@@ -559,52 +658,45 @@ const zipAndSendSnapshot = async cacheOnly => {
         // what peers already received live.
         flushBlockMoves();
         if (cacheOnly === true) state.lastCacheSnapAt = Date.now();
-        // Ask JSZip for base64 directly — skips the blob -> FileReader -> b64
-        // copy chain (one less multi-MB pass on the main thread per snapshot).
-        let b64;
-        try {
-            b64 = await state.vm.saveProjectSb3('base64');
-        } catch (e) {
-            const out = await state.vm.saveProjectSb3();
-            b64 = typeof out.arrayBuffer === 'function' ?
-                await blobToB64(out) :
-                b64FromBuffer(out);
-        }
+        const project = await readProject();
+        const key = project.key;
         // Drop if we went inactive / started applying remote mid-zip.
         if (!state.active || state.applyingRemote) return;
         const force = state.forceNextSnapshot === true;
         const reset = cacheOnly !== true && state.resetNextSnapshot === true;
-        if (!force && !reset && b64 === state.lastSnapshotB64) return; // nothing actually changed
-        if (!force && !reset && cacheOnly === true && b64 === state.sentSnapshotB64 &&
+        if (!force && !reset && key === state.lastSnapshotKey) return; // nothing actually changed
+        if (!force && !reset && cacheOnly === true && key === state.sentSnapshotKey &&
             state.sentSnapshotGen === client.generation) return;
+        const basedOn = state.roomVersion;
+        let uploaded = null;
+        if (typeof project.json === 'string') {
+            try {
+                uploaded = await uploadProject(project.json);
+            } catch (e) {
+                snapshotUploadFailed(e, cacheOnly);
+                return;
+            }
+            snapshotUploaded(uploaded.sha, key);
+            if (!state.active || state.applyingRemote) return;
+        }
         state.forceNextSnapshot = false;
         if (reset) state.resetNextSnapshot = false;
         const ref = ++state.snapshotRef;
-        state.unackedSnapshots.push({ref, b64, cacheOnly: cacheOnly === true});
+        state.unackedSnapshots.push({ref, key, sha: uploaded && uploaded.sha, cacheOnly: cacheOnly === true});
         if (state.unackedSnapshots.length > 8) state.unackedSnapshots.shift();
-        state.sentSnapshotB64 = b64;
+        state.sentSnapshotKey = key;
         state.sentSnapshotGen = client.generation;
         const urgent = state.urgentSnapshot === true;
         state.urgentSnapshot = false;
-        client.send({
-            type: 'snapshot',
-            b64,
-            ref,
-            cacheOnly: cacheOnly === true,
-            basedOn: state.roomVersion,
-            force,
-            reset
-        }, urgent);
+        const fields = {ref, cacheOnly: cacheOnly === true, basedOn, force, reset};
+        client.send(uploaded ?
+            snapshotFrame(Object.assign(fields, uploaded)) :
+            Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
     } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[collab] snapshot failed', e);
     } finally {
-        state.snapshotInFlight = false;
-        if (typeof state.snapshotAgain !== 'undefined') {
-            const again = state.snapshotAgain;
-            delete state.snapshotAgain;
-            scheduleSnapshot(again);
-        }
+        snapshotDone();
     }
 };
 
@@ -778,8 +870,27 @@ const offerRescueDownload = b64 => {
     });
 };
 
-const rescueLocalProject = async (why, incomingB64) => {
+const rescueHttpProject = async incomingKey => {
+    const key = await sha256Hex(state.vm.toJSON());
+    if (key === incomingKey || key === state.rescuedKey) return key;
+    return zipProject().then(b64 => {
+        offerRescueDownload(b64);
+        state.rescuedKey = key;
+        return key;
+    });
+};
+
+const rescueLocalProject = async (why, incomingKey) => {
     if (!state.vm || !state.canEdit) return null;
+    if (state.httpSnapshots) {
+        try {
+            return await rescueHttpProject(incomingKey);
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[collab] rescue save failed', e);
+            return null;
+        }
+    }
     let b64;
     try {
         b64 = await state.vm.saveProjectSb3('base64');
@@ -788,7 +899,7 @@ const rescueLocalProject = async (why, incomingB64) => {
         console.error('[collab] rescue save failed', e);
         return null;
     }
-    if (b64 === incomingB64 || b64 === state.rescuedB64) return b64;
+    if (b64 === incomingKey || b64 === state.rescuedB64) return b64;
     const now = Date.now();
     state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
     if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) {
@@ -824,8 +935,17 @@ const forceNextApply = () => {
     state.forceApplyNextSnapshot = true;
 };
 
+const loadSnapshotSource = async msg => {
+    if (msg.b64) return bufferFromB64(msg.b64);
+    if (!state.snapshotHttp) throw new Error('snapshot by sha without http snapshots');
+    const json = await state.snapshotHttp.fetchProject(msg.sha);
+    snapshotFetched(msg, await sha256Hex(json));
+    return json;
+};
+
 const applySnapshot = async msg => {
-    if (!state.vm || !msg || !msg.b64) return;
+    if (!state.vm || !msg || !(msg.b64 || typeof msg.sha === 'string')) return;
+    msg._key = snapshotKeyOf(msg);
     installProjectSeam(state.vm);
     state.snapshotsSeen++;
     // This snapshot is about to overwrite edits of ours that never reached the
@@ -853,8 +973,8 @@ const applySnapshot = async msg => {
         msg._force = true;
     }
     if (!msg._force && !msg._rescue &&
-        (msg.b64 === state.lastSnapshotB64 || msg.b64 === state.sentSnapshotB64)) {
-        state.lastSnapshotB64 = msg.b64;
+        (msg._key === state.lastSnapshotKey || msg._key === state.sentSnapshotKey)) {
+        state.lastSnapshotKey = msg._key;
         if (typeof msg.version === 'number') state.roomVersion = msg.version;
         return;
     }
@@ -876,7 +996,7 @@ const applySnapshot = async msg => {
     let alreadyHave = false;
     if (msg._rescue) {
         try {
-            alreadyHave = await rescueLocalProject(msg._rescue, msg.b64) === msg.b64;
+            alreadyHave = await rescueLocalProject(msg._rescue, msg._key) === msg._key;
         } catch (e) {
             alreadyHave = false;
         }
@@ -892,13 +1012,13 @@ const applySnapshot = async msg => {
         }
     }
     try {
-        if (!alreadyHave) await state.vm.loadProject(bufferFromB64(msg.b64));
+        if (!alreadyHave) await state.vm.loadProject(await loadSnapshotSource(msg));
         // Only mark applied after a successful load — failed loads must retry.
         // Assigned after an await, but not a race: `snapshotLoading` above is
         // set before the await and gates every other entry to this function, so
         // nothing else can be inside the load.
         // eslint-disable-next-line require-atomic-updates -- guarded by snapshotLoading
-        state.lastSnapshotB64 = msg.b64;
+        state.lastSnapshotKey = msg._key;
         // The version, though, has other writers — `snapshot-ack` can land
         // while we load, and it is newer than the snapshot we started with.
         // Never move backwards, or the next send is `basedOn` a stale version
@@ -1430,8 +1550,15 @@ const wrapVm = vm => {
     });
 
     vm.runtime.on('PROJECT_LOADED', rebuildTargetIndex);
-    vm.runtime.on('EXTENSION_ADDED', () => {
-        if (canWrite() && !state.installingRemote && !state.snapshotLoading) scheduleSnapshot(false);
+    vm.runtime.on('EXTENSION_ADDED', info => {
+        if (!canWrite() || state.installingRemote || state.snapshotLoading) return;
+        const id = info && info.id;
+        if (!state.httpSnapshots || !id || !vm.extensionManager.isBuiltinExtension(id)) {
+            scheduleSnapshot(false);
+            return;
+        }
+        if (hasPeers()) client.send({type: 'vm-action', action: 'extensionAdd', id});
+        scheduleSnapshot(true);
     });
 };
 
@@ -1796,6 +1923,20 @@ const drainOrphans = () => {
     for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
 };
 
+const applyExtensionAdd = id => {
+    const manager = state.vm.extensionManager;
+    if (typeof id !== 'string' || !manager.isBuiltinExtension(id) || manager.isExtensionLoaded(id)) return;
+    state.installingRemote++;
+    try {
+        manager.loadExtensionIdSync(id);
+    } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[collab] extension add failed', id, e);
+    } finally {
+        state.installingRemote--;
+    }
+};
+
 // Install a relayed .sprite3 without yanking the local user off their sprite
 // (vm.addSprite switches editingTarget to the new sprite).
 const applySpriteAdd = msg => {
@@ -1921,6 +2062,8 @@ const applyVmAction = msg => {
                     state.vm.editingTarget = prev;
                 }
             }
+        } else if (msg.action === 'extensionAdd') {
+            applyExtensionAdd(msg.id);
         } else if (msg.action === 'spriteAdd') {
             applySpriteAdd(msg);
         } else if (msg.action === 'spriteDelete') {
@@ -2228,7 +2371,7 @@ const onSnapshotRefused = msg => {
     state.unackedSnapshots = refused ?
         state.unackedSnapshots.filter(entry => !refused.includes(entry.ref)) :
         [];
-    state.sentSnapshotB64 = null;
+    state.sentSnapshotKey = null;
     if (msg && msg.reason !== 'host-only' && typeof msg.message === 'string' && msg.message) {
         overlay.toast(`🔒 ${msg.message}`, '#e8386d');
     }
@@ -2236,8 +2379,8 @@ const onSnapshotRefused = msg => {
     state.resetNextSnapshot = false;
     state.forceNextSnapshot = false;
     state.rescueOnNextSnapshot = true;
-    if (msg && typeof msg.b64 === 'string' && msg.b64) {
-        applySnapshot({type: 'snapshot', b64: msg.b64, version: msg.roomVersion, stale: true});
+    if (msg && ((typeof msg.b64 === 'string' && msg.b64) || typeof msg.sha === 'string')) {
+        applySnapshot({type: 'snapshot', b64: msg.b64, sha: msg.sha, version: msg.roomVersion, stale: true});
         return;
     }
     const seen = state.snapshotsSeen;
@@ -2342,7 +2485,7 @@ const retryAfterTooLarge = dropped => {
     const lost = state.unackedSnapshots.filter(entry => !dropped || entry.ref === dropped.ref);
     if (!dropped && !lost.length) return;
     state.unackedSnapshots = state.unackedSnapshots.filter(entry => !lost.includes(entry));
-    state.sentSnapshotB64 = null;
+    state.sentSnapshotKey = null;
     scheduleSnapshot(lost.length > 0 && lost.every(entry => entry.cacheOnly));
 };
 
@@ -2422,6 +2565,7 @@ const wireSocket = () => {
         overlay.setPeers(msg.peers, msg.id);
         overlay.setProjects(msg.projects);
         applyRoomTitle(msg.title || msg.room);
+        useHttpSnapshots(msg.proto === 2 || msg.snapshots === 'http', msg.room);
         /*
          * First welcome records the build this tab is running against; every
          * later one compares. Reconnecting into a server that has been deployed
@@ -2481,6 +2625,9 @@ const wireSocket = () => {
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
+        if (state.httpSnapshots && msg.snapshot && typeof msg.snapshot.sha === 'string') {
+            applySnapshot(Object.assign({type: 'snapshot', version: msg.version}, msg.snapshot));
+        }
     });
     client.on('disconnected', msg => {
         if (msg && msg.unconfirmed && state.canEdit) state.offlineEdits = true;
