@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const VM = require('scratch-vm');
 const vmLog = require('scratch-vm/src/util/log.js');
 const RenderWebGL = require('scratch-render/src/RenderWebGL.js');
+const ScratchStorage = require('@turbowarp/scratch-storage');
 const twgl = createRequire(require.resolve('scratch-render/src/RenderWebGL.js'))('twgl.js');
 
 vmLog.warn = () => {};
@@ -13,6 +14,8 @@ globalThis.document = {hidden: true};
 
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
+const {readScenes} = await import('./storage.js');
+const readScenesOf = rt => readScenes(rt).scenes;
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {default: SquiggleWorldBlocks} = await import('../libraries/extensions/squiggleworld/index.js');
 const {getKit} = await import('../kits/registry.js');
@@ -104,6 +107,7 @@ section('levels load from runtime storage');
 const vm = new VM();
 const renderer = stubRenderer(RenderWebGL, twgl);
 vm.attachRenderer(renderer);
+vm.attachStorage(new (ScratchStorage.default || ScratchStorage)());
 const seam = installWorldSeams(vm);
 const runtime = vm.runtime;
 const world = getWorld(runtime, {createCanvas: fakeCanvas, loadImage: costume => ({name: costume.name}),
@@ -245,6 +249,41 @@ ok('solidAt reads the play copy', seam.solidAt(-240 + 8, 180 - (20 * 16) - 8) &&
 const rules = seam.rulesLevels(true)[0];
 ok('rulesLevels gives the server shape', rules.tile === 16 && typeof rules.solid === 'string');
 ok('currentLevel names the level in use', seam.currentLevel() === 'cave');
+const upload = seam.levelsForUpload();
+ok('levelsForUpload leaves solid out unless asked', upload[0].tile === 16 && !('solid' in upload[0]));
+ok('levelsForUpload({solid: true}) carries solid', typeof seam.levelsForUpload({solid: true})[0].solid === 'string');
+ok('currentLevelIndex is 1-based', seam.currentLevelIndex() === 1);
+ok('tileNames lists the active tileset costumes', seam.tileNames().join() === 'wall,lava');
+ok('tilesets lists sprites that hold tiles', JSON.stringify(seam.tilesets()) === '["Tiles"]');
+const sceneId = await seam.createScene('Boss');
+ok('createScene resolves the new scene id', typeof sceneId === 'string' &&
+    readScenesOf(runtime).some(scene => scene.id === sceneId && scene.name === 'Boss'));
+const levelId = await seam.createLevel('Second Cave');
+ok('createLevel resolves the new id on the active tileset', levelId === 'second-cave' &&
+    world.level(levelId).tileset === 'Tiles' && seam.levels().length === 2);
+ok('currentLevelIndex stays on the level in use', seam.currentLevelIndex() === 1);
+const fakeCostumes = tiles.getCostumes;
+delete tiles.getCostumes;
+const shownCostume = tiles.currentCostume;
+const tileName = await seam.createTile('grass');
+const madeCostume = tiles.getCostumes().find(costume => costume.name === tileName);
+ok('createTile adds a blank costume at the level tile size', tileName === 'grass' && madeCostume &&
+    madeCostume.dataFormat === 'svg' && madeCostume.rotationCenterX === 8, tileName);
+ok('createTile registers the tile on the level', world.level('cave').tiles.some(tile => tile.name === 'grass'));
+ok('createTile keeps the tileset costume shown', tiles.currentCostume === shownCostume);
+ok('a second createTile gets a unique name', await seam.createTile('grass') === 'grass2');
+tiles.getCostumes = fakeCostumes;
+world.useLevel('second-cave');
+ok('currentLevelIndex follows useLevel', seam.currentLevelIndex() === 2);
+world.useLevel('cave');
+world.clearLevel();
+ok('currentLevelIndex is 0 with no level', seam.currentLevelIndex() === 0);
+let refused = false;
+await seam.createTile('none').catch(() => {
+    refused = true;
+});
+ok('createTile rejects with no level in use', refused);
+world.useLevel('cave');
 
 section('painter edits change the saved level');
 const events = [];

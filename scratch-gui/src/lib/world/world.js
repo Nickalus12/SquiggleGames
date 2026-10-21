@@ -7,6 +7,7 @@ import {createTextureCache, browserCanvas, browserImageLoader} from './textures.
 import {SCENES_KEY, WORLD_KEY, readLevels, readScenes, removeLevel, writeLevel} from './storage.js';
 import {preserveExtensionStorage} from '../collab/project-seam.js';
 import {createTilemapSync} from './tilemap-sync.js';
+import {getScenes} from './scenes.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_START = 'PROJECT_START';
@@ -508,10 +509,54 @@ const attachWhenReady = world => {
     window.addEventListener('SquiggleWorldReady', onReady);
 };
 
+const blankTile = size => new TextEncoder().encode(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"></svg>`
+);
+
+const fail = message => Promise.reject(new Error(message));
+
 const extendSeam = seam => {
     if (!seam || seam.levels) return seam;
     const runtime = seam.runtime;
     const live = () => peekWorld(runtime);
+    const activeLevel = () => {
+        const world = live();
+        if (!world || !world.currentId()) return null;
+        return world.level(world.currentId());
+    };
+    const tilesetOwner = () => {
+        const grid = activeLevel();
+        const sprite = grid && grid.tileset ? runtime.getSpriteTargetByName(grid.tileset) : null;
+        return sprite || runtime.getTargetForStage() || null;
+    };
+    const createTile = name => {
+        const grid = activeLevel();
+        const owner = tilesetOwner();
+        const storage = runtime.storage;
+        const vm = seam.vm;
+        if (!grid || !owner) return fail('no tileset');
+        if (!storage || !vm) return fail('no storage');
+        const size = grid.tileSize;
+        const asset = storage.createAsset(storage.AssetType.ImageVector, 'svg', blankTile(size), null, true);
+        const before = owner.currentCostume;
+        const costume = {
+            name: String(name || 'tile').trim() || 'tile',
+            asset,
+            assetId: asset.assetId,
+            md5: `${asset.assetId}.svg`,
+            dataFormat: 'svg',
+            rotationCenterX: size / 2,
+            rotationCenterY: size / 2,
+            bitmapResolution: 1
+        };
+        return vm.addCostume(costume.md5, costume, owner.id).then(() => {
+            const costumes = owner.getCostumes();
+            const added = costumes[costumes.length - 1].name;
+            owner.setCostume(before);
+            live().addTile(grid.id, added, 0);
+            return added;
+        });
+    };
     Object.assign(seam, {
         scale: () => seam.getView().zoom,
         camera: () => (live() ? live().cameraInfo() : null),
@@ -528,6 +573,26 @@ const extendSeam = seam => {
         solidAt: (x, y) => (live() ? live().solidAt(x, y) : false),
         rulesLevels: withSolid => (live() ? live().rulesLevels(withSolid) :
             readLevels(runtime).map(grid => toRulesLevel(grid, withSolid))),
+        levelsForUpload: ({solid} = {}) => seam.rulesLevels(!!solid),
+        currentLevelIndex: () => seam.levels().findIndex(level => level.id === seam.currentLevel()) + 1,
+        tileNames: () => {
+            const owner = tilesetOwner();
+            return owner ? owner.getCostumes().map(costume => costume.name) : [];
+        },
+        tilesets: () => {
+            const names = (live() ? live().levels() : readLevels(runtime)).map(grid => grid.tileset);
+            return Array.from(new Set(names)).filter(name => name && runtime.getSpriteTargetByName(name));
+        },
+        createScene: name => {
+            const scene = getScenes(runtime).add(name ? {name: String(name)} : {});
+            return scene ? Promise.resolve(scene.id) : fail('scene limit');
+        },
+        createLevel: name => {
+            const grid = activeLevel();
+            const made = getWorld(runtime).createLevel({name, tileset: grid ? grid.tileset : ''});
+            return made ? Promise.resolve(made.id) : fail('level limit');
+        },
+        createTile,
         connectTilemap: (send, options) => createTilemapSync(Object.assign({}, options, {
             world: getWorld(runtime),
             send
