@@ -24,7 +24,7 @@ const messages = defineMessages({
     mine: {id: 'sq.keepWork.mine', defaultMessage: 'Keep my work', description: 'Re-applies your changes'},
     mineHelp: {
         id: 'sq.keepWork.mineHelp',
-        defaultMessage: 'Your changes go on top of the room\'s.',
+        defaultMessage: 'Your changes go on top of the room version. A copy of your version goes to your library too.',
         description: 'Explains keep my work'
     },
     theirs: {id: 'sq.keepWork.theirs', defaultMessage: 'Use the room\'s', description: 'Drops your changes'},
