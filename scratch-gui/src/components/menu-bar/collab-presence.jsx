@@ -175,15 +175,9 @@ class CollabPresence extends React.Component {
         if (this.unsubscribeChat) this.unsubscribeChat();
         document.removeEventListener('mousedown', this.handleClickOutside);
     }
-    chatUserId (peer) {
-        if (typeof peer.userId === 'number') return peer.userId;
-        const said = this.state.chat.messages.filter(m => m.userId !== null &&
-            (peer.handle ? m.handle === peer.handle : m.name === peer.name && m.color === peer.color));
-        return said.length ? said[said.length - 1].userId : null;
-    }
     renderChatControls (peer, pane) {
         const {config, hidden, mutedUserIds} = this.state.chat;
-        const userId = config ? this.chatUserId(peer) : null;
+        const userId = config && typeof peer.userId === 'number' ? peer.userId : null;
         if (userId === null) return null;
         const size = pane ? touchChip : null;
         const muted = mutedUserIds.indexOf(userId) !== -1;
