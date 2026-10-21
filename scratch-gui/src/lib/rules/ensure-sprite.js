@@ -1,4 +1,4 @@
-import {RULES_KEY, RULES_ROLE, RULES_VERSION} from '../collab/project-seam.js';
+import {RULES_KEY, RULES_ROLE, RULES_VERSION, installProjectSeam} from '../collab/project-seam.js';
 import {findRulesTarget} from './rule-blocks.js';
 import {installRulesGuard, settle} from './guard.js';
 
@@ -53,16 +53,15 @@ const pinAfterStage = (vm, target) => {
 };
 
 const ensureRulesSprite = vm => {
+    installProjectSeam(vm);
     installRulesGuard(vm);
     const existing = findRulesTarget(vm.runtime);
     if (existing) return Promise.resolve(existing);
     if (pending.has(vm)) return pending.get(vm);
     const name = freeName(vm.runtime);
-    const projectStorage = vm.runtime.extensionStorage;
     const job = Promise.resolve()
         .then(() => vm.addSprite(JSON.stringify(rulesSpriteJSON(name))))
         .then(() => {
-            vm.runtime.extensionStorage = projectStorage;
             const target = findRulesTarget(vm.runtime);
             if (!target) throw new Error('ensureRulesSprite: the new sprite lost its rules mark');
             settle(vm.runtime);

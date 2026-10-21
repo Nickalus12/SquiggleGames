@@ -244,8 +244,13 @@ section('the mark on the wire');
     await openGameSetup(vm, answer(Object.assign({}, back, {player: 'Cat'})));
     ok('choosing another sprite moves the mark', !byName('Hero').extensionStorage[RULES_KEY] &&
         byName('Cat').extensionStorage[RULES_KEY].role === 'player');
+    await openGameSetup(vm, answer(Object.assign({}, back, {player: ''})));
+    ok('the first sprite choice marks the first sprite', !byName('Hero').extensionStorage[RULES_KEY] &&
+        (byName('Cat').extensionStorage[RULES_KEY] || {}).role === 'player');
+    await openGameSetup(vm, answer(Object.assign({}, back, {player: 'Hero'})));
     await openGameSetup(vm, answer(Object.assign({}, back, {player: 'Nobody'})));
-    ok('an unknown sprite name clears the choice', !byName('Cat').extensionStorage[RULES_KEY]);
+    ok('an unknown sprite name falls back to the first sprite', !byName('Hero').extensionStorage[RULES_KEY] &&
+        (byName('Cat').extensionStorage[RULES_KEY] || {}).role === 'player');
 
     const legacy = fromMark({role: 'rules', v: 1, players: [{name: 'old', default: 1}]});
     ok('a mark saved before playerValues still reads', legacy.players[0].name === 'old');

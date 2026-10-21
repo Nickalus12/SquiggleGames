@@ -1,3 +1,5 @@
+import schema from './rules-schema.js';
+
 const KID_TEXT = Object.freeze({
     'unsupported': 'This block can\'t run on the server. Move it to a normal sprite.',
     'arg': 'Check what you typed in this block.',
@@ -12,7 +14,7 @@ const KID_TEXT = Object.freeze({
     'too-much': 'This rule did too much at once, so its changes were undone.',
     'deferred': 'The game was busy, so this rule ran a moment late.',
     'paused': 'This rule kept the game too busy, so it rests for 5 seconds.',
-    'loop-cap': 'This repeat stopped at 100 times.',
+    'loop-cap': `This repeat stopped at ${schema.limits.repeat} times.`,
     'cut': 'Some text was too long, so the end was cut off.',
     'state-full': 'The game ran out of room for values, so this change was not kept.',
     'dropped': 'This rule sent too many messages at once, so some were not sent.'

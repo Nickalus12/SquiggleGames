@@ -107,6 +107,7 @@ const applyTick = (state, tick) => {
         });
     }
     applyY(state, tick.y, keyframe);
+    if (keyframe && !Object.prototype.hasOwnProperty.call(state.names, String(state.lastHit))) state.lastHit = 0;
     if (Number.isFinite(tick.r)) state.refused = tick.r;
     state.t = tick.t;
     const events = Array.isArray(tick.e) ? tick.e.filter(isObject) : [];

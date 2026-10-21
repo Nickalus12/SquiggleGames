@@ -416,6 +416,23 @@ await section('a missing sha asks for a resync', async () => {
     ok('the failure requests the project again', resynced, fx.sent.slice(before));
 });
 
+await section('a browser that cannot unzip the room says so', async () => {
+    const fx = await fixture();
+    await welcome2(fx);
+    const sha = await publish(fx, project(['Dog']));
+    const before = fx.sent.length;
+    const unzip = globalThis.DecompressionStream;
+    delete globalThis.DecompressionStream;
+    fx.emit('snapshot', {type: 'snapshot', sha, version: 2, author: 'server'});
+    const told = await waitFor(() => fx.banners.some(b => /too old to open this room/.test(b.text || '')));
+    await settle(100);
+    globalThis.DecompressionStream = unzip;
+    ok('the banner says the browser is too old', told, fx.banners);
+    ok('it does not ask for the project again', !fx.sent.slice(before).some(m => m && m.type === 'resync'),
+        fx.sent.slice(before));
+    ok('the local project stays', fx.has('Cat') && !fx.has('Dog'));
+});
+
 await section('a builtin extension travels as a vm-action', async () => {
     const fx = await fixture();
     const {vm, sent, snapshots, calls} = fx;
@@ -658,9 +675,9 @@ await section('the green flag opens the game socket', async () => {
     const ws = gameSockets[0];
     ws.onopen();
     ok('it joins with proto 2', ws.sent[0] && ws.sent[0].type === 'join' && ws.sent[0].proto === 2, ws.sent);
-    ok('the bridge reports the game', net.inGame === true);
+    ok('the bridge is not in the game before the welcome', net.inGame === false);
     ws.deliver({type: 'welcome', slot: 1, ack: 0, mode: 'rules', tickHz: 20});
-    ok('the bridge reports the slot', net.slot === 1);
+    ok('the bridge reports the game and the slot', net.inGame === true && net.slot === 1);
     ok('and the mode and tick rate', net.mode === 'rules' && net.tickHz === 20, [net.mode, net.tickHz]);
     const ticks = [];
     const games = [];
@@ -743,6 +760,9 @@ await section('game setup changes travel as kit-set', async () => {
         value: ['Green'], from: 'pal', rs: 30});
     ok('an inbound kit-set lands on the mark', rules.extensionStorage.together.teams.join() === 'Green');
     ok('and is not sent back', kitSets().length === first);
+    fx.emit('kit-set', {type: 'kit-set', scope: 'target', targetId: 'Nobody Here', ext: 'together', path: ['teams'],
+        value: ['Gold'], from: 'pal', rs: 31});
+    ok('a kit-set for a sprite this tab lacks is dropped', rules.extensionStorage.together.teams.join() === 'Green');
 });
 
 await section('room settings and appearance go over HTTP', async () => {
@@ -761,6 +781,47 @@ await section('room settings and appearance go over HTTP', async () => {
     ok('and are kept with a PATCH on /api/me', await waitFor(() => calls.some(c => c.method === 'PATCH' &&
         c.url === 'https://sq.test/api/me' && JSON.parse(c.body).cursor === 'star')));
     ok('no moved frame goes out', !sent.slice(before).some(m => m && /^(appearance|set-room-title)$/.test(m.type)));
+});
+
+await section('the last colour and cursor ride on later presence', async () => {
+    const fx = await fixture();
+    const {sent} = fx;
+    await welcome2(fx);
+    fx.collab.setAppearance({color: '#22aa66', style: 'heart'});
+    const styled = m => m && m.type === 'presence' && m.color === '#22aa66' && m.cursor === 'heart';
+    let before = sent.length;
+    fx.emit('welcome', welcome({proto: 2, version: 1, hasSnapshot: true}));
+    await settle();
+    ok('the presence after a new welcome carries them', sent.slice(before).some(styled),
+        sent.slice(before).filter(m => m && m.type === 'presence'));
+    before = sent.length;
+    fx.emit('peer-joined', {peer: {id: 'pal', name: 'Pal', color: '#123456'}});
+    await settle();
+    ok('so does the hello to a new peer', sent.slice(before).some(styled),
+        sent.slice(before).filter(m => m && m.type === 'presence'));
+});
+
+await section('a refused room title says so', async () => {
+    const fx = await fixture();
+    const {calls} = fx;
+    await welcome2(fx);
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    const patches = () => calls.filter(c => c.method === 'PATCH' && c.url === 'https://sq.test/api/rooms/blue%20fox');
+    fx.status['/api/rooms/blue%20fox'] = 400;
+    fx.collab.setRoomTitle('Bad name');
+    ok('a 400 toasts that the name was not saved', await waitFor(() => toasts.length === 1) &&
+        /room name was not saved/.test(toasts[0]), toasts);
+    fx.status['/api/rooms/blue%20fox'] = 403;
+    fx.collab.setRoomTitle('Bad name');
+    ok('the old title came back, so the same name is tried again', await waitFor(() => patches().length === 2),
+        patches().length);
+    ok('a 403 says only the owner can rename', await waitFor(() => toasts.length === 2) &&
+        /Only the room owner/.test(toasts[1]), toasts);
+    delete fx.status['/api/rooms/blue%20fox'];
+    fx.collab.setRoomTitle('Good name');
+    await settle(200);
+    ok('a saved title says nothing', toasts.length === 2, toasts);
 });
 
 await section('a first join answered with a replay loads the room', async () => {

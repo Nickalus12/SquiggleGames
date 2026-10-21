@@ -37,18 +37,14 @@ ok('nothing drifted plans nothing', planDriftRepair([], local, local).length ===
 {
     const remote = project([target('Cat', {blocks: block('looks_show')}), target('Fox')]);
     const steps = planDriftRepair(['Cat'], local, remote);
-    ok('a blocks-only change swaps the blocks', steps.length === 1 && steps[0].kind === 'blocks' &&
+    ok('a blocks-only change replaces the sprite from the head', steps.length === 1 && steps[0].name === 'Cat' &&
         steps[0].remote.blocks.a.opcode === 'looks_show', steps);
 }
 {
-    const remote = project([target('Cat', {variables: {v: ['score', 1]}}), target('Fox')]);
-    const steps = planDriftRepair(['Cat'], local, remote);
-    ok('a wider change replaces the target', steps.length === 1 && steps[0].kind === 'target', steps);
-}
-{
-    const costume = {assetId: 'c'.repeat(32), md5ext: `${'c'.repeat(32)}.svg`, dataFormat: 'svg', name: 'one'};
-    const remote = project([target('Cat', {costumes: [costume]}), target('Fox')]);
-    ok('a new costume replaces the target', planDriftRepair(['Cat'], local, remote)[0].kind === 'target');
+    const remote = project([target('Cat', {variables: {v: ['score', 1]}}), target('Fox', {x: 5})]);
+    const steps = planDriftRepair(['Cat', 'Fox'], local, remote);
+    ok('a wider change replaces each drifted sprite', steps.map(step => step.name).join() === 'Cat,Fox' &&
+        steps[0].remote.variables.v[1] === 1 && steps[1].remote.x === 5, steps);
 }
 {
     const remote = project([target('Fox')]);
@@ -57,13 +53,16 @@ ok('nothing drifted plans nothing', planDriftRepair([], local, local).length ===
 {
     const remote = {targets: [target('Stage', {isStage: true, layerOrder: 0, variables: {v: ['g', 1]}}),
         target('Cat'), target('Fox')]};
-    ok('a stage beyond its blocks resyncs', planDriftRepair(['Stage'], local, remote) === null);
+    ok('a stage drift resyncs', planDriftRepair(['Stage'], local, remote) === null);
 }
 {
     const remote = {targets: [target('Stage', {isStage: true, layerOrder: 0, blocks: block('event_whenflagclicked')}),
         target('Cat'), target('Fox')]};
-    const steps = planDriftRepair(['Stage'], local, remote);
-    ok('a stage with only new blocks swaps them', steps && steps[0].kind === 'blocks', steps);
+    ok('a stage with only new blocks resyncs too', planDriftRepair(['Stage'], local, remote) === null);
+}
+{
+    const remote = {targets: [target('Cat', {isStage: true}), target('Fox')]};
+    ok('a sprite that is the stage in the head resyncs', planDriftRepair(['Cat'], local, remote) === null);
 }
 ok('more than the cap resyncs',
     planDriftRepair(Array.from({length: DRIFT_REPAIR_MAX + 1}, (_, i) => `S${i}`), local, local) === null);

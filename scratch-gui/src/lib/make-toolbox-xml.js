@@ -1,6 +1,6 @@
 import LazyScratchBlocks from './tw-lazy-scratch-blocks';
 import {defaultBlockColors} from './themes';
-import {MODE_RULES, filterCategories} from './rules/toolbox-mode.js';
+import {MODE_DEVICE, MODE_RULES, filterCategories} from './rules/toolbox-mode.js';
 
 const categorySeparator = '<sep gap="36"/>';
 
@@ -799,11 +799,11 @@ const xmlClose = '</xml>';
  * @param {?string} backdropName - The name of the default selected backdrop dropdown.
  * @param {?string} soundName -  The name of the default selected sound dropdown.
  * @param {?object} colors - The colors for the theme.
+ * @param {?string} mode - 'rules' for the Game Rules sprite, 'device' for everything else.
  * @returns {string} - a ScratchBlocks-style XML document for the contents of the toolbox.
  */
 const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categoriesXML = [],
-    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors, ...modeArgs) {
-    const [mode] = modeArgs;
+    costumeName = '', backdropName = '', soundName = '', colors = defaultBlockColors, mode = MODE_DEVICE) {
     isStage = isInitialSetup || isStage;
     const gap = [categorySeparator];
     const rulesMode = mode === MODE_RULES && !isStage;

@@ -145,8 +145,10 @@ const readSetup = (target, runtime) => {
 };
 
 const markPlayerSprite = (runtime, name) => {
-    playerSprites(runtime).forEach(sprite => {
-        const chosen = sprite.getName() === name;
+    const sprites = playerSprites(runtime);
+    const want = name || (sprites[0] ? sprites[0].getName() : '');
+    sprites.forEach(sprite => {
+        const chosen = sprite.getName() === want;
         if (chosen === isPlayerSprite(sprite)) return;
         const before = storageOf(sprite);
         const after = chosen ? {role: PLAYER_ROLE, v: RULES_VERSION} : null;

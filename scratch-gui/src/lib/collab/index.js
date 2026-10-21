@@ -25,7 +25,7 @@ import {createGameLink} from '../together2/session.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
-import {DRIFT_REPAIR_MAX, planDriftRepair, replaceBlocks} from './drift.js';
+import {DRIFT_REPAIR_MAX, planDriftRepair} from './drift.js';
 import {showPortabilityNote} from '../../components/squiggle-only-notice';
 import {
     MD5EXT,
@@ -83,6 +83,7 @@ const state = {
     pendingSpriteInfo: null, // trailing sprite-info so the final drag position always lands
     spriteInfoTimer: null,
     lastPresence: {status: null, sprite: null, sentAt: 0},
+    appearance: {},
     lastSnapshotKey: null,
     snapshotRef: 0,
     unackedSnapshots: [],
@@ -1212,13 +1213,18 @@ const applySnapshot = async msg => {
          * say so, so a half-loaded editor is a visible, self-correcting state
          * rather than a silent one.
          */
-        // eslint-disable-next-line no-console
-        console.error('[collab] failed to apply snapshot', e);
-        overlay.toast('⚠️ Could not load the project, retrying', '#f0912b');
-        forceNextApply();
-        // Declared below, like the rest of the mutually-referring handlers here.
-        // eslint-disable-next-line no-use-before-define
-        requestResync('snapshot load failed');
+        if (e && e.code === 'no-gunzip') {
+            log.warn('[collab] no DecompressionStream');
+            overlay.banner(OLD_BROWSER_TEXT, {kind: 'update'});
+        } else {
+            // eslint-disable-next-line no-console
+            console.error('[collab] failed to apply snapshot', e);
+            overlay.toast('⚠️ Could not load the project, retrying', '#f0912b');
+            forceNextApply();
+            // Declared below, like the rest of the mutually-referring handlers here.
+            // eslint-disable-next-line no-use-before-define
+            requestResync('snapshot load failed');
+        }
     } finally {
         // Same gate: this function is the only writer of snapshotLoading, and
         // it cannot be re-entered while the flag is up.
@@ -1946,10 +1952,8 @@ const repairDrift = async (pointer, off) => {
     for (const step of steps) {
         const local = findTargetByName(step.name);
         if (!local) throw new Error('drift target gone');
-        if (step.kind === 'blocks') replaceBlocks(local, step.remote.blocks);
-        else await replaceDriftedTarget(local, step.remote);
+        await replaceDriftedTarget(local, step.remote);
     }
-    if (steps.some(step => step.kind === 'blocks')) state.vm.refreshWorkspace();
     return steps.length;
 };
 
@@ -2081,19 +2085,13 @@ const nameClash = (kind, name, fromPeer) => {
     }, 3000);
 };
 
-const kitSetTarget = (name, ext) => {
-    const named = findTargetByName(name);
-    if (named || ext !== 'together' || !state.vm) return named;
-    return state.vm.runtime.targets.find(t => t.isOriginal && isRulesTarget(t)) || null;
-};
-
 const applyRemoteKitSet = msg => {
     if (state.snapshotLoading) {
         if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
         else requestResync('kit-set replay queue full');
         return;
     }
-    if (!applyKitSet(state.vm.runtime, msg, kitSetTarget)) {
+    if (!applyKitSet(state.vm.runtime, msg, findTargetByName)) {
         log.warn('[collab] kit-set not applied', msg && msg.scope, msg && msg.ext);
     }
 };
@@ -2777,6 +2775,7 @@ const applyModerated = msg => {
     if (canWrite() && changedProject) scheduleSnapshot(true);
 };
 
+const OLD_BROWSER_TEXT = 'This browser is too old to open this room. Try a newer browser.';
 const TOO_BIG_TEXT = 'This project is too big to save. Delete a few costumes or sounds to fix it.';
 const SAVE_BLOCKED_TEXT = {
     '401': 'You are signed out, so this room cannot save. Sign in again to keep saving.',
@@ -2824,6 +2823,8 @@ const CLOSE_TEXT = {
 };
 const RELOAD_TEXT = 'Squiggle has a new version. Reload the page to keep working together.';
 const GAME_REFUSED_TEXT = 'That game message has words that are not allowed here.';
+const TITLE_REFUSED_TEXT = 'That room name was not saved. Try a different name.';
+const TITLE_OWNER_TEXT = 'Only the room owner can rename this room.';
 
 const applyRole = (role, canEditFlag) => {
     if (typeof role !== 'string' || !role) return;
@@ -2940,7 +2941,7 @@ const wireSocket = () => {
         const unsent = state.offlineEdits;
         state.offlineEdits = false;
         state.lastPresence = {status: null, sprite: null, sentAt: 0};
-        client.send({type: 'presence', sprite: editingTargetName(), status: 'here'});
+        client.send({type: 'presence', sprite: editingTargetName(), status: 'here', ...state.appearance});
         // Seed Together shared variables for late joiners / reconnects.
         state.roomGame = msg.game === true;
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
@@ -3077,7 +3078,8 @@ const wireSocket = () => {
         client.send({
             type: 'presence',
             sprite: state.lastPresence.sprite || editingTargetName(),
-            status: state.lastPresence.status || 'here'
+            status: state.lastPresence.status || 'here',
+            ...state.appearance
         });
         netEmit('peer-joined', msg);
     });
@@ -3208,12 +3210,12 @@ const detachWorkspace = () => {
 
 const setAppearance = ({color, style}) => {
     if (!state.active) return false;
+    state.appearance = {color, cursor: style};
     client.send({
         type: 'presence',
         sprite: state.lastPresence.sprite || editingTargetName(),
         status: state.lastPresence.status || 'here',
-        color,
-        cursor: style
+        ...state.appearance
     });
     if (state.snapshotHttp) {
         state.snapshotHttp.patchMe({color, cursor: style})
@@ -3244,6 +3246,7 @@ const setRoomTitle = title => {
     state.snapshotHttp.patchRoom({title: clean}).catch(e => {
         if (state.appliedTitle === clean) state.appliedTitle = previous;
         log.warn('[collab] room title not saved', e && e.status);
+        overlay.toast(`✏️ ${e && e.status === 403 ? TITLE_OWNER_TEXT : TITLE_REFUSED_TEXT}`, '#8a8fa3');
     });
 };
 

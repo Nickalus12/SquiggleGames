@@ -31,6 +31,21 @@ section('tick apply order');
     ok('a hit records the shooter', state.lastHit === 2);
 }
 
+section('a keyframe forgets a shooter who is gone');
+{
+    const state = createGameState();
+    applyTick(state, {t: 10, kf: 1, y: {names: {1: 'Me', 2: 'Pal', 3: 'Bo'}}, e: [{hit: 2}]});
+    applyTick(state, {t: 50, kf: 1, y: {names: {1: 'Me', 2: 'Pal'}}});
+    ok('a keyframe that still names the shooter keeps them', state.lastHit === 2, state.lastHit);
+    applyTick(state, {t: 90, kf: 1, y: {names: {1: 'Me', 3: 'Bo'}}});
+    ok('a keyframe without the shooter makes it nobody', state.lastHit === 0, state.lastHit);
+    applyTick(state, {t: 91, e: [{hit: 3}]});
+    applyTick(state, {t: 130, kf: 1});
+    ok('a keyframe with no names at all makes it nobody', state.lastHit === 0, state.lastHit);
+    applyTick(state, {t: 170, kf: 1, y: {names: {4: 'Ann'}}, e: [{hit: 4}]});
+    ok('a hit in the keyframe itself still counts', state.lastHit === 4, state.lastHit);
+}
+
 section('tick.y');
 {
     const state = createGameState();

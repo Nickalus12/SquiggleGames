@@ -74,6 +74,15 @@ ok('not executable', vm.runtime.executableTargets.indexOf(target) === -1);
 ok('a second call returns the same sprite', await ensureRulesSprite(vm) === target && rulesOf(vm).length === 1);
 const [a, b] = await Promise.all([ensureRulesSprite(vm), ensureRulesSprite(vm)]);
 ok('concurrent calls share one sprite', a === target && b === target && rulesOf(vm).length === 1);
+{
+    const bare = new VM();
+    await bare.loadProject(JSON.stringify(project));
+    bare.runtime.extensionStorage = {kit: {keep: 1}};
+    const projectStorage = bare.runtime.extensionStorage;
+    const made = await ensureRulesSprite(bare);
+    ok('a VM without the seam still keeps its project storage', bare.runtime.extensionStorage === projectStorage &&
+        projectStorage.kit.keep === 1 && isRulesTarget(made));
+}
 
 section('save and load');
 target.extensionStorage[RULES_KEY].teams = ['Red', 'Blue'];
@@ -126,6 +135,17 @@ ok('expansions in device mode show only the Open Game Rules button', deviceView
     .filter(c => c.id !== 'together')
     .every(c => !/<block/.test(c.xml) && /callbackData="[a-z]+_openGameRules"/.test(c.xml)));
 ok('rules mode drops the Open Game Rules button', rulesView.every(c => !/openGameRules/.test(c.xml)));
+{
+    const makeToolboxXML = (await import('../make-toolbox-xml.js')).default;
+    const toolboxTypes = (...args) => Array.from(makeToolboxXML(false, false, 'sprite', xml.slice(), '', '', '',
+        undefined, ...args).matchAll(/<block type="([^"]*)"/g), match => match[1]);
+    const asRules = toolboxTypes(MODE_RULES);
+    ok('the toolbox takes the mode by name', asRules.some(t => ruleSet.has(t)) &&
+        asRules.filter(t => t.startsWith('together_')).every(t => ruleSet.has(t)), asRules);
+    ok('no mode means device mode', !toolboxTypes().some(t => ruleSet.has(t)) && toolboxTypes().length > 0);
+    ok('an extra argument after the mode changes nothing',
+        toolboxTypes(MODE_RULES, MODE_DEVICE).join() === asRules.join());
+}
 ok('rule blocks are gold-edged', /"colourTertiary":"#ffc53d"/.test(JSON.stringify(reloaded.runtime.getBlocksJSON())));
 
 section('a viewer opening Game Rules');
@@ -246,6 +266,15 @@ ok('errors carry kid text and a message id', status.get().compile.errors[0].text
     status.get().compile.errors[0].id === 'sq.rules.err.global-var');
 status.apply({hash: 'h', ok: true, phase: 'run', errors: [{code: 'too-much', n: 3}]});
 ok('run errors keep the compile result', status.blocking() && status.get().run.errors[0].n === 3);
+{
+    const rulesSchema = (await import('./rules-schema.js')).default;
+    const cap = rulesSchema.limits.repeat;
+    rulesSchema.limits.repeat = 7;
+    const fresh = (await import('./status.js?repeat=7')).kidText('loop-cap');
+    rulesSchema.limits.repeat = cap;
+    ok('the loop-cap text follows the schema repeat limit', fresh === 'This repeat stopped at 7 times.', fresh);
+    ok('and says the real cap today', kidText('loop-cap') === `This repeat stopped at ${cap} times.`);
+}
 ok('unknown codes fall back to plain words', parseRulesStatus({errors: [{code: 'zzz'}]}).errors[0].text.length > 0);
 {
     const {errorText} = await import('./status.js');

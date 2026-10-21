@@ -145,6 +145,48 @@ section('the game link follows the welcome tick rate');
     link.stop();
 }
 
+section('own game messages and input after stop');
+{
+    const clock = fakeClock();
+    const sockets = [];
+    class SlowSocket {
+        constructor (url) {
+            this.url = url;
+            this.sent = [];
+            this.closed = null;
+            sockets.push(this);
+        }
+        send (text) {
+            this.sent.push(JSON.parse(text));
+        }
+        close (code) {
+            this.closed = code;
+        }
+    }
+    const runtime = {targets: [{isOriginal: true, isStage: true, extensionStorage: {}}, sprite('Cat')], on () {}, off () {}};
+    const messages = [];
+    const link = createGameLink({vm: {runtime}, base: 'wss://sq.test', slug: 'blue', WebSocketImpl: SlowSocket,
+        now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer, onGameMessage: msg => messages.push(msg)});
+    link.start();
+    const ws = sockets[0];
+    ws.onopen();
+    ok('input before the welcome is refused', link.inGame === false &&
+        link.sendInput({g: {action: 'input', name: 'left', value: ''}}) === false);
+    ws.onmessage({data: JSON.stringify({type: 'welcome', slot: 1, ack: 0})});
+    ws.onmessage({data: JSON.stringify({type: 'tick', t: 1, kf: 1, y: {names: {1: 'Me', 2: 'Pal'}},
+        e: [{n: 'mine', v: '', f: 1}, {n: 'theirs', v: 'x', f: 2}]})});
+    ok('an event from my own slot is skipped', messages.map(msg => msg.name).join() === 'theirs', messages);
+    ok('input in the game is taken', link.sendInput({g: {action: 'input', name: 'left', value: ''}}) === true);
+    link.stop();
+    ok('the socket is closing but not closed yet', ws.closed === 1000);
+    ok('input after stop is refused', link.sendInput({g: {action: 'input', name: 'right', value: ''}}) === false);
+    ok('a message after stop is not relayed', link.relay({type: 'game', action: 'msg', name: 'hi', value: ''}) === false);
+    ok('it is no longer in the game', link.inGame === false);
+    clock.advance(200);
+    const ops = ws.sent.filter(frame => frame.type === 'in').reduce((list, frame) => list.concat(frame.g || []), []);
+    ok('only the input before stop went out', ops.map(op => op.name).join() === 'left', ops);
+}
+
 section('the render helpers write into what they are given');
 {
     const buffer = createInterpolationBuffer();

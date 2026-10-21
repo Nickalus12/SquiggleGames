@@ -1,3 +1,4 @@
+import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 
@@ -15,6 +16,13 @@ const jsx = async url => {
         presets: [require.resolve('@babel/preset-react')]
     });
     return out.code;
+};
+
+export const resolve = (specifier, context, next) => {
+    if (!specifier.startsWith('.') || /\.[a-z]+$/.test(specifier) || !context.parentURL) return next(specifier, context);
+    const found = ['.js', '/index.js'].map(ending => new URL(`${specifier}${ending}`, context.parentURL))
+        .find(url => existsSync(url));
+    return next(found ? found.href : specifier, context);
 };
 
 export const load = async (url, context, next) => {

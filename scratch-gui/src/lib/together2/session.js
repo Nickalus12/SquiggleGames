@@ -213,6 +213,7 @@ const createGameLink = ({
         if (!result.applied) return;
         result.events.forEach(event => {
             if (!Number.isInteger(event.f) || event.f === 0 || typeof event.n !== 'string') return;
+            if (session && event.f === session.slot) return;
             if (onGameMessage) {
                 onGameMessage({
                     action: 'msg',
@@ -313,14 +314,14 @@ const createGameLink = ({
             else reset();
         },
         sendInput (input) {
-            if (!session || !session.open || !input) return false;
+            if (!session || !session.open || session.stopped || !input) return false;
             const ops = Array.isArray(input.g) ? input.g : [input.g];
             return ops.filter(Boolean)
                 .map(op => session.queueOp(op))
                 .every(Boolean);
         },
         relay (msg) {
-            const op = session && session.open ? outboundOp(msg) : null;
+            const op = session && session.open && !session.stopped ? outboundOp(msg) : null;
             return op ? session.queueOp(op) : false;
         },
         onTick (cb) {
@@ -330,7 +331,7 @@ const createGameLink = ({
         },
         frame,
         get inGame () {
-            return !!(session && session.open);
+            return !!(session && session.open && !session.stopped);
         },
         get slot () {
             return session ? session.slot : null;

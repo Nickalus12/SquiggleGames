@@ -17,6 +17,7 @@ const MAX_OP_VALUE = 4096;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
+const OUT_ACTIONS = new Set(['input', 'fire', 'msg']);
 
 const gameSocketUrl = (base, slug) => {
     const origin = String(base || '').replace(/\/+$/, '')
@@ -100,7 +101,7 @@ const createGameSession = ({
     };
 
     const sendRaw = frame => {
-        if (!ws || !open) return false;
+        if (!ws) return false;
         try {
             ws.send(JSON.stringify(frame));
             return true;
@@ -159,6 +160,7 @@ const createGameSession = ({
 
     const onWelcome = msg => {
         attempts = 0;
+        open = true;
         const refused = joinedWithResume && slot !== null && Number.isInteger(msg.slot) && msg.slot !== slot;
         if (refused) {
             unacked.length = 0;
@@ -257,7 +259,6 @@ const createGameSession = ({
         ws = socket;
         socket.onopen = () => {
             if (ws !== socket) return;
-            open = true;
             const join = {type: 'join', proto: PROTO};
             if (resume) join.resume = resume;
             joinedWithResume = !!resume;
@@ -303,7 +304,7 @@ const createGameSession = ({
             return true;
         },
         queueOp (op) {
-            if (!op || typeof op !== 'object' || typeof op.action !== 'string') return false;
+            if (!op || typeof op !== 'object' || !OUT_ACTIONS.has(op.action)) return false;
             const cut = cutOp(op);
             const bytes = byteLength(JSON.stringify(cut));
             if (FRAME_HEAD_BYTES + OPS_KEY_BYTES + bytes > MAX_FRAME_BYTES) {
@@ -379,6 +380,7 @@ export {
     MAX_FRAME_BYTES,
     MAX_OP_NAME,
     MAX_OP_VALUE,
+    OUT_ACTIONS,
     cutOp,
     wireValue,
     gameSocketUrl,

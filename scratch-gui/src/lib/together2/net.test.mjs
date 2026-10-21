@@ -59,6 +59,33 @@ section('join and welcome');
     ok('the welcome tick is not a tick seen', session.k === -1, session.k);
 }
 
+section('nothing goes out before the welcome');
+{
+    const {clock, session, ws} = make();
+    ok('an open socket is not open before the welcome', session.open === false);
+    session.setAvatar([0, 0, 90, 1, 1, 0]);
+    session.queueOp({action: 'input', name: 'jump', value: ''});
+    clock.advance(200);
+    ok('only the join went out', ws.sent.length === 1 && ws.sent[0].type === 'join', ws.sent);
+    ws.deliver({type: 'welcome', slot: 2, ack: 0});
+    ok('the welcome opens it', session.open === true);
+    clock.advance(50);
+    ok('the held avatar and op go out after it', ins(ws).length === 1 && ins(ws)[0].s === 1 &&
+        ins(ws)[0].a[0] === 0 && ins(ws)[0].g[0].name === 'jump', ins(ws));
+}
+
+section('only input, fire and msg go out');
+{
+    const {clock, session, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0});
+    const taken = ['input', 'fire', 'msg', 'var', 'spawn', '', 7].map(action => session.queueOp({action, name: 'x'}));
+    ok('the three actions are taken, the rest refused', taken.join() === 'true,true,true,false,false,false,false',
+        taken);
+    clock.advance(50);
+    ok('only they ride the frames', ins(ws).reduce((list, frame) => list.concat(frame.g || []), [])
+        .map(op => op.action).join() === 'input,fire,msg', ins(ws));
+}
+
 section('in frames: leading edge, then 20 a second');
 {
     const {clock, session, ws} = make();
