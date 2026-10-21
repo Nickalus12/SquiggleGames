@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="Together Room">
+  <defs>
+    <g id="sq-tb-pad">
+      <circle cx="-2.4" cy="2" r="1.9"/>
+      <circle cx="2.4" cy="2" r="1.9"/>
+      <rect x="-4.2" y="-2.5" width="8.4" height="5" rx="2.2"/>
+    </g>
+  </defs>
+  <path d="M4 8.2 Q10 0.8 16 8.2" fill="none" stroke="#4D97FF" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="10" cy="3.9" r="1.2" fill="#4D97FF"/>
+  <g transform="translate(5.1 13.4) rotate(-12)">
+    <use xlink:href="#sq-tb-pad" href="#sq-tb-pad" fill="#575E75"/>
+  </g>
+  <g transform="translate(14.9 13.4) rotate(12)">
+    <use xlink:href="#sq-tb-pad" href="#sq-tb-pad" fill="#575E75"/>
+  </g>
+</svg>
