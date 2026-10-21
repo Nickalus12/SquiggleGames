@@ -9,9 +9,9 @@ import styles from './collab-chat.css';
 
 const REASONS = [
     {id: 'mean', label: messages.reasonMean},
-    {id: 'not-for-kids', label: messages.reasonNotForKids},
-    {id: 'private-info', label: messages.reasonPrivate},
-    {id: 'spam', label: messages.reasonSpam}
+    {id: 'unsafe', label: messages.reasonNotForKids},
+    {id: 'personal', label: messages.reasonPrivate},
+    {id: 'other', label: messages.reasonOther}
 ];
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled])';

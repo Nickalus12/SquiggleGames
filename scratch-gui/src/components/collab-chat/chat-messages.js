@@ -191,9 +191,9 @@ export default defineMessages({
         defaultMessage: 'It shares private stuff, like where someone lives',
         description: 'Reason for reporting a chat message'
     },
-    reasonSpam: {
-        id: 'gui.collabChat.reasonSpam',
-        defaultMessage: 'It is spam or keeps repeating',
+    reasonOther: {
+        id: 'gui.collabChat.reasonOther',
+        defaultMessage: 'Something else is wrong, like spam',
         description: 'Reason for reporting a chat message'
     },
     reportSend: {
