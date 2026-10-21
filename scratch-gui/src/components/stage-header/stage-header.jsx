@@ -208,6 +208,10 @@ const StageHeaderComponent = function (props) {
                         isSmall={stageSizeMode === STAGE_SIZE_MODES.small}
                     />
                     <div
+                        className={styles.stageHeaderSlot}
+                        id="sq-stage-header-slot"
+                    />
+                    <div
                         className={styles.stageSizeRow}
                         key="editor" // addons require the HTML element to be not be re-used by in-editor buttons
                     >

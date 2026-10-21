@@ -41,6 +41,15 @@
     display: flex;
 }
 
+.stage-header-slot {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    min-width: 0;
+    margin: 0 var(--sq-space-2, 8px);
+}
+
 .stage-size-toggle-group {
     display: flex;
 }
