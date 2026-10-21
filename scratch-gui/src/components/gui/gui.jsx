@@ -10,6 +10,7 @@ import StageWrapper from '../../containers/stage-wrapper.jsx';
 import Loader from '../loader/loader.jsx';
 import Box from '../box/box.jsx';
 import Alerts from '../../containers/alerts.jsx';
+import TouchGameControls from '../../containers/touch-game-controls.jsx';
 import TWUsernameModal from '../../containers/tw-username-modal.jsx';
 import TWSettingsModal from '../../containers/tw-settings-modal.jsx';
 import TWSecurityManager from '../../containers/tw-security-manager.jsx';
@@ -196,19 +197,26 @@ const GUIComponent = props => {
                             }}
                         />
                     ) : null}
-                    <StageWrapper
-                        isFullScreen={isFullScreen}
-                        isEmbedded={isEmbedded}
-                        isRendererSupported={isRendererSupported()}
-                        isRtl={isRtl}
-                        loading={loading}
-                        stageSize={STAGE_SIZE_MODES.full}
-                        vm={vm}
-                    >
-                        {alertsVisible ? (
-                            <Alerts className={styles.alertsContainer} />
-                        ) : null}
-                    </StageWrapper>
+                    <div className={styles.playerStage}>
+                        <StageWrapper
+                            isFullScreen={isFullScreen}
+                            isEmbedded={isEmbedded}
+                            isRendererSupported={isRendererSupported()}
+                            isRtl={isRtl}
+                            loading={loading}
+                            stageSize={STAGE_SIZE_MODES.full}
+                            vm={vm}
+                        >
+                            {alertsVisible ? (
+                                <Alerts className={styles.alertsContainer} />
+                            ) : null}
+                        </StageWrapper>
+                        <TouchGameControls
+                            player
+                            layout={isFullScreen || isEmbedded ? 'overlay' : 'stage'}
+                            vm={vm}
+                        />
+                    </div>
                     {alwaysEnabledModals}
                 </React.Fragment>
             );

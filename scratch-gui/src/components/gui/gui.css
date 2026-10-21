@@ -316,6 +316,10 @@ $fade-out-distance: 15px;
 }
 
 /* when in the browser's fullscreen mode, we need to put our own background to avoid just having black */
+.player-stage {
+    position: relative;
+}
+
 .fullscreen-background {
     position: absolute;
     top: 0;
