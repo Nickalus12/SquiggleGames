@@ -18,6 +18,8 @@ const PHONE_QUERY = '(max-width: 767px), (max-height: 500px) and (pointer: coars
 const TABLET_QUERY = '(min-width: 768px) and (max-width: 1023px)';
 
 const PHONE_FLYOUT_WIDTH = 180;
+const PHONE_CATEGORY_WIDTH = 60;
+const PHONE_TOOLBOX_WIDTH = PHONE_CATEGORY_WIDTH + PHONE_FLYOUT_WIDTH;
 
 const TARGET_SIZE = 36;
 const TOUCH_TARGET_SIZE = 44;
@@ -107,6 +109,7 @@ export {
     PHONE_QUERY,
     TABLET_QUERY,
     PHONE_FLYOUT_WIDTH,
+    PHONE_TOOLBOX_WIDTH,
     TARGET_SIZE,
     TOUCH_TARGET_SIZE,
     detectLayoutMode,

@@ -4,7 +4,7 @@ import React from 'react';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import SqIcon from '../sq-icon';
-import {closeSheet, getState, subscribe} from './phone-slots';
+import {closeSheet, getState, registerSheetHost, subscribe} from './phone-slots';
 
 import styles from './phone-shell.css';
 
@@ -43,6 +43,7 @@ class PhoneBottomSheet extends React.Component {
     }
     componentDidMount () {
         this.unsubscribe = subscribe(this.handleChange);
+        this.unregisterHost = registerSheetHost();
         if (this.state.sheet) this.focusSheet();
     }
     componentDidUpdate (prevProps, prevState) {
@@ -59,15 +60,16 @@ class PhoneBottomSheet extends React.Component {
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.unregisterHost) this.unregisterHost();
     }
     setSheet (el) {
         this.sheetEl = el;
     }
     focusSheet () {
         if (!this.sheetEl) return;
-        const body = this.sheetEl.querySelector('[data-sheet-body]');
-        const first = (body && body.querySelector(FOCUSABLE)) || this.sheetEl.querySelector(FOCUSABLE);
-        if (first) first.focus();
+        const title = this.sheetEl.querySelector('[data-sheet-title]');
+        const target = title || this.sheetEl.querySelector(FOCUSABLE);
+        if (target) target.focus();
     }
     handleChange (next) {
         if (next.sheet === this.state.sheet) return;
@@ -116,7 +118,9 @@ class PhoneBottomSheet extends React.Component {
                         <header className={styles.sheetHeader}>
                             <h2
                                 className={styles.sheetTitle}
+                                data-sheet-title
                                 id={titleId}
+                                tabIndex={-1}
                             >
                                 {sheet.title}
                             </h2>

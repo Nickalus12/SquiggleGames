@@ -1,6 +1,7 @@
 import {Theme} from '.';
 import AddonHooks from '../../addons/hooks';
 import './global-styles.css';
+import {ensureZoomFilter} from './zoom-filter';
 
 const BLOCK_COLOR_NAMES = [
     // Corresponds to the name of the object in blockColors
@@ -35,6 +36,7 @@ const evaluateCSS = css => {
  */
 const applyGuiColors = theme => {
     const doc = document.documentElement;
+    ensureZoomFilter();
 
     const defaultGuiColors = Theme.light.getGuiColors();
     for (const [name, value] of Object.entries(defaultGuiColors)) {

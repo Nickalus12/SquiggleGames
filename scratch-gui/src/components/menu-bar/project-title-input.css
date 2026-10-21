@@ -9,11 +9,11 @@ can set a width for example or what it should do in a flex box (eg. grow).
 */
 
 .title-field {
-    border: 1px dashed $ui-black-transparent;
-    border-radius: $form-radius;
-    -webkit-border-radius: $form-radius;
-    -moz-border-radius: $form-radius;
-    background-color: $project-title-inactive;
+    border: 1px solid transparent;
+    border-radius: var(--sq-radius-panel, $form-radius);
+    -webkit-border-radius: var(--sq-radius-panel, $form-radius);
+    -moz-border-radius: var(--sq-radius-panel, $form-radius);
+    background-color: var(--sq-menu-bar-control, $project-title-inactive);
     background-clip: padding-box;
     -webkit-background-clip: padding-box;
     height: auto;
@@ -21,29 +21,29 @@ can set a width for example or what it should do in a flex box (eg. grow).
 }
 
 .title-field {
-    color: $menu-bar-foreground;
-    font-weight: bold;
-    font-size: .8rem;
+    color: var(--sq-menu-bar-text, $menu-bar-foreground);
+    font-weight: var(--sq-weight-heavy, 800);
+    font-size: var(--sq-text-md, 16px);
 }
 
 .title-field::placeholder {
-    color: $menu-bar-foreground;
+    color: var(--sq-menu-bar-text, $menu-bar-foreground);
     opacity: 0.8;
-    font-weight: normal;
-    font-size: .8rem;
-    font-style: italic;
+    font-weight: var(--sq-weight-regular, 500);
+    font-size: var(--sq-text-md, 16px);
 }
 
 .title-field:hover {
-    background-color: $project-title-hover;
-    border-color: $ui-black-transparent; /* dont use hover border from custom input */
+    background-color: var(--sq-menu-bar-control-active, $project-title-hover);
+    border-color: transparent;
 }
 
 .title-field:focus {
-    outline:none;
-    border: 1px solid $ui-transparent;
-    -webkit-box-shadow: 0 0 0 calc($space * .5) $ui-white-transparent-default;
-    box-shadow: 0 0 0 calc($space * .5) $ui-white-transparent-default;
+    outline: 2px solid var(--sq-menu-bar-focus, #ffffff);
+    outline-offset: 2px;
+    border: 1px solid transparent;
+    -webkit-box-shadow: none;
+    box-shadow: none;
     background-color: $ui-white;
     color: $text-primary;
 }

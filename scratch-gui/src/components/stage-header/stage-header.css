@@ -41,6 +41,32 @@
     display: flex;
 }
 
+.stage-header-slot {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    min-width: 0;
+    margin: 0 var(--sq-space-2, 8px);
+}
+
+.stage-menu-wrapper {
+    position: relative;
+}
+
+.stage-header-slot.stage-header-slot-stacked {
+    position: absolute;
+    top: $stage-menu-height;
+    left: 0;
+    right: 0;
+    height: 2.25rem;
+    margin: 0;
+}
+
+.stage-header-slot.stage-header-slot-stacked:empty {
+    display: none;
+}
+
 .stage-size-toggle-group {
     display: flex;
 }

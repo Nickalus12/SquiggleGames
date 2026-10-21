@@ -129,7 +129,7 @@
 
 .tab.is-selected {
     height: 90%;
-    color: $looks-secondary;
+    color: var(--sq-accent-text, $looks-secondary);
     background-color: $ui-white;
     z-index: 4; /* Make sure selected is always above */
 }
@@ -410,6 +410,19 @@ $fade-out-distance: 15px;
     bottom: 0;
     z-index: $z-index-alerts;
     background-color: $ui-modal-overlay;
+}
+
+.phone .blocks-wrapper {
+    overflow: hidden;
+}
+
+.phone[data-phone-tab="code"]:not(.phone-palette-open) .blocks-wrapper :global(.injectionDiv) {
+    left: calc(-1 * var(--sq-phone-toolbox, 240px));
+}
+
+[dir="rtl"].phone[data-phone-tab="code"]:not(.phone-palette-open) .blocks-wrapper :global(.injectionDiv) {
+    left: 0;
+    right: calc(-1 * var(--sq-phone-toolbox, 240px));
 }
 
 .phone .tab-list {
