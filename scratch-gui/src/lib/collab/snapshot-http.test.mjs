@@ -104,7 +104,13 @@ section('assets');
     ok('md5ext is id dot format', list[0].md5ext === `${md5(1)}.svg`);
     ok('md5ext accepts the nine api types', ['svg', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'wav', 'mp3', 'ogg']
         .every(ext => MD5EXT.test(`${md5(1)}.${ext}`)));
-    ok('md5ext refuses fonts and unknown types', !MD5EXT.test(`${md5(1)}.ttf`) && !MD5EXT.test(`${md5(1)}.webp`));
+    ok('md5ext accepts the four font types', ['ttf', 'otf', 'woff', 'woff2'].every(ext => MD5EXT.test(`${md5(1)}.${ext}`)));
+    ok('md5ext refuses unknown types', !MD5EXT.test(`${md5(1)}.webp`) && !MD5EXT.test(`${md5(1)}.woff3`));
+    const withFonts = makeVM();
+    withFonts.runtime.fontManager = {serializeAssets: () => [asset(5, 'woff2', 'font-bytes'), asset(1, 'svg', '<svg/>')]};
+    const fonts = projectAssets(withFonts);
+    ok('custom fonts go up with the costumes and sounds', fonts.length === 4 && fonts[3].md5ext === `${md5(5)}.woff2`,
+        fonts.map(a => a.md5ext));
 }
 
 section('gzip');
@@ -240,12 +246,12 @@ section('asset store');
 {
     const added = [];
     const storage = {
-        AssetType: {ImageVector: 'v', ImageBitmap: 'b', Sound: 's'},
+        AssetType: {ImageVector: 'v', ImageBitmap: 'b', Sound: 's', Font: 'f'},
         addWebStore: (types, getUrl) => added.push({types, getUrl})
     };
     const http = createSnapshotHttp({slug: 'r', base: 'https://sq.test'});
     ok('the web store attaches once', attachAssetStore(storage, http) && !attachAssetStore(storage, http));
-    ok('it covers costumes and sounds', JSON.stringify(added[0].types) === '["v","b","s"]');
+    ok('it covers costumes, sounds and fonts', JSON.stringify(added[0].types) === '["v","b","s","f"]');
     ok('assets load from /api/assets by md5ext',
         added[0].getUrl({assetId: md5(7), dataFormat: 'svg'}) === `https://sq.test/api/assets/${md5(7)}.svg`);
 }

@@ -15,7 +15,11 @@ const CONTENT_TYPES = Object.freeze({
     bmp: 'image/bmp',
     wav: 'audio/wav',
     mp3: 'audio/mpeg',
-    ogg: 'audio/ogg'
+    ogg: 'audio/ogg',
+    ttf: 'font/ttf',
+    otf: 'font/otf',
+    woff: 'font/woff',
+    woff2: 'font/woff2'
 });
 
 const MD5EXT = new RegExp(`^[0-9a-f]{32}\\.(${Object.keys(CONTENT_TYPES).join('|')})$`);
@@ -44,20 +48,26 @@ const listOf = (target, getter, field) => {
     return [];
 };
 
+const fontAssets = runtime => {
+    const fonts = runtime && runtime.fontManager;
+    return fonts && typeof fonts.serializeAssets === 'function' ? fonts.serializeAssets() || [] : [];
+};
+
 const projectAssets = vm => {
     const seen = new Map();
-    const targets = (vm && vm.runtime && vm.runtime.targets) || [];
-    targets.forEach(target => {
+    const runtime = vm && vm.runtime;
+    const add = asset => {
+        const md5ext = md5extOf(asset);
+        if (!md5ext || seen.has(md5ext) || !asset.data) return;
+        seen.set(md5ext, {md5ext, dataFormat: asset.dataFormat, data: asset.data});
+    };
+    ((runtime && runtime.targets) || []).forEach(target => {
         if (!target || target.isOriginal === false) return;
         listOf(target, 'getCostumes', 'costumes')
             .concat(listOf(target, 'getSounds', 'sounds'))
-            .forEach(item => {
-                const asset = item && item.asset;
-                const md5ext = md5extOf(asset);
-                if (!md5ext || seen.has(md5ext) || !asset.data) return;
-                seen.set(md5ext, {md5ext, dataFormat: asset.dataFormat, data: asset.data});
-            });
+            .forEach(item => add(item && item.asset));
     });
+    fontAssets(runtime).forEach(add);
     return Array.from(seen.values());
 };
 
@@ -292,7 +302,7 @@ const storesAttached = new WeakSet();
 const attachAssetStore = (storage, http) => {
     if (!storage || typeof storage.addWebStore !== 'function' || storesAttached.has(storage)) return false;
     const types = storage.AssetType || {};
-    const kinds = [types.ImageVector, types.ImageBitmap, types.Sound].filter(Boolean);
+    const kinds = [types.ImageVector, types.ImageBitmap, types.Sound, types.Font].filter(Boolean);
     if (!kinds.length) return false;
     storage.addWebStore(kinds, asset => http.assetUrl(asset));
     storesAttached.add(storage);
