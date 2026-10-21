@@ -1,0 +1,47 @@
+{
+    "noSchema": {
+        "targets": [{"name": "Cat", "scripts": [[{"op": "together_ruleWhenGameStarts"}]]}]
+    },
+    "places": {
+        "rules": {"schema": {
+            "limits": {"spriteBytes": 262144, "vars": 2, "lists": 16, "playerValues": 32, "teams": 1, "boards": 4, "timers": 4},
+            "core": {"control_if": ["CONDITION", "SUBSTACK"], "control_stop": ["STOP_OPTION"], "data_setvariableto": ["VARIABLE", "VALUE"], "data_variable": ["VARIABLE"], "procedures_definition": ["custom_block"], "procedures_prototype": [], "procedures_call": [], "math_number": ["NUM"], "text": ["TEXT"]},
+            "fields": {"control_stop": {"STOP_OPTION": ["this script"]}},
+            "menus": {"gameValues": {"source": "variables"}, "teams": {"source": "teams"}, "sendTo": {"items": ["everyone"]}},
+            "cards": {"together": [
+                {"opcode": "ruleWhenGameStarts", "type": "hat", "text": "when the game starts"},
+                {"opcode": "ruleWhenValueChanges", "type": "hat", "text": "when [VALUE] changes", "args": {"VALUE": {"type": "string", "menu": "gameValues", "default": ""}}},
+                "---",
+                {"opcode": "ruleJoinTeam", "type": "command", "text": "join [TEAM]", "args": {"TEAM": {"type": "string", "menu": "teams", "default": ""}}}
+            ]}
+        }},
+        "targets": [
+            {"isStage": true, "id": "stage", "variables": {"g1": {"name": "global"}}},
+            {"id": "rules", "name": "Game Rules", "rules": {"role": "rules", "v": 1, "teams": ["Red", "Blue"]},
+             "variables": {"r1": {"name": "coins"}, "r2": {"name": "time"}, "r3": {"name": "lives"}},
+             "scripts": [
+                [{"op": "together_ruleWhenGameStarts"},
+                 {"id": "say", "op": "looks_say", "in": {"MESSAGE": "hi"}},
+                 {"id": "glob", "op": "data_setvariableto", "f": {"VARIABLE": ["global", "g1"]}, "in": {"VALUE": 1}},
+                 {"op": "data_setvariableto", "f": {"VARIABLE": ["coins", "r1"]}, "in": {"VALUE": 1}},
+                 {"id": "stopall", "op": "control_stop", "f": {"STOP_OPTION": "all"}}],
+                [{"op": "together_ruleWhenValueChanges", "in": {"VALUE": ["together_menu_gameValues", "gameValues", "coins"]}}],
+                [{"id": "badname", "op": "together_ruleWhenValueChanges", "in": {"VALUE": ["together_menu_gameValues", "gameValues", "gems"]}}],
+                [{"id": "defA", "op": "procedures_definition", "in": {"custom_block": {"op": "procedures_prototype", "shadow": true, "m": {"proccode": "a"}}}},
+                 {"op": "procedures_call", "m": {"proccode": "b"}}],
+                [{"id": "defB", "op": "procedures_definition", "in": {"custom_block": {"op": "procedures_prototype", "shadow": true, "m": {"proccode": "b"}}}},
+                 {"op": "procedures_call", "m": {"proccode": "a"}}],
+                [{"id": "defC", "op": "procedures_definition", "in": {"custom_block": {"op": "procedures_prototype", "shadow": true, "m": {"proccode": "c"}}}},
+                 {"op": "procedures_call", "m": {"proccode": "a"}}]
+             ]},
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"id": "goldHat", "op": "together_ruleWhenGameStarts"}, {"op": "looks_hide"}],
+                [{"op": "event_whenflagclicked"}, {"id": "goldInner", "op": "together_ruleJoinTeam", "in": {"TEAM": ["together_menu_teams", "teams", "Red"]}}]
+            ]}
+        ]
+    },
+    "noRulesSprite": {
+        "rules": {"schema": {"core": {}, "cards": {"together": [{"opcode": "ruleWhenGameStarts", "type": "hat", "text": "x"}]}}},
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [[{"id": "g", "op": "together_ruleWhenGameStarts"}]]}]
+    }
+}

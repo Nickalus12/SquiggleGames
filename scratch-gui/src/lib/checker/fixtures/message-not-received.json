@@ -1,0 +1,31 @@
+{
+    "paired": {
+        "targets": [
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "event_broadcast", "in": {"BROADCAST_INPUT": ["event_broadcast_menu", "BROADCAST_OPTION", "Start", "m1"]}}]
+            ]},
+            {"id": "dog", "name": "Dog", "scripts": [
+                [{"op": "event_whenbroadcastreceived", "f": {"BROADCAST_OPTION": ["start", "m1", "broadcast_msg"]}}]
+            ]}
+        ]
+    },
+    "missing": {
+        "targets": [
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"},
+                 {"id": "send1", "op": "event_broadcast", "in": {"BROADCAST_INPUT": ["event_broadcast_menu", "BROADCAST_OPTION", "win", "m2"]}},
+                 {"op": "event_broadcastandwait", "in": {"BROADCAST_INPUT": ["event_broadcast_menu", "BROADCAST_OPTION", "WIN", "m2"]}}]
+            ]},
+            {"id": "dog", "name": "Dog", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"id": "send2", "op": "squiggletools_broadcastWithData", "in": {"MESSAGE": ["squiggletools_menu_messages", "messages", "score"], "DATA": "5"}}]
+            ]}
+        ]
+    },
+    "dynamic": {
+        "targets": [
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "event_broadcast", "in": {"BROADCAST_INPUT": {"op": "operator_join", "in": {"STRING1": "lev", "STRING2": "el"}}}}]
+            ]}
+        ]
+    }
+}

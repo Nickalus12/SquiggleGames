@@ -1,0 +1,30 @@
+{
+    "noWorld": {
+        "targets": [{"name": "Cat", "scripts": [[{"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "lava"}}]]}]
+    },
+    "world": {
+        "world": {"levels": ["Cave", "Sky"], "tiles": ["grass", "stone"], "tilesets": ["Tiles"], "canCreateTile": true},
+        "targets": [
+            {"isStage": true, "id": "stage", "costumes": [{"name": "backdrop1"}]},
+            {"id": "tiles", "name": "Tiles", "costumes": [{"name": "Water"}]},
+            {"id": "cat", "name": "Cat", "costumes": [{"name": "cat-a"}], "scripts": [
+                [{"op": "event_whenflagclicked"},
+                 {"op": "squiggleworld_useLevel", "in": {"LEVEL": ["squiggleworld_menu_levels", "levels", "cave"]}},
+                 {"id": "lvl", "op": "squiggleworld_useLevel", "in": {"LEVEL": ["squiggleworld_menu_levels", "levels", "Moon"]}},
+                 {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "Grass"}},
+                 {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "water"}},
+                 {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "empty"}},
+                 {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "3"}},
+                 {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "cat-a"}},
+                 {"id": "tile", "op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "lava"}}]
+            ]}
+        ]
+    },
+    "levelsOnly": {
+        "world": {"levels": ["Cave"]},
+        "targets": [{"name": "Cat", "scripts": [[
+            {"op": "squiggleworld_useLevel", "in": {"LEVEL": ["squiggleworld_menu_levels", "levels", "Moon"]}},
+            {"op": "squiggleworld_setTile", "in": {"X": 0, "Y": 0, "TILE": "lava"}}
+        ]]}]
+    }
+}
