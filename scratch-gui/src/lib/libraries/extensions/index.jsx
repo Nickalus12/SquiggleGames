@@ -56,6 +56,15 @@ import galleryIcon from './gallery/gallery.svg';
 import togetherIconURL from './together/together.svg';
 import togetherInsetIconURL from './together/together-small.svg';
 
+import squigglescoresIconURL from './squigglescores/squigglescores.svg';
+import squiggleteamsIconURL from './squiggleteams/squiggleteams.svg';
+import squigglearenaIconURL from './squigglearena/squigglearena.svg';
+import squiggleworldIconURL from './squiggleworld/squiggleworld.svg';
+import squigglescenesIconURL from './squigglescenes/squigglescenes.svg';
+import squiggleanimateIconURL from './squiggleanimate/squiggleanimate.svg';
+import squiggletoolsIconURL from './squiggletools/squiggletools.svg';
+import squiggle3dIconURL from './squiggle3d/squiggle3d.svg';
+
 import cooldownsIconURL from './cooldowns/icon.svg';
 import healthbarsIconURL from './healthbars/icon.svg';
 import textengineIconURL from './textengine/icon.svg';
@@ -83,7 +92,170 @@ export default [
                 id="gui.extension.together.description"
             />
         ),
-        tags: ['scratch', 'tw'],
+        tags: ['multiplayer'],
+        featured: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Scores and Rounds"
+                description="Name for the Scores and Rounds expansion, which needs a Together room"
+                id="sq.extension.squigglescores.name"
+            />
+        ),
+        extensionId: 'squigglescores',
+        iconURL: squigglescoresIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Keep score, play in rounds and crown the winner."
+                description="Description for the Scores and Rounds expansion"
+                id="sq.extension.squigglescores.description"
+            />
+        ),
+        tags: ['multiplayer', 'ui'],
+        featured: true,
+        togetherRequired: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Teams and Items"
+                description="Name for the Teams and Items expansion, which needs a Together room"
+                id="sq.extension.squiggleteams.name"
+            />
+        ),
+        extensionId: 'squiggleteams',
+        iconURL: squiggleteamsIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Pick teams and give players things to find and use."
+                description="Description for the Teams and Items expansion"
+                id="sq.extension.squiggleteams.description"
+            />
+        ),
+        tags: ['multiplayer'],
+        featured: true,
+        togetherRequired: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Arena"
+                description="Name for the Arena expansion, which needs a Together room"
+                id="sq.extension.squigglearena.name"
+            />
+        ),
+        extensionId: 'squigglearena',
+        iconURL: squigglearenaIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Health, hits and respawns for battle games."
+                description="Description for the Arena expansion"
+                id="sq.extension.squigglearena.description"
+            />
+        ),
+        tags: ['multiplayer', 'world'],
+        featured: true,
+        togetherRequired: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="World"
+                description="Name for the World kit"
+                id="sq.extension.squiggleworld.name"
+            />
+        ),
+        extensionId: 'squiggleworld',
+        iconURL: squiggleworldIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Build big levels out of tiles and follow the action with a camera."
+                description="Description for the World kit"
+                id="sq.extension.squiggleworld.description"
+            />
+        ),
+        tags: ['world'],
+        featured: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Scenes"
+                description="Name for the Scenes kit"
+                id="sq.extension.squigglescenes.name"
+            />
+        ),
+        extensionId: 'squigglescenes',
+        iconURL: squigglescenesIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Switch between levels, menus and cutscenes."
+                description="Description for the Scenes kit"
+                id="sq.extension.squigglescenes.description"
+            />
+        ),
+        tags: ['world'],
+        featured: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Animate"
+                description="Name for the Animate kit"
+                id="sq.extension.squiggleanimate.name"
+            />
+        ),
+        extensionId: 'squiggleanimate',
+        iconURL: squiggleanimateIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Make sprites glide, bounce and play costume clips."
+                description="Description for the Animate kit"
+                id="sq.extension.squiggleanimate.description"
+            />
+        ),
+        tags: ['fx'],
+        featured: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Game Tools"
+                description="Name for the Game Tools kit"
+                id="sq.extension.squiggletools.name"
+            />
+        ),
+        extensionId: 'squiggletools',
+        iconURL: squiggletoolsIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Move toward a spot, roll a chance and send messages with data."
+                description="Description for the Game Tools kit"
+                id="sq.extension.squiggletools.description"
+            />
+        ),
+        tags: ['world'],
+        featured: true
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="3D"
+                description="Name for the 3D kit"
+                id="sq.extension.squiggle3d.name"
+            />
+        ),
+        extensionId: 'squiggle3d',
+        iconURL: squiggle3dIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Turn your tile levels into a 3D world you can walk through."
+                description="Description for the 3D kit"
+                id="sq.extension.squiggle3d.description"
+            />
+        ),
+        tags: ['world', 'fx'],
         featured: true
     },
     {
@@ -104,7 +276,7 @@ export default [
                 id="gui.extension.cooldowns.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['world'],
         featured: true
     },
     {
@@ -125,7 +297,7 @@ export default [
                 id="gui.extension.healthbars.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['ui', 'fx'],
         featured: true
     },
     {
@@ -146,7 +318,7 @@ export default [
                 id="gui.extension.textengine.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['ui', 'fx'],
         featured: true
     },
     {
@@ -167,7 +339,7 @@ export default [
                 id="gui.extension.vfx.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['fx'],
         featured: true
     },
     {
@@ -188,7 +360,7 @@ export default [
                 id="gui.extension.particles.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['fx'],
         featured: true
     },
     {
@@ -209,7 +381,7 @@ export default [
                 id="gui.extension.music.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -230,7 +402,7 @@ export default [
                 id="gui.extension.pen.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -251,7 +423,7 @@ export default [
                 id="gui.extension.videosensing.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -273,7 +445,7 @@ export default [
                 id="tw.extension.faceSensing.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -295,7 +467,7 @@ export default [
                 id="gui.extension.text2speech.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         internetConnectionRequired: true
     },
@@ -318,7 +490,7 @@ export default [
                 id="gui.extension.translate.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         internetConnectionRequired: true
     },
@@ -335,7 +507,7 @@ export default [
                 id="gui.extension.makeymakey.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -351,7 +523,7 @@ export default [
                 id="gui.extension.microbit.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         disabled: false,
         bluetoothRequired: true,
@@ -382,7 +554,7 @@ export default [
                 id="gui.extension.ev3.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         disabled: false,
         bluetoothRequired: true,
@@ -413,7 +585,7 @@ export default [
                 id="gui.extension.boost.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         disabled: false,
         bluetoothRequired: true,
@@ -445,7 +617,7 @@ export default [
                 id="gui.extension.wedo2.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         disabled: false,
         bluetoothRequired: true,
@@ -477,7 +649,7 @@ export default [
                 id="gui.extension.gdxfor.description"
             />
         ),
-        tags: ['scratch'],
+        tags: ['classic'],
         featured: true,
         disabled: false,
         bluetoothRequired: true,
@@ -513,7 +685,7 @@ export default [
                 id="tw.customReporters.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['classic'],
         incompatibleWithScratch: true,
         featured: true
     },
@@ -538,7 +710,7 @@ export default [
             />
         ),
         incompatibleWithScratch: true,
-        tags: ['tw'],
+        tags: ['classic'],
         featured: true
     },
     {
@@ -558,7 +730,7 @@ export default [
                 id="tw.customExtension.description"
             />
         ),
-        tags: ['tw'],
+        tags: ['classic'],
         featured: true
         // Not marked as incompatible with Scratch so that clicking on it doesn't show a prompt
     }
@@ -586,7 +758,7 @@ export const galleryLoading = {
             id="tw.extensionGallery.loading"
         />
     ),
-    tags: ['tw'],
+    tags: ['classic'],
     featured: true
 };
 
@@ -612,7 +784,7 @@ export const galleryMore = {
             id="tw.extensionGallery.more"
         />
     ),
-    tags: ['tw'],
+    tags: ['classic'],
     featured: true
 };
 
@@ -638,6 +810,6 @@ export const galleryError = {
             id="tw.extensionGallery.error"
         />
     ),
-    tags: ['tw'],
+    tags: ['classic'],
     featured: true
 };
