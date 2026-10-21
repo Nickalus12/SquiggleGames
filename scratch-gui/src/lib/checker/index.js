@@ -109,22 +109,34 @@ const squiggleOnly = () => {
     return {squiggleOnlyIds: ids, kitNames};
 };
 
-const buildContext = (runtime, options) => Object.assign(
-    {},
-    opcodeSets(runtime),
-    {monitored: monitoredIds(runtime)},
-    worldContext(options.win),
-    squiggleOnly(),
-    {
-        rules: call(options.getRulesSchema, null) ? {schema: options.getRulesSchema()} : null,
-        rulesStatus: call(options.getRulesStatus, null)
-    }
-);
+const buildContext = (runtime, options) => {
+    const schema = call(options.getRulesSchema, null);
+    return Object.assign(
+        {},
+        opcodeSets(runtime),
+        {monitored: monitoredIds(runtime)},
+        worldContext(options.win),
+        squiggleOnly(),
+        {
+            rules: schema ? {schema} : null,
+            rulesStatus: call(options.getRulesStatus, null)
+        }
+    );
+};
 
-const runChecks = model => {
+const safeRule = (rule, model) => {
+    try {
+        const found = rule(model);
+        return Array.isArray(found) ? found : [];
+    } catch (e) {
+        return [];
+    }
+};
+
+const runChecks = (model, rules) => {
     const items = [];
-    RULES.forEach(rule => {
-        items.push(...rule(model));
+    (rules || RULES).forEach(rule => {
+        items.push(...safeRule(rule, model));
     });
     return sortItems(items);
 };
@@ -179,8 +191,8 @@ const createChecker = options => {
             model.targets.push(snapshotTarget(target));
         });
         const items = [];
-        RULES.forEach(rule => units.push(() => {
-            items.push(...rule(model));
+        (options.rules || RULES).forEach(rule => units.push(() => {
+            items.push(...safeRule(rule, model));
         }));
         let at = 0;
         const slice = deadline => {

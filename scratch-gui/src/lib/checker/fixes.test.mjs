@@ -1,6 +1,6 @@
 import {harness} from './fixtures/load.mjs';
 
-const {createFixer, escapeXml, receiverXml, waitXml, GLOW_MS} = await import('./fixes.js');
+const {createFixer, copyStack, escapeXml, receiverXml, waitXml, GLOW_MS} = await import('./fixes.js');
 const {ok, done} = harness();
 
 const makeWorld = () => {
@@ -64,12 +64,26 @@ const makeWorld = () => {
             other: {id: 'other', opcode: 'motion_turnright', next: null, parent: null, inputs: {}, fields: {},
                 topLevel: true}
         }}},
-        rules: {id: 'rules', blocks: {_blocks: {}}},
-        stage: {id: 'stage', blocks: {_blocks: {}}}
+        rules: {id: 'rules', isOriginal: true, blocks: {_blocks: {
+            ruleHat: {id: 'ruleHat', opcode: 'together_ruleWhenGameStarts', next: 'say', parent: null, inputs: {},
+                fields: {}, topLevel: true, x: 1, y: 2},
+            say: {id: 'say', opcode: 'looks_say', next: 'tail', parent: 'ruleHat', inputs: {
+                MESSAGE: {name: 'MESSAGE', block: 'text', shadow: 'text'}
+            }, fields: {}, topLevel: false},
+            text: {id: 'text', opcode: 'text', next: null, parent: 'say', inputs: {}, fields: {}, shadow: true,
+                topLevel: false},
+            tail: {id: 'tail', opcode: 'together_setRule', next: null, parent: 'say', inputs: {}, fields: {},
+                topLevel: false}
+        }}},
+        stage: {id: 'stage', isStage: true, blocks: {_blocks: {}}}
     };
+    targets.cat.isOriginal = true;
     const vm = {
         editingTarget: targets.stage,
-        runtime: {getTargetById: id => targets[id] || null},
+        runtime: {
+            getTargetById: id => targets[id] || null,
+            targets: [targets.stage, targets.rules, targets.cat]
+        },
         setEditingTarget: id => {
             log.push(['edit', id]);
             setImmediate(() => {
@@ -77,11 +91,13 @@ const makeWorld = () => {
             });
         },
         shareBlocksToTarget: (list, to, from) => {
+            shared.push(list);
             log.push(['share', list.map(entry => entry.id), to, from]);
             return Promise.resolve();
         }
     };
     const timers = [];
+    const shared = [];
     let clock = 0;
     const win = {SquiggleWorld: {createScene: name => log.push(['createScene', name])}};
     const fixer = createFixer({
@@ -96,7 +112,7 @@ const makeWorld = () => {
         }),
         setTimer: (fn, ms) => timers.push({fn, ms})
     });
-    return {log, groups, block, blocks, variables, vm, timers, fixer, win};
+    return {log, groups, block, blocks, variables, vm, timers, fixer, win, shared, targets};
 };
 
 const has = (log, entry) => log.some(row => JSON.stringify(row) === JSON.stringify(entry));
@@ -142,8 +158,11 @@ ok('remove the calls heals the stacks in one group', result && has(world.log, ['
 
 world = makeWorld();
 world.block('loose');
-result = await world.fixer.applyFix({fix: 'clean-up', fixData: {targetId: 'cat', blockIds: ['loose']}});
-ok('clean up runs the workspace clean up', result && has(world.log, ['cleanUp']));
+world.block('loose2');
+result = await world.fixer.applyFix({fix: 'delete-loose', fixData: {targetId: 'cat', blockIds: ['loose', 'loose2', 'gone']}});
+ok('delete loose blocks disposes every stack whole in one group', result &&
+    has(world.log, ['dispose', 'loose', false, true]) && has(world.log, ['dispose', 'loose2', false, true]) &&
+    !has(world.log, ['cleanUp']) && world.groups.join() === 'true,false');
 
 world = makeWorld();
 result = await world.fixer.applyFix({fix: 'delete-variable', fixData: {targetId: 'stage', variableId: 'v1'}});
@@ -159,13 +178,54 @@ ok('move it copies the whole stack to Game Rules, then deletes the original', re
     world.log.findIndex(row => row[0] === 'share') < world.log.findIndex(row => row[0] === 'dispose'));
 
 world = makeWorld();
+world.block('n2');
+result = await world.fixer.applyFix({fix: 'move-to-rules',
+    fixData: {targetId: 'cat', blockId: 'n2', rulesTargetId: 'rules'}});
+ok('move it unplugs a nested gold block and heals the stack it sat in', result &&
+    has(world.log, ['share', ['n2'], 'rules', 'cat']) && has(world.log, ['dispose', 'n2', true, true]) &&
+    world.shared[0][0].topLevel === true && world.shared[0][0].parent === null && world.shared[0][0].next === null);
+ok('the source blocks are not touched by the copy', world.targets.cat.blocks._blocks.n2.parent === 'top' &&
+    world.targets.cat.blocks._blocks.n2.topLevel === false);
+
+world = makeWorld();
+world.block('say');
+world.vm.editingTarget = world.targets.cat;
+result = await world.fixer.applyFix({fix: 'move-out', fixData: {targetId: 'rules', blockId: 'say'}});
+ok('move it takes a device-only block out of Game Rules to the sprite you were editing', result &&
+    has(world.log, ['edit', 'rules']) && has(world.log, ['share', ['say', 'text'], 'cat', 'rules']) &&
+    has(world.log, ['dispose', 'say', true, true]));
+
+world = makeWorld();
+world.block('say');
+world.vm.editingTarget = world.targets.rules;
+result = await world.fixer.applyFix({fix: 'move-out', fixData: {targetId: 'rules', blockId: 'say'}});
+ok('editing Game Rules sends it to the first other sprite', result &&
+    has(world.log, ['share', ['say', 'text'], 'cat', 'rules']));
+
+world = makeWorld();
+world.block('say');
+world.vm.editingTarget = world.targets.rules;
+world.vm.runtime.targets = [world.targets.rules];
+result = await world.fixer.applyFix({fix: 'move-out', fixData: {targetId: 'rules', blockId: 'say'}});
+ok('with nowhere to go it is not fixed', result === false && !world.log.some(row => row[0] === 'dispose'));
+
+const rulesBlocks = makeWorld().targets.rules.blocks._blocks;
+ok('a top stack copies whole', copyStack(rulesBlocks, 'ruleHat').map(entry => entry.id).sort().join() ===
+    'ruleHat,say,tail,text');
+const nestedCopy = copyStack(rulesBlocks, 'say');
+ok('a nested block copies with its inputs and without the blocks under it',
+    nestedCopy.map(entry => entry.id).join() === 'say,text' && nestedCopy[0].x === 0 && nestedCopy[0].topLevel);
+ok('a missing block copies nothing', copyStack(rulesBlocks, 'nope').length === 0);
+
+world = makeWorld();
 result = await world.fixer.applyFix({fix: 'create-scene', fixData: {name: 'Boss'}});
 ok('create it calls the world seam', result && has(world.log, ['createScene', 'Boss']));
 result = await world.fixer.applyFix({fix: 'create-tile', fixData: {name: 'lava'}});
 ok('a world fix the seam lacks reports false', result === false);
 
 ok('no fix, no action', !world.fixer.canFix({fix: null}) && !world.fixer.canFix({fix: 'nuke', fixData: {}}) &&
-    world.fixer.canFix({fix: 'clean-up', fixData: {blockIds: []}}));
+    world.fixer.canFix({fix: 'delete-loose', fixData: {blockIds: []}}) &&
+    !world.fixer.canFix({fix: 'clean-up', fixData: {blockIds: []}}));
 ok('xml escaping covers every special', escapeXml('<a b="c" d=\'e\'>&') ===
     '&lt;a b=&quot;c&quot; d=&apos;e&apos;&gt;&amp;');
 ok('the xml helpers are well formed', receiverXml('x', 'y').endsWith('</block></xml>') &&

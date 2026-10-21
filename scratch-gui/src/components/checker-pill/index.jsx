@@ -7,7 +7,7 @@ import {injectIntl, intlShape} from 'react-intl';
 import {connect} from 'react-redux';
 
 import CheckerPill from './checker-pill.jsx';
-import messages from './messages';
+import messages, {fixedMessage} from './messages';
 import styles from './checker-pill.css';
 import {createChecker} from '../../lib/checker/index.js';
 import {createFixer} from '../../lib/checker/fixes.js';
@@ -129,7 +129,7 @@ class CheckerPillContainer extends React.Component {
             this.setState(state => ({
                 busyKey: null,
                 hidden: done ? state.hidden.concat(entry.key) : state.hidden,
-                notice: this.props.intl.formatMessage(done ? messages.fixed : messages.fixFailed)
+                notice: this.props.intl.formatMessage(done ? fixedMessage(entry.fix) : messages.fixFailed)
             }));
             if (done && this.checker) this.checker.schedule();
         });

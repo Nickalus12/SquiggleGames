@@ -184,4 +184,44 @@ ok('second result delivered', calls === 2 && checker.items() === results);
 checker.stop();
 ok('stop removes the listeners', vm.count('PROJECT_CHANGED') === 0 && vm.runtime.count('PROJECT_LOADED') === 0);
 ok('runChecks is the same pure pipeline', Array.isArray(runChecks({targets: []})) && realNow === c.now);
+
+const boom = () => {
+    throw new Error('unexpected block shape');
+};
+const steady = model => model.targets.map(target => ({
+    rule: 'steady', severity: 'info', key: `steady:${target.id}`, targetId: target.id, values: {}
+}));
+const pure = runChecks({targets: [snap]}, [boom, steady]);
+ok('runChecks skips a throwing rule and keeps the rest', pure.length === 1 && pure[0].rule === 'steady');
+const c2 = clock();
+let guarded = null;
+const guardedChecker = createChecker({
+    vm: makeVm([makeTarget('stage', 'Stage'), makeTarget('cat2', 'Cat', loose)]),
+    win: null,
+    now: c2.now,
+    setTimer: c2.setTimer,
+    clearTimer: c2.clearTimer,
+    scheduler: c2.scheduler,
+    isPhone: () => false,
+    rules: [boom, steady],
+    onResult: items => {
+        guarded = items;
+    }
+});
+guardedChecker.runNow();
+while (c2.runSlice()) {
+    c2.advance(0);
+}
+ok('a throwing rule does not stop the run', Array.isArray(guarded) && guarded.length === 2 &&
+    guarded.every(entry => entry.rule === 'steady'), guarded);
+let schemaCalls = 0;
+const once = buildContext(makeVm([]).runtime, {win: null, getRulesSchema: () => {
+    schemaCalls++;
+    return {cards: []};
+}});
+ok('the rules schema getter is read once', schemaCalls === 1 && once.rules.schema.cards.length === 0);
+const flaky = buildContext(makeVm([]).runtime, {win: null, getRulesSchema: () => {
+    throw new Error('not ready');
+}});
+ok('a throwing schema getter leaves rules empty', flaky.rules === null);
 done();

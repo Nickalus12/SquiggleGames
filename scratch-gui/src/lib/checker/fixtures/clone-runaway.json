@@ -33,5 +33,19 @@
                 {"id": "many", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
             ]}]
         ]}]
+    },
+    "forEachSmall": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_for_each", "in": {"VALUE": 10}, "sub": [
+                {"id": "few", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}]
+        ]}]
+    },
+    "forEachBig": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_for_each", "in": {"VALUE": 5000}, "sub": [
+                {"id": "lots", "op": "control_create_clone_of", "in": {"CLONE_OPTION": ["control_create_clone_of_menu", "CLONE_OPTION", "_myself_"]}}
+            ]}]
+        ]}]
     }
 }

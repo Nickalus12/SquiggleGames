@@ -16,39 +16,42 @@ const SEVERITY_CLASS = {
 const CheckerPill = ({buttonRef, count, intl, onToggle, open, panelId, severity, sheet}) => {
     const spoken = intl.formatMessage(messages.count, {count});
     return (
-        <button
-            aria-controls={open ? panelId : null}
-            aria-expanded={open}
-            aria-haspopup="dialog"
-            className={classNames(styles.pill, SEVERITY_CLASS[severity], {
-                [styles.open]: open,
-                [styles.sheet]: sheet
-            })}
-            data-checker-pill
-            onClick={onToggle}
-            ref={buttonRef}
-            title={spoken}
-            type="button"
-        >
-            <SqIcon
-                className={styles.icon}
-                name="check"
-                size={18}
-            />
-            {sheet ? <span className={styles.label}>{intl.formatMessage(messages.title)}</span> : null}
-            <span
-                aria-hidden="true"
-                className={styles.count}
+        <React.Fragment>
+            <button
+                aria-controls={open ? panelId : null}
+                aria-expanded={open}
+                aria-haspopup="dialog"
+                className={classNames(styles.pill, SEVERITY_CLASS[severity], {
+                    [styles.open]: open,
+                    [styles.sheet]: sheet
+                })}
+                data-checker-pill
+                onClick={onToggle}
+                ref={buttonRef}
+                title={spoken}
+                type="button"
             >
-                {count}
-            </span>
+                <SqIcon
+                    className={styles.icon}
+                    name="check"
+                    size={18}
+                />
+                {sheet ? <span className={styles.label}>{intl.formatMessage(messages.title)}</span> : null}
+                <span
+                    aria-hidden="true"
+                    className={styles.count}
+                >
+                    {count}
+                </span>
+                <span className={styles.srOnly}>{spoken}</span>
+            </button>
             <span
                 aria-live="polite"
                 className={styles.srOnly}
             >
                 {spoken}
             </span>
-        </button>
+        </React.Fragment>
     );
 };
 

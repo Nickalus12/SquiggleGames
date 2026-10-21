@@ -6,6 +6,7 @@ const IntlMessageFormat = require('intl-messageformat');
 const {
     itemMessages, rulesErrorMessages, limitMessages, fixMessages, descriptorFor, itemText, fixLabel
 } = await import('./messages.js');
+const {default: pillMessages, fixedMessage} = await import('../../components/checker-pill/messages.js');
 const {ok, done} = harness();
 
 const intl = {
@@ -23,7 +24,8 @@ const SERVER_CODES = [
     'upload-failed', 'too-much', 'deferred', 'paused', 'loop-cap', 'cut', 'state-full', 'dropped'
 ];
 const FIXES = [
-    'add-receiver', 'remove-calls', 'delete-variable', 'clean-up', 'add-wait', 'move-to-rules', 'create-scene',
+    'add-receiver', 'remove-calls', 'delete-variable', 'delete-loose', 'add-wait', 'move-to-rules', 'move-out',
+    'create-scene',
     'create-level', 'create-tile'
 ];
 
@@ -68,6 +70,10 @@ ok('squiggle-only names the kit', itemText(intl, item('squiggle-only', 'squiggle
 ok('every fix has a label', FIXES.every(fix => fixLabel(intl, item('x', 'x', {}, fix)) === intl.formatMessage(
     fixMessages[fix])));
 ok('no fix, no label', fixLabel(intl, item('x', 'x')) === null);
-ok('no em dashes in any words', [itemMessages, rulesErrorMessages, limitMessages, fixMessages].every(table =>
+ok('delete loose blocks says undo brings them back', fixLabel(intl, item('x', 'x', {}, 'delete-loose')) ===
+    'Delete loose blocks' && intl.formatMessage(fixedMessage('delete-loose')) === 'Deleted. Undo brings them back.');
+ok('other fixes use the plain fixed words', fixedMessage('add-wait') === pillMessages.fixed &&
+    fixedMessage(null) === pillMessages.fixed);
+ok('no em dashes in any words', [itemMessages, rulesErrorMessages, limitMessages, fixMessages, pillMessages].every(table =>
     Object.keys(table).every(key => table[key].defaultMessage.indexOf(String.fromCharCode(0x2014)) === -1)));
 done();

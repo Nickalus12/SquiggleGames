@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
 const IntlMessageFormat = require('intl-messageformat');
 const {
-    KIND_ORDER, readableProccode, insertDom, buildItems, groupResults, isPaletteKey,
+    KIND_ORDER, readableProccode, insertDom, buildItems, groupResults,
     commandItems, checkerItems, myBlockItems, variableItems, spriteItems, worldItems, peerItems, blockItems
 } = await import('./sources.js');
 const {prepare, search} = await import('./fuzzy.js');
@@ -147,12 +147,6 @@ console.log('readableProccode');
 ok('fills inputs and collapses spaces', readableProccode('jump %n  high %b of %s') === 'jump () high <> of ()');
 ok('handles empty', readableProccode(null) === '');
 
-console.log('isPaletteKey');
-ok('ctrl k', isPaletteKey({ctrlKey: true, key: 'k'}));
-ok('cmd K', isPaletteKey({metaKey: true, key: 'K'}));
-ok('plain k is not', !isPaletteKey({key: 'k'}));
-ok('ctrl shift k is not', !isPaletteKey({ctrlKey: true, shiftKey: true, key: 'K'}));
-ok('ctrl alt k is not', !isPaletteKey({ctrlKey: true, altKey: true, key: 'k'}));
 
 console.log('commandItems');
 {

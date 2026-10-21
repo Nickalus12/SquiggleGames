@@ -10,7 +10,7 @@ ok('one item per sprite', loose.length === 1, loose);
 ok('counts both loose stacks', loose[0].values.count === 2 && loose[0].values.sprite === 'Cat');
 ok('points at a loose stack', loose[0].targetId === 'cat' && loose[0].blockId === 'lone');
 ok('info severity', loose[0].severity === 'info');
-ok('fix is clean up with every loose stack', loose[0].fix === 'clean-up' && loose[0].fixData.blockIds.length === 2);
+ok('fix deletes every loose stack', loose[0].fix === 'delete-loose' && loose[0].fixData.blockIds.length === 2);
 ok('single reporters left out to click are not loose', looseBlocks(cases.reporters).length === 0);
 ok('extension hats count as hats', looseBlocks(cases.extensionHat).length === 0);
 const stage = looseBlocks(cases.stage);

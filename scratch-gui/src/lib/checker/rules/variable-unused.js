@@ -2,6 +2,7 @@ import {blockList, fieldId, fieldValue, inputBlock, isCovered, item, stageOf} fr
 
 const RULE = 'variable-unused';
 const READS = Object.freeze(['data_variable', 'data_showvariable', 'data_hidevariable']);
+const DEFAULT_VARIABLE_ID = '`jEk@4|i[#Fk?(8x)AV.-my variable';
 
 const markIds = mark => {
     const ids = new Set();
@@ -55,6 +56,7 @@ const variableUnused = model => {
             const variable = target.variables[varId];
             if (!variable || variable.type !== '' || variable.isCloud) continue;
             if (reads.has(varId) || kept.has(varId)) continue;
+            if (target.isStage && varId === DEFAULT_VARIABLE_ID && !uses.has(varId)) continue;
             if (sensedHere.has(variable.name) || sensed.anywhere.has(variable.name)) continue;
             const used = uses.has(varId);
             items.push(item(RULE, 'info', {
@@ -73,4 +75,5 @@ const variableUnused = model => {
 variableUnused.rule = RULE;
 variableUnused.severity = 'info';
 
+export {DEFAULT_VARIABLE_ID};
 export default variableUnused;

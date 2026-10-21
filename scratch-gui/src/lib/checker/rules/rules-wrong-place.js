@@ -111,11 +111,10 @@ const rulesWrongPlace = model => {
         if (target === rules) continue;
         for (const block of blockList(target)) {
             if (block.shadow || !gold.has(block.opcode)) continue;
-            const movable = !!(rules && block.topLevel);
             add(target, 'outside', {
                 blockId: block.id,
-                fix: movable ? 'move-to-rules' : null,
-                fixData: movable ? {targetId: target.id, blockId: block.id, rulesTargetId: rules.id} : null
+                fix: rules ? 'move-to-rules' : null,
+                fixData: rules ? {targetId: target.id, blockId: block.id, rulesTargetId: rules.id} : null
             });
         }
     }
@@ -125,7 +124,11 @@ const rulesWrongPlace = model => {
     for (const block of blockList(rules)) {
         if (block.shadow) continue;
         if (!allowed.has(block.opcode)) {
-            add(rules, 'unsupported', {blockId: block.id});
+            add(rules, 'unsupported', {
+                blockId: block.id,
+                fix: 'move-out',
+                fixData: {targetId: rules.id, blockId: block.id}
+            });
             continue;
         }
         const allowedFields = schema.fields && schema.fields[block.opcode];

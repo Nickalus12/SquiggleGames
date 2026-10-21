@@ -13,9 +13,15 @@ ok('gold blocks outside Game Rules are reported', outside.length === 2, outside)
 const hat = outside.find(entry => entry.blockId === 'goldHat');
 ok('a gold hat stack can be moved into Game Rules', hat.fix === 'move-to-rules' &&
     hat.fixData.rulesTargetId === 'rules' && hat.fixData.targetId === 'cat');
-ok('a gold block inside another stack has no fix', outside.find(entry => entry.blockId === 'goldInner').fix === null);
+const inner = outside.find(entry => entry.blockId === 'goldInner');
+ok('a gold block inside another stack can be moved into Game Rules too', inner.fix === 'move-to-rules' &&
+    inner.fixData.blockId === 'goldInner' && inner.fixData.rulesTargetId === 'rules' && inner.fixData.targetId === 'cat');
 const unsupported = by('unsupported').map(entry => entry.blockId).sort();
 ok('device-only blocks and disallowed field values are unsupported', unsupported.join() === 'say,stopall', unsupported);
+const say = by('unsupported').find(entry => entry.blockId === 'say');
+ok('a device-only block in Game Rules can be moved out', say.fix === 'move-out' &&
+    say.fixData.targetId === 'rules' && say.fixData.blockId === 'say');
+ok('a disallowed field value has no move', by('unsupported').find(entry => entry.blockId === 'stopall').fix === null);
 ok('a stage variable in Game Rules is global-var', by('global-var').map(entry => entry.blockId).join() === 'glob');
 const names = by('name');
 ok('an unknown game value name is reported', names.length === 1 && names[0].blockId === 'badname' &&

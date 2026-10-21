@@ -2,11 +2,13 @@ import {LOOPS, UNBOUNDED_LOOPS, blocksOf, containers, item, literalNumber, menuV
 
 const RULE = 'clone-runaway';
 const SAFE_REPEAT = 100;
+const COUNTED_INPUTS = Object.freeze({control_repeat: 'TIMES', control_for_each: 'VALUE'});
 
 const runawayLoop = (blocks, entry) => {
     if (UNBOUNDED_LOOPS.indexOf(entry.opcode) !== -1) return true;
-    if (entry.opcode !== 'control_repeat') return LOOPS.indexOf(entry.opcode) !== -1;
-    const times = literalNumber(blocks, entry.block, 'TIMES');
+    const counted = COUNTED_INPUTS[entry.opcode];
+    if (!counted) return LOOPS.indexOf(entry.opcode) !== -1;
+    const times = literalNumber(blocks, entry.block, counted);
     return times === null || times > SAFE_REPEAT;
 };
 

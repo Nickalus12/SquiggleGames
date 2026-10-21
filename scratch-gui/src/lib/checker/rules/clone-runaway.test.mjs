@@ -11,4 +11,7 @@ ok('a forever loop cloning a sprite with no delete is reported', items.length ==
 ok('names the cloned sprite, warn, no fix', items[0].values.sprite === 'Star' && items[0].severity === 'warn' && items[0].fix === null);
 const big = cloneRunaway(cases.bigRepeat);
 ok('a repeat past 100 counts as a runaway', big.length === 1 && big[0].blockId === 'many');
+ok('a short for each is bounded', cloneRunaway(cases.forEachSmall).length === 0);
+const lots = cloneRunaway(cases.forEachBig);
+ok('a for each past 100 counts as a runaway', lots.length === 1 && lots[0].blockId === 'lots');
 done();

@@ -1,6 +1,6 @@
 import {defineMessages} from 'react-intl';
 
-export default defineMessages({
+const messages = defineMessages({
     title: {
         id: 'sq.checker.title',
         defaultMessage: 'Checker',
@@ -46,6 +46,11 @@ export default defineMessages({
         defaultMessage: 'Fixed. You can undo it with Ctrl+Z.',
         description: 'Announced after a checker fix worked'
     },
+    fixedLoose: {
+        id: 'sq.checker.fixedLoose',
+        defaultMessage: 'Deleted. Undo brings them back.',
+        description: 'Announced after the checker deleted loose blocks'
+    },
     fixFailed: {
         id: 'sq.checker.fixFailed',
         defaultMessage: 'That one could not be fixed here. Try Show me.',
@@ -67,3 +72,10 @@ export default defineMessages({
         description: 'Name shown for items on the stage'
     }
 });
+
+const FIXED = Object.freeze({'delete-loose': 'fixedLoose'});
+
+const fixedMessage = fix => messages[(fix && FIXED[fix]) || 'fixed'];
+
+export {fixedMessage};
+export default messages;

@@ -5,12 +5,12 @@ import ReactDOM from 'react-dom';
 import {injectIntl, intlShape} from 'react-intl';
 import {connect} from 'react-redux';
 
-import {buildItems, isPaletteKey} from './sources';
+import {isPaletteKey, listenForPaletteEvent} from './keys.js';
 import {uiMessages} from './messages';
 import {createFixer} from '../../lib/checker/fixes.js';
 import {getOutlineWorkspace} from '../../lib/annotations/workspace-ref.js';
 import {openCheckerPanel} from '../../reducers/checker.js';
-import {closeCommandPalette, toggleCommandPalette} from '../../reducers/command-palette.js';
+import {closeCommandPalette, openCommandPalette, toggleCommandPalette} from '../../reducers/command-palette.js';
 import {toggleFocusMode} from '../../reducers/focus-mode.js';
 import {
     activateTab,
@@ -26,12 +26,15 @@ const TABS = Object.freeze({
 });
 
 const CommandPalette = React.lazy(() => import(/* webpackChunkName: "command-palette" */ './command-palette.jsx'));
+const loadSources = () => import(/* webpackChunkName: "command-palette" */ './sources.js');
 
 class CommandPaletteContainer extends React.Component {
     constructor (props) {
         super(props);
         bindAll(this, [
             'handleKeyDown',
+            'handlePaletteEvent',
+            'isOpen',
             'handleClose',
             'handlePick',
             'targetName',
@@ -43,6 +46,8 @@ class CommandPaletteContainer extends React.Component {
     }
     componentDidMount () {
         document.addEventListener('keydown', this.handleKeyDown, true);
+        this.stopListening = listenForPaletteEvent(typeof window === 'undefined' ? null : window, this.isOpen,
+            this.handlePaletteEvent);
         if (this.props.open) this.collect();
     }
     componentDidUpdate (prevProps) {
@@ -55,6 +60,8 @@ class CommandPaletteContainer extends React.Component {
     }
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyDown, true);
+        this.stopListening();
+        this.unmounted = true;
     }
     getFixer () {
         if (!this.fixer && this.props.vm) this.fixer = createFixer({vm: this.props.vm});
@@ -71,7 +78,7 @@ class CommandPaletteContainer extends React.Component {
         }
         const win = typeof window === 'undefined' ? null : window;
         const net = win && win.SquiggleNet;
-        const items = buildItems({
+        const env = {
             vm,
             win,
             intl,
@@ -87,15 +94,37 @@ class CommandPaletteContainer extends React.Component {
                 toggleFocus: this.props.onToggleFocus,
                 showTab: tab => this.props.onShowTab(TABS[tab])
             }
+        };
+        loadSources().then(sources => {
+            if (this.unmounted || !this.props.open) return;
+            this.setState({items: sources.buildItems(env)});
+        }, error => {
+            if (this.unmounted || !this.props.open) return;
+            this.props.onError(error);
+            this.setState({items: []});
         });
-        this.setState({items});
     }
     handleKeyDown (event) {
         if (!isPaletteKey(event) || event.repeat) return;
         event.preventDefault();
         event.stopPropagation();
-        if (!this.props.open) this.returnFocus = document.activeElement;
+        if (this.props.open) {
+            this.handleClose();
+            return;
+        }
+        this.returnFocus = document.activeElement;
         this.props.onToggle();
+    }
+    isOpen () {
+        return !!this.props.open;
+    }
+    handlePaletteEvent (action) {
+        if (action === 'close') {
+            this.handleClose();
+            return;
+        }
+        this.returnFocus = document.activeElement;
+        this.props.onOpen();
     }
     restoreFocus () {
         const element = this.returnFocus;
@@ -150,6 +179,7 @@ CommandPaletteContainer.propTypes = {
     intl: intlShape.isRequired,
     onClose: PropTypes.func.isRequired,
     onError: PropTypes.func,
+    onOpen: PropTypes.func.isRequired,
     onOpenChecker: PropTypes.func.isRequired,
     onShowTab: PropTypes.func.isRequired,
     onToggle: PropTypes.func.isRequired,
@@ -177,6 +207,7 @@ const mapStateToProps = state => {
 
 const mapDispatchToProps = dispatch => ({
     onClose: () => dispatch(closeCommandPalette()),
+    onOpen: () => dispatch(openCommandPalette()),
     onOpenChecker: () => dispatch(openCheckerPanel()),
     onShowTab: index => dispatch(activateTab(index)),
     onToggle: () => dispatch(toggleCommandPalette()),

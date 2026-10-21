@@ -90,4 +90,37 @@ ok('a global variable nobody uses can be deleted', find('variable-unused') &&
 ok('a variable read by a reporter is not unused', !items.some(entry => entry.values.name === 'speed'));
 ok('together is flagged squiggle-only', items.some(entry => entry.rule === 'squiggle-only' && entry.targetId === cat.id));
 ok('an extension reporter is learned from the runtime block info', model.reporterOpcodes.has('together_myPlayerName'));
+
+const backdrop = {
+    assetId: 'cd21514d0531fdffb22204e0ec5ed84a', name: 'backdrop1', md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg',
+    dataFormat: 'svg', rotationCenterX: 240, rotationCenterY: 180
+};
+const stockProject = {
+    targets: [
+        Object.assign({}, base, {
+            isStage: true, name: 'Stage', layerOrder: 0, costumes: [backdrop], blocks: {},
+            variables: {'`jEk@4|i[#Fk?(8x)AV.-my variable': ['my variable', 0]}
+        }),
+        Object.assign({}, base, {
+            isStage: false, name: 'Sprite1', layerOrder: 1, costumes: [backdrop], blocks: {}, visible: true, x: 0, y: 0,
+            size: 100, direction: 90, draggable: false, rotationStyle: 'all around'
+        })
+    ],
+    meta: {semver: '3.0.0', vm: '0.1.0', agent: ''}
+};
+const checkProject = async json => {
+    const fresh = new VM();
+    await fresh.loadProject(JSON.stringify(json));
+    const freshModel = Object.assign(buildContext(fresh.runtime, {win: null}), {
+        targets: fresh.runtime.targets.filter(target => target.isOriginal).map(snapshotTarget)
+    });
+    return runChecks(freshModel);
+};
+const stockItems = await checkProject(stockProject);
+ok('a stock Scratch project gives no items', stockItems.length === 0, stockItems.map(entry => entry.rule));
+const emptyProject = JSON.parse(JSON.stringify(stockProject));
+emptyProject.targets[0].variables = {};
+emptyProject.targets.length = 1;
+const emptyItems = await checkProject(emptyProject);
+ok('an empty project gives no items', emptyItems.length === 0, emptyItems.map(entry => entry.rule));
 done();

@@ -14,7 +14,7 @@ const looseBlocks = model => {
             blockId: loose[0].id,
             keyPart: 'stacks',
             values: {count: loose.length, sprite: target.name},
-            fix: 'clean-up',
+            fix: 'delete-loose',
             fixData: {targetId: target.id, blockIds: loose.map(block => block.id)}
         }));
     }

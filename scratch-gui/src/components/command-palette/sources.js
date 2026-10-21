@@ -269,9 +269,6 @@ const buildItems = env => {
     return out;
 };
 
-const isPaletteKey = event => (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
-    (event.key === 'k' || event.key === 'K');
-
 const groupResults = results => {
     const groups = [];
     const byKind = new Map();
@@ -292,7 +289,6 @@ export {
     insertDom,
     buildItems,
     groupResults,
-    isPaletteKey,
     commandItems,
     checkerItems,
     blockItems,

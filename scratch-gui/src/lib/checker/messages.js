@@ -234,9 +234,14 @@ const fixMessages = defineMessages({
     'add-receiver': {id: 'sq.checker.fix.addReceiver', defaultMessage: 'Add a receiver', description: 'Fix it label'},
     'remove-calls': {id: 'sq.checker.fix.removeCalls', defaultMessage: 'Remove the calls', description: 'Fix it label'},
     'delete-variable': {id: 'sq.checker.fix.deleteVariable', defaultMessage: 'Delete it', description: 'Fix it label'},
-    'clean-up': {id: 'sq.checker.fix.cleanUp', defaultMessage: 'Clean up', description: 'Fix it label'},
+    'delete-loose': {
+        id: 'sq.checker.fix.deleteLoose',
+        defaultMessage: 'Delete loose blocks',
+        description: 'Fix it label'
+    },
     'add-wait': {id: 'sq.checker.fix.addWait', defaultMessage: 'Add wait 0.1', description: 'Fix it label'},
     'move-to-rules': {id: 'sq.checker.fix.moveToRules', defaultMessage: 'Move it', description: 'Fix it label'},
+    'move-out': {id: 'sq.checker.fix.moveOut', defaultMessage: 'Move it', description: 'Fix it label'},
     'create-scene': {id: 'sq.checker.fix.createScene', defaultMessage: 'Create it', description: 'Fix it label'},
     'create-level': {id: 'sq.checker.fix.createLevel', defaultMessage: 'Create it', description: 'Fix it label'},
     'create-tile': {id: 'sq.checker.fix.createTile', defaultMessage: 'Create it', description: 'Fix it label'}

@@ -1,4 +1,3 @@
-import {descendants} from './model.js';
 import {getOutlineWorkspace} from '../annotations/workspace-ref.js';
 
 const WAIT_MS = 2000;
@@ -9,9 +8,10 @@ const FIXES = Object.freeze([
     'add-receiver',
     'remove-calls',
     'delete-variable',
-    'clean-up',
+    'delete-loose',
     'add-wait',
     'move-to-rules',
+    'move-out',
     'create-scene',
     'create-level',
     'create-tile'
@@ -38,6 +38,29 @@ const receiverXml = (name, broadcastId) => '<xml xmlns="http://www.w3.org/1999/x
 const waitXml = seconds => '<xml xmlns="http://www.w3.org/1999/xhtml">' +
     '<block type="control_wait"><value name="DURATION"><shadow type="math_positive_number">' +
     `<field name="NUM">${escapeXml(seconds)}</field></shadow></value></block></xml>`;
+
+const copyStack = (blocks, topId) => {
+    const top = blocks[topId];
+    if (!top) return [];
+    const nested = !top.topLevel;
+    const out = [];
+    const pending = [topId];
+    const seen = new Set();
+    while (pending.length) {
+        const id = pending.pop();
+        if (!id || seen.has(id) || !blocks[id]) continue;
+        seen.add(id);
+        const block = blocks[id];
+        out.push(JSON.parse(JSON.stringify(block)));
+        if (block.next && !(nested && id === topId)) pending.push(block.next);
+        Object.keys(block.inputs || {}).forEach(key => {
+            const input = block.inputs[key];
+            if (input) pending.push(input.block, input.shadow);
+        });
+    }
+    if (nested) Object.assign(out[0], {parent: null, next: null, topLevel: true, x: 0, y: 0});
+    return out;
+};
 
 const createFixer = options => {
     const vm = options.vm;
@@ -147,9 +170,15 @@ const createFixer = options => {
         return true;
     });
 
-    const cleanUp = data => blockOnScreen(data.blockIds[0]).then(first => {
+    const deleteLoose = (data, ScratchBlocks) => blockOnScreen(data.blockIds[0]).then(first => {
         if (!first) return false;
-        getWorkspace().cleanUp();
+        const workspace = getWorkspace();
+        grouped(ScratchBlocks, () => {
+            data.blockIds.forEach(id => {
+                const block = workspace.getBlockById(id);
+                if (block) block.dispose(false);
+            });
+        });
         return true;
     });
 
@@ -162,20 +191,31 @@ const createFixer = options => {
         return true;
     });
 
-    const moveToRules = (data, ScratchBlocks) => {
+    const moveStack = (data, toId, ScratchBlocks) => {
         const source = vm.runtime.getTargetById(data.targetId);
-        if (!source || !vm.runtime.getTargetById(data.rulesTargetId)) return Promise.resolve(false);
+        const usable = source && toId && toId !== data.targetId && vm.runtime.getTargetById(toId);
+        if (!usable) return Promise.resolve(false);
         const blocks = source.blocks._blocks;
-        const stack = descendants(blocks, data.blockId).map(block => JSON.parse(JSON.stringify(block)));
+        const stack = copyStack(blocks, data.blockId);
         if (!stack.length) return Promise.resolve(false);
+        const nested = !blocks[data.blockId].topLevel;
         return blockOnScreen(data.blockId).then(top => {
             if (!top) return false;
-            return Promise.resolve(vm.shareBlocksToTarget(stack, data.rulesTargetId, data.targetId)).then(() => {
+            return Promise.resolve(vm.shareBlocksToTarget(stack, toId, data.targetId)).then(() => {
                 const block = getWorkspace().getBlockById(data.blockId);
-                if (block) grouped(ScratchBlocks, () => block.dispose(false));
+                if (block) grouped(ScratchBlocks, () => block.dispose(nested));
                 return true;
             });
         });
+    };
+
+    const outOfRules = rulesId => {
+        const editingId = vm.editingTarget && vm.editingTarget.id;
+        if (editingId && editingId !== rulesId) return editingId;
+        const targets = vm.runtime.targets || [];
+        const sprite = targets.find(target => !target.isStage && target.isOriginal !== false && target.id !== rulesId);
+        const stage = targets.find(target => target.isStage);
+        return (sprite || stage || {}).id || null;
     };
 
     const worldFix = (item, data) => {
@@ -193,15 +233,17 @@ const createFixer = options => {
         if (WORLD_FIXES[item.fix]) return worldFix(item, data);
         const ScratchBlocks = getScratchBlocks();
         if (!ScratchBlocks) return Promise.resolve(false);
+        const outTo = item.fix === 'move-out' ? outOfRules(data.targetId) : null;
         return focusTarget(data.targetId).then(ready => {
             if (!ready) return false;
             switch (item.fix) {
             case 'add-receiver': return addReceiver(data, ScratchBlocks);
             case 'add-wait': return addWait(data, ScratchBlocks);
             case 'remove-calls': return removeCalls(data, ScratchBlocks);
-            case 'clean-up': return cleanUp(data);
+            case 'delete-loose': return deleteLoose(data, ScratchBlocks);
             case 'delete-variable': return deleteVariable(data);
-            case 'move-to-rules': return moveToRules(data, ScratchBlocks);
+            case 'move-to-rules': return moveStack(data, data.rulesTargetId, ScratchBlocks);
+            case 'move-out': return moveStack(data, outTo, ScratchBlocks);
             default: return false;
             }
         });
@@ -212,6 +254,7 @@ const createFixer = options => {
 
 export {
     FIXES,
+    copyStack,
     GLOW_MS,
     escapeXml,
     receiverXml,
