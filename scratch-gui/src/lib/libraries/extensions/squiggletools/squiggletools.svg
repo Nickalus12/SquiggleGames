@@ -5,8 +5,8 @@
       <stop offset="1" stop-color="#150e30"/>
     </linearGradient>
     <radialGradient id="sq-squiggletools-halo" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+      <stop offset="0" stop-color="#b07a4f" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#b07a4f" stop-opacity="0"/>
     </radialGradient>
     <pattern id="sq-squiggletools-grid" width="16" height="16" patternUnits="userSpaceOnUse">
       <circle cx="8" cy="8" r="1" fill="#ffffff" fill-opacity="0.12"/>
@@ -14,10 +14,26 @@
   </defs>
   <rect width="192" height="120" rx="12" fill="url(#sq-squiggletools-bg)"/>
   <rect width="192" height="120" rx="12" fill="url(#sq-squiggletools-grid)"/>
-  <ellipse cx="96" cy="60" rx="64" ry="48" fill="url(#sq-squiggletools-halo)"/>
-  <g transform="translate(60 24) scale(3.6)" fill="none" stroke="#f6f2ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14.5 2.75a3.25 3.25 0 0 0-3.4 4.4L3.75 14.5a1.25 1.25 0 0 0 1.75 1.75l7.35-7.35a3.25 3.25 0 0 0 4.4-3.4l-2 2-1.9-.35-.35-1.9z"/>
-    <path d="M5 2.5l.75 1.75L7.5 5l-1.75.75L5 7.5l-.75-1.75L2.5 5l1.75-.75z"/>
+  <ellipse cx="96" cy="60" rx="70" ry="48" fill="url(#sq-squiggletools-halo)"/>
+  <path d="M46 78 Q90 34 140 50" fill="none" stroke="#f6f2ff" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 9" stroke-opacity="0.85"/>
+  <circle cx="40" cy="82" r="13" fill="#b07a4f" stroke="#f6f2ff" stroke-width="3"/>
+  <circle cx="36" cy="79" r="2.2" fill="#f6f2ff"/>
+  <circle cx="45" cy="79" r="2.2" fill="#f6f2ff"/>
+  <path d="M35 87 Q40.5 91 46 87" fill="none" stroke="#f6f2ff" stroke-width="2.2" stroke-linecap="round"/>
+  <g fill="none" stroke="#f6f2ff" stroke-width="3" stroke-linecap="round">
+    <circle cx="148" cy="50" r="13"/>
+    <path d="M148 31v8M148 61v8M129 50h8M159 50h8"/>
   </g>
-  <path d="M40 100 Q96 88 152 100" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-opacity="0.8"/>
+  <circle cx="148" cy="50" r="3.5" fill="#22d3ee"/>
+  <g transform="rotate(-12 82 30)">
+    <rect x="70" y="18" width="24" height="24" rx="5" fill="#f6f2ff"/>
+    <circle cx="76.5" cy="24.5" r="2.4" fill="#7a5234"/>
+    <circle cx="82" cy="30" r="2.4" fill="#7a5234"/>
+    <circle cx="87.5" cy="35.5" r="2.4" fill="#7a5234"/>
+  </g>
+  <g fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-opacity="0.85">
+    <path d="M118 92a10 10 0 0 1 0 14"/>
+    <path d="M126 86a19 19 0 0 1 0 26"/>
+  </g>
+  <rect x="96" y="90" width="16" height="18" rx="4" fill="#b07a4f" stroke="#f6f2ff" stroke-width="3"/>
 </svg>
