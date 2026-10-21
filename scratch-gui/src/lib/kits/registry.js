@@ -17,10 +17,10 @@ const RESERVED = Object.freeze([
     {id: 'squigglescenes', name: 'Scenes', color: '#5b6ee1'},
     {id: 'squiggleanimate', name: 'Animate', color: '#16b3c7'},
     {id: 'squiggletools', name: 'Game Tools', color: '#b07a4f'},
-    {id: 'squiggle3d', name: '3D', color: '#56708a'},
-    {id: 'squigglescores', name: 'Scores and Rounds', color: '#d6457a', togetherRequired: true},
-    {id: 'squiggleteams', name: 'Teams and Items', color: '#2ba59a', togetherRequired: true},
-    {id: 'squigglearena', name: 'Arena', color: '#ce3b4b', togetherRequired: true}
+    {id: 'squiggle3d', name: '3D', color: '#5f7690'},
+    {id: 'squigglescores', name: 'Scores and Rounds', color: '#f25f5c', togetherRequired: true},
+    {id: 'squiggleteams', name: 'Teams and Items', color: '#2a9d8f', togetherRequired: true},
+    {id: 'squigglearena', name: 'Arena', color: '#b8336a', togetherRequired: true}
 ]);
 
 const ID_PATTERN = /^[a-z][a-z0-9]*$/;

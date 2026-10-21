@@ -12,7 +12,7 @@ registerKit({id: 'squiggleworld', layers: ['sq-tiles-back', 'sq-tiles-front'], p
 | Field | Rule |
 |---|---|
 | `id` | lowercase letters and digits. Reserved: `squiggleworld`, `squigglescenes`, `squiggleanimate`, `squiggletools`, `squiggle3d`, and the expansions `squigglescores`, `squiggleteams`, `squigglearena`. `together` is not a kit. |
-| `name`, `color` | Needed only for a new id. Reserved ids keep their name and `#rrggbb` color. |
+| `name`, `color` | Needed only for a new id. Reserved ids keep their name and `#rrggbb` color, which is `KIT_COLORS[id].color1` in `src/lib/themes/tokens.js`; tokens.js is the source and the registry copies it. |
 | `togetherRequired` | True for the three expansions and cannot be changed for a reserved id. |
 | `layers` | Any of `sq-tiles-back`, `sq-tiles-front`, `sq-hud`. |
 | `provides` | `'world'` switches world mode on for projects that use the kit (see 2). |
