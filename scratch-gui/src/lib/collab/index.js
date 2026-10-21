@@ -17,6 +17,7 @@ import showLogin from './login';
 import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
+import {installProjectSeam} from './project-seam.js';
 
 /*
  * Small preferences that belong to the person rather than the project, kept
@@ -544,6 +545,7 @@ const hasUnsavedEdits = () => !!(state.snapshotTimer || state.snapshotInFlight |
 
 const zipAndSendSnapshot = async cacheOnly => {
     if (!state.active || state.applyingRemote || !state.vm) return;
+    installProjectSeam(state.vm);
     // One zip at a time — overlapping saveProjectSb3 janks the editor hard.
     if (state.snapshotInFlight) {
         // false = full relay must win over a queued cacheOnly.
@@ -824,6 +826,7 @@ const forceNextApply = () => {
 
 const applySnapshot = async msg => {
     if (!state.vm || !msg || !msg.b64) return;
+    installProjectSeam(state.vm);
     state.snapshotsSeen++;
     // This snapshot is about to overwrite edits of ours that never reached the
     // room. Keep a copy first — silently discarding someone's work is the one
