@@ -53,6 +53,24 @@ const messages = defineMessages({
 });
 
 /* eslint-disable react/prefer-stateless-function */
+const RequirementIcon = ({label, src}) => (
+    <span
+        className={styles.requirementIcon}
+        role="img"
+        aria-label={label}
+        title={label}
+        style={{
+            WebkitMaskImage: `url("${src}")`,
+            maskImage: `url("${src}")`
+        }}
+    />
+);
+
+RequirementIcon.propTypes = {
+    label: PropTypes.string.isRequired,
+    src: PropTypes.string.isRequired
+};
+
 class LibraryItemComponent extends React.PureComponent {
     render () {
         const favoriteMessage = this.props.intl.formatMessage(
@@ -242,28 +260,27 @@ class LibraryItemComponent extends React.PureComponent {
                                         className={styles.featuredExtensionMetadataDetail}
                                     >
                                         {this.props.bluetoothRequired ? (
-                                            <img
+                                            <RequirementIcon
+                                                label={intl.formatMessage(messages.bluetooth)}
                                                 src={bluetoothIconURL}
-                                                draggable={false}
-                                                alt={intl.formatMessage(messages.bluetooth)}
-                                                title={intl.formatMessage(messages.bluetooth)}
                                             />
                                         ) : null}
                                         {this.props.internetConnectionRequired ? (
-                                            <img
+                                            <RequirementIcon
+                                                label={intl.formatMessage(messages.internet)}
                                                 src={internetConnectionIconURL}
-                                                draggable={false}
-                                                alt={intl.formatMessage(messages.internet)}
-                                                title={intl.formatMessage(messages.internet)}
                                             />
                                         ) : null}
                                         {this.props.togetherRequired ? (
-                                            <img
-                                                src={togetherRoomIconURL}
-                                                draggable={false}
-                                                alt={intl.formatMessage(messages.togetherRoom)}
-                                                title={intl.formatMessage(messages.togetherRoom)}
-                                            />
+                                            <span className={styles.requirementNamed}>
+                                                <RequirementIcon
+                                                    label={intl.formatMessage(messages.togetherRoom)}
+                                                    src={togetherRoomIconURL}
+                                                />
+                                                <span aria-hidden="true">
+                                                    {intl.formatMessage(messages.togetherRoom)}
+                                                </span>
+                                            </span>
                                         ) : null}
                                     </div>
                                 </div>
