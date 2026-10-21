@@ -19,6 +19,13 @@ class SquiggleScenesBlocks {
     constructor (runtime) {
         this.runtime = runtime;
         this.scenes = getScenes(runtime);
+        if (typeof window !== 'undefined' && typeof document !== 'undefined') this.mountStrip();
+    }
+
+    mountStrip () {
+        import('../../../../components/scene-strip/mount.jsx')
+            .then(mod => mod.installSceneStrip({runtime: this.runtime, controller: this.scenes}))
+            .catch(() => null);
     }
 
     getInfo () {
