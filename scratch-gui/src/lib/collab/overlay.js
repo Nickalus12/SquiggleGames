@@ -402,7 +402,7 @@ class Overlay {
             'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:99999',
             'display:flex', 'align-items:center', 'justify-content:center', 'gap:12px',
             `background:${opts.kind === 'busy' ? '#2f7fe0' : '#6f4bd8'}`,
-            'color:#fff', 'padding:8px 16px',
+            'color:#fff', 'padding:calc(8px + env(safe-area-inset-top, 0px)) 16px 8px',
             'font:600 13px ui-rounded,"Segoe UI",Helvetica,Arial,sans-serif',
             'box-shadow:0 2px 12px rgba(0,0,0,.35)'
         ].join(';');
@@ -493,7 +493,8 @@ class Overlay {
         t.appendChild(dot);
         t.appendChild(document.createTextNode(text));
         t.style.cssText = [
-            'position:fixed', `top:${60 + this._topInset()}px`,
+            'position:fixed', `top:calc(${60 + this._topInset()}px + env(safe-area-inset-top, 0px))`,
+            'pointer-events:none',
             'left:50%', 'transform:translateX(-50%)', 'z-index:99998',
             'display:flex', 'align-items:center', 'gap:9px',
             'box-sizing:border-box', 'max-width:calc(100vw - 32px)', 'width:max-content',

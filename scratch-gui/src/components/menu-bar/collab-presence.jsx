@@ -66,6 +66,11 @@ const touchBtn = {
     fontSize: '15px'
 };
 
+const paneQuiet = {
+    color: T.dim,
+    fontSize: '13px'
+};
+
 const dot = (color, size) => ({
     display: 'inline-block',
     width: `${size || 10}px`,
@@ -140,6 +145,7 @@ class CollabPresence extends React.Component {
         if (!self) return null; // solo mode
         const pane = this.props.variant === 'pane';
         const touch = pane ? touchBtn : null;
+        const quiet = pane ? paneQuiet : null;
 
         // The slug is a URL detail — disambiguated with -2 when a name is
         // taken — so it is the wrong thing to show a person.
@@ -214,7 +220,7 @@ class CollabPresence extends React.Component {
         const sections = (open || pane) ? (
             <React.Fragment>
                 <div style={{padding: '14px 15px 13px', borderBottom: `1px solid ${T.line}`}}>
-                    <div style={label}>{'Room'}</div>
+                    <div style={{...label, ...quiet}}>{'Room'}</div>
                     <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px'}}>
                         <span
                             style={{
@@ -264,13 +270,13 @@ class CollabPresence extends React.Component {
                 </div>
 
                 <div style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}>
-                    <div style={{...label, marginBottom: '7px'}}>
+                    <div style={{...label, marginBottom: '7px', ...quiet}}>
                         {`In here · ${1 + peers.length}`}
                     </div>
                     <div style={personRow}>
                         <span style={dot(self.color)} />
                         <span style={{fontWeight: 700}}>{self.name}</span>
-                        <span style={{color: T.faint, fontSize: '11.5px'}}>{'you'}</span>
+                        <span style={{color: T.faint, fontSize: '11.5px', ...quiet}}>{'you'}</span>
                     </div>
                     {peers.map(p => (
                         <div
@@ -287,7 +293,8 @@ class CollabPresence extends React.Component {
                                     textAlign: 'right',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    textOverflow: 'ellipsis',
+                                    ...quiet
                                 }}
                             >
                                 {p.sprite ? `${statusIcon(p.status)} ${p.sprite}` : statusIcon(p.status)}
@@ -295,14 +302,16 @@ class CollabPresence extends React.Component {
                         </div>
                     ))}
                     {peers.length === 0 ? (
-                        <div style={{fontSize: '12px', color: T.faint, padding: '3px 0 1px', lineHeight: 1.5}}>
+                        <div
+                            style={{fontSize: '12px', color: T.faint, padding: '3px 0 1px', lineHeight: 1.5, ...quiet}}
+                        >
                             {'Just you so far. Send the invite link and build together.'}
                         </div>
                     ) : null}
                 </div>
 
                 <div style={{padding: '11px 15px 14px'}}>
-                    <div style={{...label, marginBottom: '7px'}}>{'Save to library'}</div>
+                    <div style={{...label, marginBottom: '7px', ...quiet}}>{'Save to library'}</div>
                     <div style={{display: 'flex', gap: '7px'}}>
                         <input
                             onChange={e => this.setState({saveName: e.target.value})}
@@ -365,7 +374,7 @@ class CollabPresence extends React.Component {
                                         >
                                             {p.name}
                                         </div>
-                                        <div style={{fontSize: '10.5px', color: T.faint}}>
+                                        <div style={{fontSize: '10.5px', color: T.faint, ...quiet}}>
                                             {new Date(p.updatedAt).toLocaleDateString()}
                                         </div>
                                     </div>
@@ -391,7 +400,7 @@ class CollabPresence extends React.Component {
                             ))}
                         </div>
                     ) : (
-                        <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5}}>
+                        <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5, ...quiet}}>
                             {'The room saves itself as you go. This is for keeping a named copy.'}
                         </div>
                     )}
