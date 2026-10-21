@@ -11,6 +11,8 @@ import {PHONE_TABS} from '../../lib/layout-mode';
 import {setPhoneTab} from '../../reducers/layout-mode';
 import {activateTab, BLOCKS_TAB_INDEX, COSTUMES_TAB_INDEX} from '../../reducers/editor-tab';
 
+import SqIcon from '../sq-icon';
+import PhoneBottomSheet from './phone-bottom-sheet.jsx';
 import styles from './phone-shell.css';
 
 const messages = defineMessages({
@@ -56,32 +58,20 @@ const messages = defineMessages({
     }
 });
 
-const iconPath = {
-    code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
-    stage: 'M4 5h16v11H4zM9 20h6M12 16v4M10 8.5v4l3.5-2z',
-    sprites: 'M7 7a2 2 0 1 0 0.01 0M17 7a2 2 0 1 0 0.01 0M5 20c0-4 3-7 7-7s7 3 7 7M9 9.5c1.8 1.4 4.2 1.4 6 0',
-    media: 'M4 18l5-6 4 4 3-3 4 5M4 5h16v14H4zM15 9a1 1 0 1 0 0.01 0',
-    room: [
-        'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6',
-        'M16 11a2.5 2.5 0 1 0 0-5M18 14c1.8.6 3 2.4 3 4.5'
-    ].join('')
+const TAB_ICONS = {
+    [PHONE_TABS.code]: 'code',
+    [PHONE_TABS.stage]: 'stage',
+    [PHONE_TABS.sprites]: 'sprites',
+    [PHONE_TABS.media]: 'art',
+    [PHONE_TABS.room]: 'room'
 };
 
 const TabIcon = ({name}) => (
     <span className={styles.tabIcon}>
-        <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-        >
-            <path
-                d={iconPath[name]}
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-            />
-        </svg>
+        <SqIcon
+            name={TAB_ICONS[name]}
+            size={22}
+        />
     </span>
 );
 
@@ -180,25 +170,28 @@ class PhoneTabBar extends React.Component {
         const {intl, targetIsStage} = this.props;
         const {self, peerCount} = this.state;
         return (
-            <nav
-                aria-label={intl.formatMessage(messages.tabs)}
-                className={styles.tabBar}
-                data-phone-tab-bar
-            >
-                {this.renderTab(PHONE_TABS.code, intl.formatMessage(messages.code))}
-                {this.renderTab(PHONE_TABS.stage, intl.formatMessage(messages.stage))}
-                {this.renderTab(PHONE_TABS.sprites, intl.formatMessage(messages.sprites))}
-                {this.renderTab(
-                    PHONE_TABS.media,
-                    intl.formatMessage(targetIsStage ? messages.backdrops : messages.costumes)
-                )}
-                {self ? this.renderTab(
-                    PHONE_TABS.room,
-                    intl.formatMessage(messages.room),
-                    peerCount + 1,
-                    this.state.unread > 0 && this.props.phoneTab !== PHONE_TABS.room
-                ) : null}
-            </nav>
+            <React.Fragment>
+                <PhoneBottomSheet />
+                <nav
+                    aria-label={intl.formatMessage(messages.tabs)}
+                    className={styles.tabBar}
+                    data-phone-tab-bar
+                >
+                    {this.renderTab(PHONE_TABS.code, intl.formatMessage(messages.code))}
+                    {this.renderTab(PHONE_TABS.stage, intl.formatMessage(messages.stage))}
+                    {this.renderTab(PHONE_TABS.sprites, intl.formatMessage(messages.sprites))}
+                    {this.renderTab(
+                        PHONE_TABS.media,
+                        intl.formatMessage(targetIsStage ? messages.backdrops : messages.costumes)
+                    )}
+                    {self ? this.renderTab(
+                        PHONE_TABS.room,
+                        intl.formatMessage(messages.room),
+                        peerCount + 1,
+                        this.state.unread > 0 && this.props.phoneTab !== PHONE_TABS.room
+                    ) : null}
+                </nav>
+            </React.Fragment>
         );
     }
 }

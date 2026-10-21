@@ -19,6 +19,24 @@ const TABLET_QUERY = '(min-width: 768px) and (max-width: 1023px)';
 
 const PHONE_FLYOUT_WIDTH = 180;
 
+const TARGET_SIZE = 36;
+const TOUCH_TARGET_SIZE = 44;
+const PANEL_RADIUS = 10;
+const MOTION_FAST_MS = 140;
+const MOTION_SHEET_MS = 240;
+const PHONE_SHEET_MAX_RATIO = 0.55;
+
+const targetSizeFor = ({mode, coarsePointer}) => (
+    (mode === LAYOUT_MODES.phone || coarsePointer) ? TOUCH_TARGET_SIZE : TARGET_SIZE
+);
+
+const prefersReducedMotion = win => !!(
+    win && typeof win.matchMedia === 'function' &&
+    win.matchMedia('(prefers-reduced-motion: reduce)').matches
+);
+
+const motionMs = (win, ms) => (prefersReducedMotion(win) ? Math.min(ms, 80) : ms);
+
 const layoutModeFor = ({phone, tablet}) => {
     if (phone) return LAYOUT_MODES.phone;
     if (tablet) return LAYOUT_MODES.tablet;
@@ -81,13 +99,22 @@ const phoneStageWidth = ({viewportWidth, viewportHeight, stageWidth, stageHeight
 
 export {
     LAYOUT_MODES,
+    MOTION_FAST_MS,
+    MOTION_SHEET_MS,
+    PANEL_RADIUS,
+    PHONE_SHEET_MAX_RATIO,
     PHONE_TABS,
     PHONE_QUERY,
     TABLET_QUERY,
     PHONE_FLYOUT_WIDTH,
+    TARGET_SIZE,
+    TOUCH_TARGET_SIZE,
     detectLayoutMode,
     isPhoneLandscape,
     layoutModeFor,
+    motionMs,
     phoneStageWidth,
+    prefersReducedMotion,
+    targetSizeFor,
     watchLayoutMode
 };
