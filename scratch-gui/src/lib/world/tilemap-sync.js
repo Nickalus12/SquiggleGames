@@ -3,6 +3,8 @@ import {FLAG_MASK, GRIDS, LAYERS, MAX_SIZE, MAX_TEXTURES} from './tilemap.js';
 const PATCH_TYPE = 'tilemap-patch';
 const DELAY = 50;
 const MAX_RUNS = 2048;
+const MAX_BYTES = 30 * 1024;
+const HEADER_BYTES = 512;
 const MAX_AUTHOR = 64;
 const MAX_NAME = 100;
 
@@ -115,20 +117,25 @@ const buildPatches = (grid, cells, author, nextSeq) => {
         byLayer[cell.layer].push({col: cell.col, row: cell.row, value});
     }
     const parts = [];
+    const budget = MAX_BYTES - HEADER_BYTES - JSON.stringify(palette).length - String(grid.id).length - author.length;
     let current = null;
     let runs = 0;
+    let bytes = 0;
     for (const layer of GRIDS) {
         if (!byLayer[layer]) continue;
         for (const segment of encodeSegments(byLayer[layer])) {
             const size = runCount([segment]);
-            if (!current || runs + size > MAX_RUNS) {
+            const length = JSON.stringify(segment).length + 1;
+            if (!current || runs + size > MAX_RUNS || bytes + length > budget) {
                 current = {};
                 parts.push(current);
                 runs = 0;
+                bytes = 0;
             }
             if (!current[layer]) current[layer] = [];
             current[layer].push(segment);
             runs += size;
+            bytes += length;
         }
     }
     return parts.map(layers => ({
@@ -275,6 +282,7 @@ export {
     PATCH_TYPE,
     DELAY,
     MAX_RUNS,
+    MAX_BYTES,
     compareStamp,
     encodeSegments,
     decodeSegments,

@@ -14,7 +14,7 @@ globalThis.document = {hidden: true};
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel, getCell} = await import('./tilemap.js');
-const {PATCH_TYPE, MAX_RUNS, encodeSegments, decodeSegments, readPatch, compareStamp, createTilemapSync} =
+const {PATCH_TYPE, MAX_RUNS, MAX_BYTES, encodeSegments, decodeSegments, readPatch, compareStamp, createTilemapSync} =
     await import('./tilemap-sync.js');
 
 const level = textures => {
@@ -212,6 +212,24 @@ ok('each part takes the next version', parts.every((p, i) => p.base === i) && f.
 parts.slice().reverse()
     .forEach(p => g.sync.apply(p));
 ok('the parts rebuild the level in any order', same(f, g) && g.world.level('yard').v === parts.length);
+
+section('frames stay under the 32 KB relay cap');
+const names = [];
+for (let i = 0; i < 48; i++) names.push([`${String(i).padStart(2, '0')}${'w'.repeat(98)}`, FLAGS.solid]);
+const wide = await peer('wide', names);
+const wideTo = await peer('wideto', names);
+const sparse = [];
+for (let row = 0; row < 128; row++) {
+    for (let col = 0; col < 128; col += 2) sparse.push({col, row, value: 10 + ((col + row) % 39)});
+}
+wide.world.paintCells('yard', 'front', sparse);
+wide.tick();
+const wideParts = wide.outbox.splice(0);
+const sizes = wideParts.map(p => JSON.stringify(p).length);
+ok('sparse cells with long texture names split under the cap', wideParts.length > 1 &&
+    sizes.every(size => size <= MAX_BYTES && size <= 32 * 1024), sizes);
+wideParts.forEach(p => wideTo.sync.apply(p));
+ok('the size split still rebuilds the level', same(wide, wideTo));
 
 section('seam and dispose');
 const vm2 = new VM();
