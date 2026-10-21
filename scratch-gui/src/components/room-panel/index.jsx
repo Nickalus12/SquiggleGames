@@ -9,6 +9,7 @@ import {LAYOUT_MODES, PHONE_TABS} from '../../lib/layout-mode';
 import {closeRoomPanel, openRoomPanel} from '../../reducers/room-panel';
 import {setPhoneTab} from '../../reducers/layout-mode';
 import {setStartRoomHandler} from '../squiggle-only-notice/index.js';
+import KeepWorkSheet from './keep-work-sheet.jsx';
 import RoomPanel from './room-panel.jsx';
 import startRoomFlow from './start-room.js';
 import messages from './room-panel-messages.js';
@@ -78,7 +79,7 @@ class RoomPanelHost extends React.Component {
     setRef (el) {
         this.root = el;
     }
-    render () {
+    renderSheet () {
         if (!this.props.open || this.props.isPhone || !overlay.getState().self) return null;
         return (
             <aside
@@ -96,6 +97,14 @@ class RoomPanelHost extends React.Component {
                     onOpenHistory={this.handleHistory}
                 />
             </aside>
+        );
+    }
+    render () {
+        return (
+            <React.Fragment>
+                {this.renderSheet()}
+                <KeepWorkSheet />
+            </React.Fragment>
         );
     }
 }
