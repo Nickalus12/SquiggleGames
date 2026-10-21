@@ -9,9 +9,11 @@ const OPCODE_SET = schema.opcodeSet;
 const EDIT_DELAY_MS = 500;
 const MIN_GAP_MS = 500;
 
-const LEVEL_OPCODES = new Set(Object.keys(schema.cards || {}).reduce((all, ext) => all.concat(
-    schema.cards[ext].filter(card => card.needsLevels).map(card => `${ext}_${card.opcode}`)
+const levelOpcodes = cards => new Set(Object.keys(cards || {}).reduce((all, ext) => all.concat(
+    cards[ext].filter(card => card.needsLevels).map(card => `${ext}_${card.opcode}`)
 ), []));
+
+const LEVEL_OPCODES = levelOpcodes(schema.cards);
 
 const byteLength = text => new TextEncoder().encode(text).length;
 
@@ -43,19 +45,19 @@ const stampProject = (runtime, hash, opcodeSet) => {
     return runtime.extensionStorage[RULES_KEY];
 };
 
-const needsLevels = sprite => Object.keys(sprite.blocks || {})
-    .some(id => sprite.blocks[id] && LEVEL_OPCODES.has(sprite.blocks[id].opcode));
+const needsLevels = (sprite, opcodes) => Object.keys(sprite.blocks || {})
+    .some(id => sprite.blocks[id] && opcodes.has(sprite.blocks[id].opcode));
 
 const usesWorld = vm => {
     const ids = vm.extensionManager && vm.extensionManager._loadedExtensions;
     return !!(ids && typeof ids.has === 'function' && ids.has('squiggleworld'));
 };
 
-const uploadLevels = (vm, sprite) => {
+const uploadLevels = (vm, sprite, opcodes = LEVEL_OPCODES) => {
     const world = typeof window === 'undefined' ? null : window.SquiggleWorld;
     if (!usesWorld(vm) || !world || typeof world.levelsForUpload !== 'function') return [];
-    const withSolid = needsLevels(sprite);
-    const levels = world.levelsForUpload() || [];
+    const withSolid = needsLevels(sprite, opcodes);
+    const levels = world.levelsForUpload({solid: withSolid}) || [];
     return levels.map(level => {
         const out = {
             id: level.id,
@@ -206,6 +208,8 @@ export {
     raiseOpcodeSet,
     stampProject,
     buildRulesUpload,
+    levelOpcodes,
+    uploadLevels,
     rulesUrl,
     putRules,
     uploadRules,

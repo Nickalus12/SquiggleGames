@@ -16,7 +16,8 @@ const {installRulesGuard, settle} = await import('./guard.js');
 const {ruleOpcodeSet, menuItems} = await import('./rule-blocks.js');
 const {filterCategories, tokenize, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
 const {createRulesStatus, kidText, parseRulesStatus, rulesStatus} = await import('./status.js');
-const {buildRulesUpload, createRulesUploader, putRules, uploadRules, OPCODE_SET} = await import('./package.js');
+const {buildRulesUpload, createRulesUploader, levelOpcodes, putRules, uploadLevels, uploadRules,
+    OPCODE_SET} = await import('./package.js');
 const TogetherBlocks = (await import('../libraries/extensions/together/index.js')).default;
 const expansions = {
     squigglescores: (await import('../libraries/extensions/squigglescores/index.js')).default,
@@ -212,6 +213,31 @@ const raised = await buildRulesUpload(vm, {raise: true});
 ok('an edit raises an older mark to the newest set', raised.opcodeSet === OPCODE_SET &&
     target.extensionStorage[RULES_KEY].opcodeSet === OPCODE_SET);
 ok('the hash covers the raised mark', raised.hash === body.hash);
+
+section('a card that needs levels uploads the solid grid');
+{
+    const asked = [];
+    const level = {id: 'L1', cols: 2, rows: 1, tile: 16, origin: [0, 0]};
+    const hadWindow = globalThis.window;
+    globalThis.window = {SquiggleWorld: {levelsForUpload: ({solid} = {}) => {
+        asked.push(solid);
+        return [solid ? Object.assign({solid: 'AQ'}, level) : level];
+    }}};
+    const loaded = {has: id => id === 'squiggleworld'};
+    const worldVm = {extensionManager: {_loadedExtensions: loaded}};
+    const cards = JSON.parse(JSON.stringify((await import('./rules-schema.js')).default.cards));
+    cards.squigglearena.find(card => card.opcode === 'aimingAt').needsLevels = true;
+    const opcodes = levelOpcodes(cards);
+    const aiming = {blocks: {a: {opcode: 'squigglearena_aimingAt'}}};
+    const plain = {blocks: {a: {opcode: 'together_ruleWhenGameStarts'}}};
+    const withCard = uploadLevels(worldVm, aiming, opcodes);
+    ok('a needsLevels card asks the world for solid and carries it', asked[0] === true &&
+        withCard[0].solid === 'AQ' && withCard[0].cols === 2, [asked, withCard]);
+    const without = uploadLevels(worldVm, plain, opcodes);
+    ok('a program without one asks for none and carries none', asked[1] === false && !('solid' in without[0]),
+        [asked, without]);
+    globalThis.window = hadWindow;
+}
 let clock = 0;
 const timers = [];
 let editRights = true;
