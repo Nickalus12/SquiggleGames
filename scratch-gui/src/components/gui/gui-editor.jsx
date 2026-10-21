@@ -36,6 +36,8 @@ import PhoneSpriteRow from '../phone-shell/phone-sprite-row.jsx';
 import PhoneMiniStageButton from '../phone-shell/phone-mini-stage-button.jsx';
 import CollabPresence from '../menu-bar/collab-presence.jsx';
 import CheckerPill from '../checker-pill/index.jsx';
+import CommandPalette from '../command-palette/index.jsx';
+import PipStage, {PIP_STAGE_WIDTH} from '../pip-stage/index.jsx';
 
 import {STAGE_SIZE_MODES} from '../../lib/layout-constants';
 import {
@@ -103,6 +105,7 @@ const GUIEditor = props => {
         isShared,
         isTelemetryEnabled,
         isTotallyNormal,
+        focusMode,
         layoutMode,
         loading,
         logo,
@@ -166,6 +169,7 @@ const GUIEditor = props => {
 
     const isPhone = layoutMode === LAYOUT_MODES.phone;
     const isTablet = layoutMode === LAYOUT_MODES.tablet;
+    const focused = !!focusMode && !isPhone;
     const phoneLandscape = isPhone && isPhoneLandscape({viewportWidth, viewportHeight});
     const phoneControls = isPhone && touchControlsShown && phoneTab === PHONE_TABS.stage;
     const phoneFixedWidth = isPhone ? phoneStageWidth({
@@ -293,7 +297,10 @@ const GUIEditor = props => {
                 isTotallyNormal={isTotallyNormal}
                 logo={logo}
                 renderLogin={renderLogin}
-                rightSlot={<CheckerPill inline />}
+                rightSlot={<CheckerPill
+                    inline
+                    sheet={isPhone}
+                />}
                 showComingSoon={showComingSoon}
                 showOpenFilePicker={showOpenFilePicker}
                 showSaveFilePicker={showSaveFilePicker}
@@ -431,31 +438,33 @@ const GUIEditor = props => {
                         ) : null}
                     </Box>
 
-                    <Box className={classNames(styles.stageAndTargetWrapper, styles[stageSize])}>
-                        <StageWrapper
-                            fixedWidth={phoneFixedWidth}
-                            isFullScreen={isFullScreen}
-                            isRendererSupported={isRendererSupported()}
-                            isRtl={isRtl}
-                            stageSize={stageSize}
-                            vm={vm}
-                        />
-                        {isPhone ? <PhoneSpriteRow /> : null}
-                        {isPhone ? (
-                            <TouchGameControls
-                                className={styles.phoneTouchControls}
-                                layout={touchControlsLayout}
-                                show={isFullScreen || phoneTab === PHONE_TABS.stage}
+                    {focused ? null : (
+                        <Box className={classNames(styles.stageAndTargetWrapper, styles[stageSize])}>
+                            <StageWrapper
+                                fixedWidth={phoneFixedWidth}
+                                isFullScreen={isFullScreen}
+                                isRendererSupported={isRendererSupported()}
+                                isRtl={isRtl}
+                                stageSize={stageSize}
                                 vm={vm}
                             />
-                        ) : null}
-                        <Box className={styles.targetWrapper}>
-                            <TargetPane
-                                stageSize={isPhone ? STAGE_SIZE_MODES.small : stageSize}
-                                vm={vm}
-                            />
+                            {isPhone ? <PhoneSpriteRow /> : null}
+                            {isPhone ? (
+                                <TouchGameControls
+                                    className={styles.phoneTouchControls}
+                                    layout={touchControlsLayout}
+                                    show={isFullScreen || phoneTab === PHONE_TABS.stage}
+                                    vm={vm}
+                                />
+                            ) : null}
+                            <Box className={styles.targetWrapper}>
+                                <TargetPane
+                                    stageSize={isPhone ? STAGE_SIZE_MODES.small : stageSize}
+                                    vm={vm}
+                                />
+                            </Box>
                         </Box>
-                    </Box>
+                    )}
                     {isPhone && phoneTab === PHONE_TABS.room ? (
                         <Box className={styles.phoneRoomPane}>
                             <CollabPresence variant="pane" />
@@ -464,6 +473,17 @@ const GUIEditor = props => {
                 </Box>
             </Box>
             {isPhone ? <PhoneTabBar /> : null}
+            <PipStage>
+                <StageWrapper
+                    fixedWidth={PIP_STAGE_WIDTH}
+                    isFullScreen={isFullScreen}
+                    isRendererSupported={isRendererSupported()}
+                    isRtl={isRtl}
+                    stageSize={STAGE_SIZE_MODES.small}
+                    vm={vm}
+                />
+            </PipStage>
+            <CommandPalette />
             <DragLayer />
         </Box>
     );
@@ -512,6 +532,7 @@ GUIEditor.propTypes = {
     isShared: PropTypes.bool,
     isTelemetryEnabled: PropTypes.bool,
     isTotallyNormal: PropTypes.bool,
+    focusMode: PropTypes.bool,
     layoutMode: PropTypes.oneOf(Object.keys(LAYOUT_MODES)),
     loading: PropTypes.bool,
     logo: PropTypes.string,
@@ -564,6 +585,7 @@ GUIEditor.propTypes = {
 };
 
 const mapStateToProps = state => ({
+    focusMode: !!(state.scratchGui.focusMode && state.scratchGui.focusMode.active),
     layoutMode: state.scratchGui.layoutMode.mode,
     miniStage: state.scratchGui.layoutMode.miniStage,
     phoneMenuOpen: state.scratchGui.layoutMode.phoneMenuOpen,
