@@ -12,6 +12,7 @@ vmLog.info = () => {};
 const {
     installProjectSeam,
     preserveExtensionStorage,
+    loadStoredKits,
     isRulesTarget,
     markRulesTarget,
     RULES_KEY
@@ -116,6 +117,39 @@ try {
     threw = true;
 }
 ok('preserveExtensionStorage needs an id', threw);
+
+section('kit storage survives in a session that never loaded the kit');
+vm.runtime.extensionStorage.squigglescenes = {format: 1, scenes: [{id: 's1', name: 'Start'}]};
+named(vm, 'Hero').extensionStorage.squiggle3d = {fov: 66};
+const kitJson = JSON.parse(vm.toJSON());
+ok('a registered kit key is saved without preserveExtensionStorage',
+    kitJson.extensionStorage.squigglescenes.scenes[0].id === 's1');
+ok('a kit key on a sprite is saved too',
+    kitJson.targets.find(target => target.name === 'Hero').extensionStorage.squiggle3d.fov === 66);
+ok('keys that are not kits are still dropped', !('unusedthing' in kitJson.extensionStorage));
+delete vm.runtime.extensionStorage.squigglescenes;
+delete named(vm, 'Hero').extensionStorage.squiggle3d;
+
+section('kits whose storage exists load with the project');
+const Scenes = class {
+    constructor (runtime) {
+        this.runtime = runtime;
+    }
+    getInfo () {
+        return {id: 'squigglescenes', name: 'Scenes', blocks: []};
+    }
+};
+const autoVm = installProjectSeam(new VM());
+autoVm.extensionManager.addBuiltinExtension('squigglescenes', Scenes);
+await autoVm.loadProject(JSON.stringify(Object.assign(project(), {
+    extensionStorage: {squigglescenes: {format: 1, scenes: []}, squiggleworld: {format: 1, levels: []}}
+})));
+ok('a builtin kit with stored data is loaded after loadProject',
+    autoVm.extensionManager.isExtensionLoaded('squigglescenes'));
+ok('a kit that is not builtin here is skipped without throwing',
+    !autoVm.extensionManager.isExtensionLoaded('squiggleworld'));
+ok('loadStoredKits reports nothing more to load', loadStoredKits(autoVm).length === 0);
+ok('its storage is still there', autoVm.runtime.extensionStorage.squiggleworld.format === 1);
 
 section('a single sprite (rules upload and sprite export)');
 const spriteJson = JSON.parse(vm.toJSON(named(vm, 'Game Rules').id));
