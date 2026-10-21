@@ -11,9 +11,7 @@ import {GUI_AUTO, GUI_SQUIGGLE, GUI_SQUIGGLE_DAY, Theme} from '../../lib/themes/
 import {openGuiThemeMenu, guiThemeMenuOpen, closeSettingsMenu} from '../../reducers/menus.js';
 import {setTheme} from '../../reducers/theme.js';
 import {persistTheme} from '../../lib/themes/themePersistance.js';
-import squiggleIcon from './sq-theme-squiggle.svg';
-import lightModeIcon from './tw-sun.svg';
-import darkModeIcon from './tw-moon.svg';
+import {sqIconDataUri} from '../sq-icon';
 import styles from './settings-menu.css';
 
 const options = defineMessages({
@@ -34,15 +32,16 @@ const options = defineMessages({
     }
 });
 
+const MENU_ICON = {color: '#ffffff', size: 24};
 const icons = {
-    [GUI_SQUIGGLE]: darkModeIcon,
-    [GUI_SQUIGGLE_DAY]: lightModeIcon,
-    [GUI_AUTO]: squiggleIcon
+    [GUI_SQUIGGLE]: sqIconDataUri('night', MENU_ICON),
+    [GUI_SQUIGGLE_DAY]: sqIconDataUri('day', MENU_ICON),
+    [GUI_AUTO]: sqIconDataUri('auto', MENU_ICON)
 };
 
 const ThemeIcon = ({id}) => (
     <img
-        src={icons[id] || squiggleIcon}
+        src={icons[id] || icons[GUI_AUTO]}
         draggable={false}
         width={24}
         height={24}
