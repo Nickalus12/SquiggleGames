@@ -58,6 +58,7 @@ const createWorldState = (runtime, options) => {
         view: IDENTITY_VIEW,
         applied: null,
         pinned: new Set(),
+        revision: 0,
         backdrop: {mode: 'scrolls', speed: 50},
         echo: null,
         echoSkin: null,
@@ -83,6 +84,7 @@ const createWorldState = (runtime, options) => {
             state.tiles.markAll();
         }
         state.applied = null;
+        state.revision++;
         emitter.emit('level', state.play);
     };
 
@@ -332,6 +334,7 @@ const createWorldState = (runtime, options) => {
             const value = addTexture(grid, name, flags);
             if (value && state.play && state.play.id === grid.id) {
                 state.play.tiles = grid.tiles.map(tile => Object.assign({}, tile));
+                state.revision++;
                 if (state.tiles) state.tiles.markAll();
             }
             if (value) writeLevel(runtime, grid);
@@ -352,6 +355,7 @@ const createWorldState = (runtime, options) => {
             }
             if (changed.length) {
                 writeLevel(runtime, grid);
+                state.revision++;
                 emitter.emit('cells', {level: grid.id, layer, cells: changed, origin: origin || 'local'});
             }
             return changed;
@@ -362,6 +366,7 @@ const createWorldState = (runtime, options) => {
             const cell = cellAt(grid, x, y);
             const name = layer || 'main';
             if (!setCell(grid, name, cell.col, cell.row, value)) return false;
+            state.revision++;
             if (state.tiles) state.tiles.markCell(cell.col, cell.row, name);
             return true;
         },
@@ -369,6 +374,7 @@ const createWorldState = (runtime, options) => {
             const grid = state.play;
             if (!grid) return 0;
             const value = addTexture(grid, name, 0);
+            if (value) state.revision++;
             if (value && state.tiles) state.tiles.markAll();
             return value;
         },
@@ -443,6 +449,11 @@ const createWorldState = (runtime, options) => {
             }
         },
         isPinned: target => state.pinned.has(target),
+        holdCamera: owner => camera.hold(owner),
+        revision: () => state.revision,
+        setTilesHidden (on) {
+            if (state.tiles) state.tiles.setHidden(on);
+        },
         setBackdrop (mode, speed) {
             const next = BACKDROP_MODES.indexOf(mode) === -1 ? 'scrolls' : mode;
             const was = state.backdrop.mode;
@@ -593,6 +604,8 @@ const extendSeam = seam => {
             return made ? Promise.resolve(made.id) : fail('level limit');
         },
         createTile,
+        showScene: name => !!getScenes(runtime).preview(name),
+        showLevel: key => getWorld(runtime).useLevel(key),
         connectTilemap: (send, options) => createTilemapSync(Object.assign({}, options, {
             world: getWorld(runtime),
             send

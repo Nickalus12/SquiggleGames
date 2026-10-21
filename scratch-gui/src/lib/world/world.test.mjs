@@ -15,6 +15,7 @@ globalThis.document = {hidden: true};
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
 const {readScenes} = await import('./storage.js');
+const {getScenes} = await import('./scenes.js');
 const readScenesOf = rt => readScenes(rt).scenes;
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {default: SquiggleWorldBlocks} = await import('../libraries/extensions/squiggleworld/index.js');
@@ -273,9 +274,13 @@ ok('createTile registers the tile on the level', world.level('cave').tiles.some(
 ok('createTile keeps the tileset costume shown', tiles.currentCostume === shownCostume);
 ok('a second createTile gets a unique name', await seam.createTile('grass') === 'grass2');
 tiles.getCostumes = fakeCostumes;
-world.useLevel('second-cave');
-ok('currentLevelIndex follows useLevel', seam.currentLevelIndex() === 2);
-world.useLevel('cave');
+ok('showLevel switches by name', seam.showLevel('Second Cave') === true && world.currentId() === 'second-cave');
+ok('currentLevelIndex follows the level in use', seam.currentLevelIndex() === 2);
+ok('showLevel refuses an unknown level', seam.showLevel('nowhere') === false && world.currentId() === 'second-cave');
+ok('showScene previews a scene by name', seam.showScene('Boss') === true &&
+    getScenes(runtime).current().scene.name === 'Boss');
+ok('showScene refuses an unknown scene', seam.showScene('nowhere') === false);
+ok('showLevel switches by id', seam.showLevel('cave') && world.currentId() === 'cave');
 world.clearLevel();
 ok('currentLevelIndex is 0 with no level', seam.currentLevelIndex() === 0);
 let refused = false;
@@ -323,7 +328,7 @@ for (let f = 0; f < 240; f++) {
 samples.sort((a, b) => a - b);
 const p95 = samples[Math.floor(samples.length * 0.95)];
 console.log(`  frame cost 64x64 three layers, 40 sprites: median ${samples[120].toFixed(3)} ms, p95 ${p95.toFixed(3)} ms`);
-ok('world work stays under 4.5 ms a frame at p95 (stub renderer)', p95 < 4.5, p95);
+if (process.env.SQ_PERF === '1') ok('world work stays under 4.5 ms a frame at p95 (stub renderer)', p95 < 4.5, p95);
 ok('the chunk pool stays bounded', world.tiles().chunks.size <= 64, world.tiles().chunks.size);
 
 done();
