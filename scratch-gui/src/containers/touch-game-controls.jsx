@@ -5,7 +5,7 @@ import {connect} from 'react-redux';
 import VM from 'scratch-vm';
 
 import TouchGameControlsComponent from '../components/touch-game-controls/touch-game-controls.jsx';
-import {keyboardData, projectWantsTouchKeys} from '../lib/touch-keys';
+import {keyboardData, listenedTouchKeys} from '../lib/touch-keys';
 import {setProjectUsesKeys, touchControlsVisible} from '../reducers/layout-mode';
 
 const SCAN_DELAY = 500;
@@ -19,6 +19,7 @@ class TouchGameControls extends React.Component {
             'scan'
         ]);
         this.scanTimer = null;
+        this.state = {keys: []};
     }
     componentDidMount () {
         const {vm} = this.props;
@@ -40,7 +41,9 @@ class TouchGameControls extends React.Component {
     }
     scan () {
         this.scanTimer = null;
-        this.props.onSetProjectUsesKeys(projectWantsTouchKeys(this.props.vm.runtime.targets));
+        const keys = Array.from(listenedTouchKeys(this.props.vm.runtime.targets)).sort();
+        if (keys.join() !== this.state.keys.join()) this.setState({keys});
+        this.props.onSetProjectUsesKeys(keys.length > 0);
     }
     handleKey (name, isDown) {
         const data = keyboardData(name, isDown);
@@ -51,6 +54,7 @@ class TouchGameControls extends React.Component {
         return (
             <TouchGameControlsComponent
                 className={this.props.className}
+                keys={this.state.keys}
                 layout={this.props.layout}
                 onKey={this.handleKey}
             />

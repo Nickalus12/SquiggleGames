@@ -2,10 +2,39 @@ import bindAll from 'lodash.bindall';
 import classNames from 'classnames';
 import PropTypes from 'prop-types';
 import React from 'react';
+import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {TOUCH_KEYS} from '../../lib/touch-keys';
 
 import styles from './touch-game-controls.css';
+
+const messages = defineMessages({
+    ArrowLeft: {
+        id: 'gui.touchKeys.left',
+        defaultMessage: 'Left arrow',
+        description: 'On-screen game button that acts like the left arrow key'
+    },
+    ArrowUp: {
+        id: 'gui.touchKeys.up',
+        defaultMessage: 'Up arrow',
+        description: 'On-screen game button that acts like the up arrow key'
+    },
+    ArrowDown: {
+        id: 'gui.touchKeys.down',
+        defaultMessage: 'Down arrow',
+        description: 'On-screen game button that acts like the down arrow key'
+    },
+    ArrowRight: {
+        id: 'gui.touchKeys.right',
+        defaultMessage: 'Right arrow',
+        description: 'On-screen game button that acts like the right arrow key'
+    },
+    space: {
+        id: 'gui.touchKeys.space',
+        defaultMessage: 'Space',
+        description: 'On-screen game button that acts like the space bar'
+    }
+});
 
 const ARROW_PATHS = {
     ArrowLeft: 'M15 5l-7 7 7 7',
@@ -84,9 +113,10 @@ class TouchGameControls extends React.Component {
     renderKey (touchKey, className) {
         const down = !!this.state.down[touchKey.name];
         const arrow = ARROW_PATHS[touchKey.name];
+        const label = this.props.intl.formatMessage(messages[touchKey.name]);
         return (
             <button
-                aria-label={touchKey.label}
+                aria-label={label}
                 aria-pressed={down}
                 className={classNames(styles.key, className, {[styles.isDown]: down})}
                 data-touch-key={touchKey.name}
@@ -114,27 +144,32 @@ class TouchGameControls extends React.Component {
                         />
                     </svg>
                 ) : (
-                    <span className={styles.keyLabel}>{touchKey.label}</span>
+                    <span className={styles.keyLabel}>{label}</span>
                 )}
             </button>
         );
     }
     render () {
-        const {className, layout} = this.props;
-        const arrows = TOUCH_KEYS.filter(k => ARROW_PATHS[k.name]);
-        const actions = TOUCH_KEYS.filter(k => !ARROW_PATHS[k.name]);
+        const {className, keys, layout} = this.props;
+        const shown = keys && keys.length ? TOUCH_KEYS.filter(k => keys.indexOf(k.scratchKey) !== -1) : TOUCH_KEYS;
+        const arrows = shown.filter(k => ARROW_PATHS[k.name]);
+        const actions = shown.filter(k => !ARROW_PATHS[k.name]);
         return (
             <div
                 className={classNames(styles.controls, styles[layout], className)}
                 data-touch-controls={layout}
                 onContextMenu={this.handleContextMenu}
             >
-                <div className={styles.pad}>
-                    {arrows.map(k => this.renderKey(k, ARROW_SLOTS[k.name]))}
-                </div>
-                <div className={styles.actions}>
-                    {actions.map(k => this.renderKey(k, styles.action))}
-                </div>
+                {arrows.length ? (
+                    <div className={styles.pad}>
+                        {arrows.map(k => this.renderKey(k, ARROW_SLOTS[k.name]))}
+                    </div>
+                ) : null}
+                {actions.length ? (
+                    <div className={styles.actions}>
+                        {actions.map(k => this.renderKey(k, styles.action))}
+                    </div>
+                ) : null}
             </div>
         );
     }
@@ -142,6 +177,8 @@ class TouchGameControls extends React.Component {
 
 TouchGameControls.propTypes = {
     className: PropTypes.string,
+    intl: intlShape.isRequired,
+    keys: PropTypes.arrayOf(PropTypes.string),
     layout: PropTypes.oneOf(['bottom', 'sides', 'overlay']),
     onKey: PropTypes.func.isRequired
 };
@@ -150,4 +187,4 @@ TouchGameControls.defaultProps = {
     layout: 'bottom'
 };
 
-export default TouchGameControls;
+export default injectIntl(TouchGameControls);

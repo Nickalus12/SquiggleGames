@@ -97,7 +97,7 @@ describe('phoneStageWidth', () => {
             tab: 'stage',
             controls: true
         }, stage));
-        expect(width).toBe(Math.floor((600 - 52 - 60 - 16 - 52 - 156) * (4 / 3)));
+        expect(width).toBe(Math.floor((600 - 52 - 60 - 16 - 52 - 168) * (4 / 3)));
     });
 
     test('landscape with controls leaves room for the side pads', () => {

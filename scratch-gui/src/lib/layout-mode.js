@@ -57,7 +57,7 @@ const PHONE_STAGE_GUTTER = 8;
 const PHONE_SPRITE_ROW_HEIGHT = 52;
 const PHONE_MINI_STAGE_MAX_WIDTH = 176;
 const PHONE_SIDE_CONTROLS_WIDTH = 132;
-const PHONE_BOTTOM_CONTROLS_HEIGHT = 156;
+const PHONE_BOTTOM_CONTROLS_HEIGHT = 168;
 
 const isPhoneLandscape = ({viewportWidth, viewportHeight}) => viewportWidth > viewportHeight;
 

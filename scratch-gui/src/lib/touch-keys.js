@@ -1,9 +1,9 @@
 const TOUCH_KEYS = [
-    {name: 'ArrowLeft', key: 'ArrowLeft', keyCode: 37, scratchKey: 'left arrow', label: 'Left arrow'},
-    {name: 'ArrowUp', key: 'ArrowUp', keyCode: 38, scratchKey: 'up arrow', label: 'Up arrow'},
-    {name: 'ArrowDown', key: 'ArrowDown', keyCode: 40, scratchKey: 'down arrow', label: 'Down arrow'},
-    {name: 'ArrowRight', key: 'ArrowRight', keyCode: 39, scratchKey: 'right arrow', label: 'Right arrow'},
-    {name: 'space', key: ' ', keyCode: 32, scratchKey: 'space', label: 'Space'}
+    {name: 'ArrowLeft', key: 'ArrowLeft', keyCode: 37, scratchKey: 'left arrow'},
+    {name: 'ArrowUp', key: 'ArrowUp', keyCode: 38, scratchKey: 'up arrow'},
+    {name: 'ArrowDown', key: 'ArrowDown', keyCode: 40, scratchKey: 'down arrow'},
+    {name: 'ArrowRight', key: 'ArrowRight', keyCode: 39, scratchKey: 'right arrow'},
+    {name: 'space', key: ' ', keyCode: 32, scratchKey: 'space'}
 ];
 
 const touchKeyByName = name => TOUCH_KEYS.find(k => k.name === name) || null;
