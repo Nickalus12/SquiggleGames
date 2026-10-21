@@ -242,19 +242,19 @@ const refuseIfViewer = () => {
     if (state.ended) {
         if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
             state.lastRefuseAt = Date.now();
-            overlay.toast('🔌 Not connected to the room — save a copy to keep your changes', '#8a8fa3');
+            overlay.toast('🔌 Not connected to the room. Save a copy to keep your changes', '#8a8fa3');
         }
         return true;
     }
     if (!state.active || state.canEdit) return false;
     if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
         state.lastRefuseAt = Date.now();
-        overlay.toast('👀 You are watching — ask the owner for edit access', '#8a8fa3');
+        overlay.toast('👀 You are watching. Ask the owner for edit access', '#8a8fa3');
     }
     return true;
 };
 
-const HOST_ONLY_TEXT = 'Only the room host can open a different project here — it would replace what ' +
+const HOST_ONLY_TEXT = 'Only the room host can open a different project here because it would replace what ' +
     'everyone is working on. Ask them, or open it in a room of your own.';
 const mayReplaceProject = () => {
     if (!state.active || state.applyingRemote) return true;
@@ -262,7 +262,7 @@ const mayReplaceProject = () => {
     if (Date.now() - (state.lastRefuseAt || 0) > REFUSE_TOAST_MS) {
         state.lastRefuseAt = Date.now();
         overlay.toast(state.canEdit ? `🔒 ${HOST_ONLY_TEXT}` :
-            '👀 You are watching — ask the owner for edit access', '#8a8fa3');
+            '👀 You are watching. Ask the owner for edit access', '#8a8fa3');
     }
     return false;
 };
@@ -305,7 +305,7 @@ const projectFileName = () => {
 const downloadCurrentProject = () => {
     if (!state.vm) return;
     state.vm.saveProjectSb3().then(blob => saveFile(blob, projectFileName()), () => {
-        overlay.toast('⚠️ Could not make the download — try File → Save to your computer', '#e8386d');
+        overlay.toast('⚠️ Could not make the download. Try File → Save to your computer', '#e8386d');
     });
 };
 
@@ -327,14 +327,14 @@ const applyEditability = () => {
     }
     state.readOnlyBannerUp = true;
     if (state.ended) {
-        overlay.banner(state.endedText || 'Disconnected from the room — your changes here are not saved.', {
+        overlay.banner(state.endedText || 'Disconnected from the room. Your changes here are not saved.', {
             kind: 'update',
             actionLabel: 'Save a copy to my computer',
             onAction: downloadCurrentProject
         });
         return;
     }
-    overlay.banner('You are watching this project — your changes will not be saved.', {kind: 'busy'});
+    overlay.banner('You are watching this project. Your changes will not be saved.', {kind: 'busy'});
 };
 
 // Send presence only when it actually changed (or as a 3s keepalive refresh).
@@ -795,7 +795,7 @@ const rescueLocalProject = async (why, incomingB64) => {
     const when = new Date().toLocaleString();
     const sent = client.send({
         type: 'save-project',
-        name: `Rescued — ${state.appliedTitle || 'project'} — ${when}`,
+        name: `Rescued: ${state.appliedTitle || 'project'} (${when})`,
         b64,
         quiet: true
     });
@@ -931,7 +931,7 @@ const applySnapshot = async msg => {
          */
         // eslint-disable-next-line no-console
         console.error('[collab] failed to apply snapshot', e);
-        overlay.toast('⚠️ Could not load the project — retrying', '#f0912b');
+        overlay.toast('⚠️ Could not load the project, retrying', '#f0912b');
         forceNextApply();
         // Declared below, like the rest of the mutually-referring handlers here.
         // eslint-disable-next-line no-use-before-define
@@ -2374,7 +2374,7 @@ const applyRole = (role, canEditFlag) => {
         overlay.toast('✏️ You can edit this project now!', '#2bb673');
         return;
     }
-    overlay.toast('👀 You are watching now — ask the owner for edit access', '#8a8fa3');
+    overlay.toast('👀 You are watching now. Ask the owner for edit access', '#8a8fa3');
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
     state.unackedSnapshots = [];
@@ -2439,7 +2439,7 @@ const wireSocket = () => {
             msg.color
         );
         applyEditability();
-        if (!state.canEdit) overlay.toast('👀 You are watching — ask the owner for edit access', '#8a8fa3');
+        if (!state.canEdit) overlay.toast('👀 You are watching. Ask the owner for edit access', '#8a8fa3');
         rebuildTargetIndex();
         if (client.holdingQueue) state.offlineEdits = true;
         if (!(isReconnect && state.offlineEdits && state.canEdit)) {
@@ -2492,7 +2492,7 @@ const wireSocket = () => {
      * where unreproducible bugs come from.
      */
     client.on('server-restarting', () => {
-        overlay.banner('Squiggle is updating — saving your work…', {kind: 'busy'});
+        overlay.banner('Squiggle is updating. Saving your work…', {kind: 'busy'});
         // Don't wait for the debounce; the server is holding the door for this.
         client.flushPaced();
         state.urgentSnapshot = true;
@@ -2530,7 +2530,7 @@ const wireSocket = () => {
             client.disconnect();
             endSession('This room is open in another tab, so this one stopped saving. ' +
                 'Save a copy to keep what you changed here.');
-            overlay.toast('👀 Opened in another tab — disconnected here', '#ff8c00');
+            overlay.toast('👀 Opened in another tab, so this one disconnected', '#ff8c00');
         } else if (msg.error === 'room-full') {
             client.disconnect();
             endSession('The room is full, so changes here are not saved.');
