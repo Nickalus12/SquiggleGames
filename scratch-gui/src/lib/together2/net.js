@@ -7,7 +7,8 @@ const RECONNECT_MIN_MS = 250;
 const RECONNECT_MAX_MS = 5000;
 const BACK_OFF_MS = 5000;
 const MAX_UNACKED = 200;
-const STOP_CODES = new Set([1000, 1008]);
+const MAX_OPS_PER_FRAME = 50;
+const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
 
@@ -61,7 +62,9 @@ const createGameSession = ({
     let dropped = 0;
     let pendingA = null;
     let lastSentA = null;
-    let pendingG = [];
+    const pendingG = [];
+    let mode = null;
+    let tickHz = null;
 
     const emit = (type, payload) => {
         const list = handlers.get(type);
@@ -79,24 +82,26 @@ const createGameSession = ({
         }
     };
 
+    let schedule = null;
+
     const flush = () => {
         flushTimer = null;
         if (!open || (!pendingA && !pendingG.length)) return null;
         s += 1;
         const frame = {type: 'in', s, k, cid};
         if (pendingA) frame.a = pendingA;
-        if (pendingG.length) frame.g = pendingG;
+        if (pendingG.length) frame.g = pendingG.splice(0, MAX_OPS_PER_FRAME);
         if (pendingA) lastSentA = pendingA;
         pendingA = null;
-        pendingG = [];
         lastFlushAt = now();
         unacked.push({s, frame, at: lastFlushAt, resent: false});
         if (unacked.length > MAX_UNACKED) unacked.splice(0, unacked.length - MAX_UNACKED);
         sendRaw(frame);
+        if (pendingG.length) schedule();
         return frame;
     };
 
-    const schedule = () => {
+    schedule = () => {
         if (flushTimer || !open) return;
         const wait = lastFlushAt + BATCH_MS - now();
         if (wait <= 0) flush();
@@ -117,6 +122,8 @@ const createGameSession = ({
         attempts = 0;
         if (Number.isInteger(msg.slot)) slot = msg.slot;
         if (typeof msg.resume === 'string') resume = msg.resume;
+        if (msg.mode === 'rules' || msg.mode === 'relay') mode = msg.mode;
+        if (Number.isFinite(msg.tickHz) && msg.tickHz > 0) tickHz = msg.tickHz;
         const ack = Number.isInteger(msg.ack) ? msg.ack : 0;
         settleAck(ack, false);
         s = Math.max(ack, unacked.length ? unacked[0].s - 1 : s);
@@ -277,6 +284,12 @@ const createGameSession = ({
         get slot () {
             return slot;
         },
+        get mode () {
+            return mode;
+        },
+        get tickHz () {
+            return tickHz;
+        },
         get rtt () {
             return rtt;
         },
@@ -303,6 +316,7 @@ export {
     BATCH_MS,
     OPS_PER_SECOND,
     OPS_BURST,
+    MAX_OPS_PER_FRAME,
     gameSocketUrl,
     createGameSession
 };

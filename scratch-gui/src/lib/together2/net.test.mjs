@@ -53,8 +53,10 @@ section('join and welcome');
 {
     const {session, ws, events} = make();
     ok('it joins with proto 2', ws.sent[0].type === 'join' && ws.sent[0].proto === 2 && !('resume' in ws.sent[0]));
-    ws.deliver({type: 'welcome', slot: 3, ack: 0, resume: 'r1'});
+    ws.deliver({type: 'welcome', proto: 2, mode: 'rules', slot: 3, ack: 0, resume: 'r1', tickHz: 20, region: 'x', t: 40});
     ok('the welcome gives the slot', session.slot === 3 && events.some(e => e.type === 'welcome'));
+    ok('and the mode and tick rate', session.mode === 'rules' && session.tickHz === 20, [session.mode, session.tickHz]);
+    ok('the welcome tick is not a tick seen', session.k === -1, session.k);
 }
 
 section('in frames: leading edge, then 20 a second');
@@ -86,6 +88,23 @@ section('ops are limited to 25 a second, burst 50');
     ok('the burst stops at 50', taken === 50 && session.dropped === 10, {taken, dropped: session.dropped});
 }
 
+section('at most 50 ops ride one frame');
+{
+    const {clock, session, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0});
+    ws.drop(1006);
+    for (let i = 0; i < 50; i++) session.queueOp({action: 'msg', name: `a${i}`, value: ''});
+    clock.advance(3000);
+    for (let i = 0; i < 20; i++) session.queueOp({action: 'msg', name: `b${i}`, value: ''});
+    const next = sockets[1];
+    next.open();
+    next.deliver({type: 'welcome', slot: 1, ack: 0});
+    ok('the first frame carries 50', ins(next).length === 1 && ins(next)[0].g.length === 50, ins(next).map(f => f.g.length));
+    clock.advance(50);
+    ok('the rest follow in the next frame', ins(next).length === 2 && ins(next)[1].g.length === 20 &&
+        ins(next)[1].g[19].name === 'b19', ins(next).map(f => f.g.length));
+}
+
 section('ticks, acks and rtt');
 {
     const {clock, session, ws, events} = make();
@@ -102,7 +121,7 @@ section('ticks, acks and rtt');
     ok('rtt is smoothed', session.rtt === 72, session.rtt);
     ok('a correction is handed on after the tick',
         events.map(e => e.type).slice(-2).join() === 'tick,correction', events.map(e => e.type));
-    ws.deliver({type: 'rules-status', hash: 'h', ok: true, phase: 'compile', errors: []});
+    ws.deliver({type: 'rules-status', hash: 'h', ok: true, phase: 'run', errors: []});
     ok('rules-status is handed on', events.some(e => e.type === 'rules-status'));
     session.setCid(1);
     session.setAvatar([2, 0, 90, 1, 1, 0]);
@@ -152,6 +171,8 @@ section('close codes');
     ok('4010 asks for a reload and stays closed', !reload.reconnected && reload.closed.msg.reason === 'reload');
     const refused = run(4003);
     ok('an app refusal stays closed', !refused.reconnected && !!refused.closed);
+    ok('1009 frame-too-large stays closed', !run(1009).reconnected);
+    ok('4009 not-started stays closed', !run(4009).reconnected);
     ok('1012 reconnects', run(1012).reconnected);
     const env = make();
     env.ws.drop(1013);

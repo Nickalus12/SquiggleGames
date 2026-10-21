@@ -6,6 +6,10 @@ import {RULES_KEY} from '../collab/project-seam.js';
 
 const SPRITE_LAYER = 'sprite';
 const FLAG_VISIBLE = 1;
+const MAX_X = 480;
+const MAX_Y = 360;
+const MAX_COSTUME = 1000;
+const MAX_LEVEL = 100;
 
 const halfPixel = value => Math.round(value * 2) / 2;
 
@@ -42,13 +46,20 @@ const worldLevel = () => {
     return index + 1;
 };
 
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+
+const wholeDirection = direction => {
+    const turned = ((Math.round(direction) % 360) + 360) % 360;
+    return turned > 180 ? turned - 360 : turned;
+};
+
 const avatarOf = (target, level) => [
-    halfPixel(target.x),
-    halfPixel(target.y),
-    Math.round(target.direction),
-    target.currentCostume,
+    halfPixel(clamp(target.x, -MAX_X, MAX_X)),
+    halfPixel(clamp(target.y, -MAX_Y, MAX_Y)),
+    wholeDirection(target.direction),
+    clamp((target.currentCostume | 0) + 1, 1, MAX_COSTUME),
     target.visible ? FLAG_VISIBLE : 0,
-    level
+    clamp(level | 0, 0, MAX_LEVEL)
 ];
 
 const renderedDirection = (style, direction, size) => {
@@ -70,7 +81,7 @@ const createAvatarLayer = runtime => {
                 drawn.set(slot, id);
             }
             const costumes = source.sprite.costumes;
-            const costume = costumes[Math.max(0, Math.min(costumes.length - 1, a[3] | 0))];
+            const costume = costumes[clamp((a[3] | 0) - 1, 0, costumes.length - 1)];
             if (costume && typeof costume.skinId === 'number') r.updateDrawableSkinId(id, costume.skinId);
             r.updateDrawablePosition(id, [a[0], a[1]]);
             const turned = renderedDirection(source.rotationStyle, a[2], source.size);

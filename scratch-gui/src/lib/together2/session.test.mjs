@@ -23,7 +23,11 @@ section('the own sprite');
 section('the avatar frame');
 {
     const a = avatarOf(sprite('Cat', {x: 10.3, y: -4.8, direction: 44.6, currentCostume: 1, visible: false}), 2);
-    ok('x and y at half pixels, direction in degrees, costume, flags, level', a.join() === '10.5,-5,45,1,0,2', a);
+    ok('x and y at half pixels, direction in degrees, 1-based costume, flags, level', a.join() === '10.5,-5,45,2,0,2', a);
+    const far = avatarOf(sprite('Cat', {x: 900, y: -700.2, direction: 270, currentCostume: 4000}), 300);
+    ok('x, y, costume and level clamp to the PROTOCOL limits', far.join() === '480,-360,-90,1000,1,100', far);
+    ok('direction 180 stays 180 and -180 turns to 180',
+        avatarOf(sprite('Cat', {direction: 180}), 0)[2] === 180 && avatarOf(sprite('Cat', {direction: -180}), 0)[2] === 180);
 }
 
 section('others are drawn without clones');
@@ -35,9 +39,9 @@ section('others are drawn without clones');
     }});
     const layer = createAvatarLayer({renderer});
     const source = sprite('Cat');
-    layer.draw('3', [20, 30, -90, 1, 1, 0], source);
+    layer.draw('3', [20, 30, -90, 2, 1, 0], source);
     ok('one drawable in the sprite layer', calls[0][0] === 'createDrawable' && calls[0][1] === 'sprite');
-    ok('it wears the costume by index', calls.some(c => c[0] === 'updateDrawableSkinId' && c[2] === 12));
+    ok('it wears the 1-based costume', calls.some(c => c[0] === 'updateDrawableSkinId' && c[2] === 12));
     ok('it stands where the tick says', calls.some(c => c[0] === 'updateDrawablePosition' && c[2].join() === '20,30'));
     layer.draw('3', [21, 30, -90, 9, 0, 0], source);
     ok('the drawable is reused', calls.filter(c => c[0] === 'createDrawable').length === 1);
