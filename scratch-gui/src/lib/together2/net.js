@@ -65,6 +65,12 @@ const createOpBucket = ({rate = OPS_PER_SECOND, burst = OPS_BURST, now}) => {
     };
 };
 
+const ownAvatar = a => {
+    const out = new Array(a.length);
+    for (let i = 0; i < a.length; i++) out[i] = a[i];
+    return out;
+};
+
 const createGameSession = ({
     url,
     WebSocketImpl,
@@ -94,7 +100,7 @@ const createGameSession = ({
     let joinedWithResume = false;
     let pendingA = null;
     let lastSentA = null;
-    const avatarBuffers = [[], []];
+    const avatarBuffer = [];
     const pendingG = [];
     let mode = null;
     let tickHz = null;
@@ -134,9 +140,9 @@ const createGameSession = ({
         if (!open || (!pendingA && !pendingG.length)) return null;
         s += 1;
         const frame = {type: 'in', s, k, cid};
-        if (pendingA) frame.a = pendingA;
+        if (pendingA) frame.a = ownAvatar(pendingA);
         if (pendingG.length) frame.g = takeOps(byteLength(JSON.stringify(frame)));
-        if (pendingA) lastSentA = pendingA;
+        if (pendingA) lastSentA = frame.a;
         pendingA = null;
         lastFlushAt = now();
         unacked.push({s, frame, at: lastFlushAt, resent: false});
@@ -309,10 +315,9 @@ const createGameSession = ({
         setAvatar (a) {
             if (!Array.isArray(a)) return false;
             if (sameAvatar(a, pendingA || lastSentA)) return false;
-            const into = avatarBuffers[0] === lastSentA ? avatarBuffers[1] : avatarBuffers[0];
-            into.length = a.length;
-            for (let i = 0; i < a.length; i++) into[i] = a[i];
-            pendingA = into;
+            avatarBuffer.length = a.length;
+            for (let i = 0; i < a.length; i++) avatarBuffer[i] = a[i];
+            pendingA = avatarBuffer;
             schedule();
             return true;
         },

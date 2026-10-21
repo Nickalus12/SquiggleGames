@@ -251,17 +251,20 @@ section('a resent frame keeps the avatar it was sent with');
     const {clock, session, ws} = make();
     ws.deliver({type: 'welcome', slot: 1, ack: 0, resume: 'tok'});
     session.setAvatar([5, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    session.setAvatar([6, 0, 90, 1, 1, 0]);
+    clock.advance(50);
+    ok('two avatars went out 50 ms apart, neither acked', ins(ws).map(f => f.s).join() === '1,2' &&
+        session.unacked === 2, ins(ws));
     ws.drop(1006);
-    session.setAvatar([9, 0, 90, 1, 1, 0]);
+    session.setAvatar([7, 0, 90, 1, 1, 0]);
     clock.advance(250);
     const next = sockets[sockets.length - 1];
     next.open();
     next.deliver({type: 'welcome', slot: 1, ack: 0});
-    const resent = ins(next);
-    ok('the unacked frame goes again with its own avatar', resent.length >= 1 && resent[0].s === 1 &&
-        resent[0].a[0] === 5, resent);
     clock.advance(50);
-    ok('and the newer avatar follows in its own frame', ins(next).some(m => m.s === 2 && m.a && m.a[0] === 9),
+    const sent = ins(next).map(f => `${f.s}:${f.a && f.a[0]}`).join();
+    ok('the resent s=1 and s=2 carry their own avatars and the third follows under s=3', sent === '1:5,2:6,3:7',
         ins(next));
 }
 
