@@ -1,4 +1,6 @@
-const SNAPSHOT_FIELDS = Object.freeze(['sha', 'size', 'atSeq', 'ref', 'basedOn', 'force', 'reset', 'cacheOnly', 'hashes']);
+const SNAPSHOT_FIELDS = Object.freeze([
+    'sha', 'size', 'atSeq', 'ref', 'basedOn', 'force', 'reset', 'cacheOnly', 'hashes'
+]);
 
 const ASSET_MAX_BYTES = 10 * 1024 * 1024;
 const PROJECT_MAX_BYTES = 8 * 1024 * 1024;
