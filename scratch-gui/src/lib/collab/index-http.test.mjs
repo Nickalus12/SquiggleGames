@@ -679,6 +679,15 @@ await section('the green flag puts the rules', async () => {
     vm.runtime.emit('PROJECT_STOP_ALL');
 });
 
+await section('the editor bridge has the surface the player bridge copies', async () => {
+    await fixture();
+    const {NET_BRIDGE_KEYS} = await import('../together2/play-client.js');
+    const keys = Object.keys(globalThis.window.SquiggleNet);
+    ok('its keys are the shared list', keys.slice().sort()
+        .join() === NET_BRIDGE_KEYS.slice().sort()
+        .join(), keys);
+});
+
 await section('the green flag opens the game socket', async () => {
     const fx = await fixture();
     const {vm, sent, rulesPuts, gameSockets} = fx;

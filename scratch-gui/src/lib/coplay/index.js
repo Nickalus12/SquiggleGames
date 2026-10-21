@@ -31,6 +31,8 @@
  * this site combined.
  */
 
+import {pageSocketBase, playSocketUrl} from '../together2/net.js';
+
 // 10Hz of deltas is plenty when the watcher is simulating between them, and a
 // keyframe every 2s bounds how long any drift can survive.
 const SYNC_MS = 100;
@@ -335,7 +337,7 @@ const wireDriverCapture = () => {
 
 // ------------------------------------------------------------- the socket ---
 
-const wsUrl = () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+const wsUrl = () => playSocketUrl(pageSocketBase(location), state.code);
 
 const pushRoster = () => {
     emit('roster', {

@@ -20,13 +20,16 @@ const BAD_FRAME_CODE = 1007;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
-const OUT_ACTIONS = new Set(['input', 'fire', 'msg']);
+const OUT_ACTIONS = new Set(['input', 'fire', 'msg', 'set', 'change']);
 
-const gameSocketUrl = (base, slug) => {
-    const origin = String(base || '').replace(/\/+$/, '')
-        .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
-    return `${origin}/ws/room/${encodeURIComponent(slug)}/game`;
-};
+const socketOrigin = base => String(base || '').replace(/\/+$/, '')
+    .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
+
+const gameSocketUrl = (base, slug) => `${socketOrigin(base)}/ws/room/${encodeURIComponent(slug)}/game`;
+
+const pageSocketBase = page => `${page.protocol === 'https:' ? 'wss:' : 'ws:'}//${page.host}`;
+
+const playSocketUrl = (base, code) => `${socketOrigin(base)}/ws/play/${encodeURIComponent(code)}`;
 
 const encoder = new TextEncoder();
 
@@ -406,5 +409,7 @@ export {
     cutOp,
     wireValue,
     gameSocketUrl,
+    pageSocketBase,
+    playSocketUrl,
     createGameSession
 };
