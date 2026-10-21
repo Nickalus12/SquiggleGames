@@ -2,9 +2,10 @@
  * Runs as a builtin (main thread) so it can reach window.SquiggleNet.
  * Talks only to that bridge; never opens its own socket. */
 
-import {installRuleMethods, ruleBlocks, ruleMenus} from '../../../rules/rule-blocks.js';
+import {installRuleMethods, ruleBlocks, ruleMenus, setupButton} from '../../../rules/rule-blocks.js';
 import {installRulesGuard} from '../../../rules/guard.js';
 import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
+import {openGameSetup} from '../../../rules/open-setup.js';
 import {
     applyTick,
     createGameState,
@@ -610,7 +611,8 @@ class TogetherBlocks {
                 {
                     blockType: 'label',
                     text: 'Game Rules'
-                }
+                },
+                setupButton()
             ].concat(ruleBlocks('together')),
             menus: ruleMenus('together')
         };
@@ -623,6 +625,12 @@ class TogetherBlocks {
             vm.setEditingTarget(target.id);
             return target;
         });
+    }
+
+    openGameSetup () {
+        const vm = this.runtime.extensionManager && this.runtime.extensionManager.vm;
+        if (!vm) return Promise.resolve(null);
+        return openGameSetup(vm);
     }
 
     tellGame (args) {

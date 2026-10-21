@@ -21,6 +21,7 @@ const MENU_METHODS = Object.freeze({
 
 const EMPTY_MENU = Object.freeze([{text: 'none yet', value: ''}]);
 const OPEN_RULES_FUNC = 'openGameRules';
+const OPEN_SETUP_FUNC = 'openGameSetup';
 
 const specsOf = card => (schema.cards[card] || []).filter(spec => spec && typeof spec === 'object');
 
@@ -90,6 +91,12 @@ const openRulesButton = text => ({
     blockType: 'button',
     text: text || 'Open Game Rules',
     func: OPEN_RULES_FUNC
+});
+
+const setupButton = text => ({
+    blockType: 'button',
+    text: text || 'Game setup',
+    func: OPEN_SETUP_FUNC
 });
 
 const findRulesTarget = runtime => (runtime && runtime.targets ?
@@ -162,6 +169,7 @@ const installRuleMethods = (extension, card) => {
 export {
     schema,
     OPEN_RULES_FUNC,
+    OPEN_SETUP_FUNC,
     MENU_METHODS,
     ruleCards,
     ruleOpcodes,
@@ -169,6 +177,7 @@ export {
     ruleBlocks,
     ruleMenus,
     openRulesButton,
+    setupButton,
     installRuleMethods,
     findRulesTarget,
     rulesMark,

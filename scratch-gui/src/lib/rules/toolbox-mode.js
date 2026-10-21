@@ -1,4 +1,4 @@
-import {OPEN_RULES_FUNC, ruleCards, ruleOpcodeSet} from './rule-blocks.js';
+import {OPEN_RULES_FUNC, OPEN_SETUP_FUNC, ruleCards, ruleOpcodeSet} from './rule-blocks.js';
 
 const MODE_RULES = 'rules';
 const MODE_DEVICE = 'device';
@@ -64,10 +64,10 @@ const splitCategory = xml => {
 
 const isRuleItem = item => item.name === 'block' && ruleSet.has(attr(item.openTag, 'type'));
 
-const isOpenRulesButton = item => {
+const isButtonFor = (item, func) => {
     if (item.name !== 'button') return false;
     const data = attr(item.openTag, 'callbackData') || '';
-    return data.endsWith(`_${OPEN_RULES_FUNC}`);
+    return data.endsWith(`_${func}`);
 };
 
 const tidy = items => {
@@ -97,7 +97,8 @@ const filterCategory = (category, mode) => {
     const ruleCard = cardSet.has(category.id);
     if (mode === MODE_RULES && !ruleCard) return null;
     const kept = tidy(parts.items.filter(item => {
-        if (isOpenRulesButton(item)) return mode !== MODE_RULES;
+        if (isButtonFor(item, OPEN_RULES_FUNC)) return mode !== MODE_RULES;
+        if (isButtonFor(item, OPEN_SETUP_FUNC)) return mode === MODE_RULES;
         return keepFor(mode, item);
     }));
     if (mode === MODE_RULES && !kept.some(isRuleItem)) return null;
