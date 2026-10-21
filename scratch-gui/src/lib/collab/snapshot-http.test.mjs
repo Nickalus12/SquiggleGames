@@ -178,6 +178,38 @@ section('failures');
     ok('a reply without a sha is an error', shaError === 'no-sha');
 }
 
+section('missing assets on the project put');
+{
+    const server = makeServer();
+    let refused = false;
+    const fetchImpl = async (url, init) => {
+        if (!refused && init.method === 'PUT' && url.endsWith('/pj')) {
+            refused = true;
+            server.assets.clear();
+            return Response.json({error: 'missing-assets', missing: [`${md5(2)}.png`]}, {status: 409});
+        }
+        return server.fetchImpl(url, init);
+    };
+    const http = createSnapshotHttp({slug: 'r', base: 'https://sq.test', fetchImpl});
+    const vm = makeVM();
+    const json = vm.toJSON();
+    const result = await http.upload(vm, json);
+    ok('a 409 missing-assets re-puts the named asset and retries', result.sha === await sha256Hex(json), result);
+    ok('only the named asset went up again',
+        server.calls.filter(c => c.method === 'PUT' && c.url.endsWith(`${md5(2)}.png`)).length === 2,
+        server.calls.map(c => `${c.method} ${c.url}`));
+
+    const always = createSnapshotHttp({slug: 'r', base: 'https://sq.test', fetchImpl: async (url, init) => (
+        init.method === 'PUT' && url.endsWith('/pj') ?
+            Response.json({error: 'missing-assets', missing: []}, {status: 409}) :
+            server.fetchImpl(url, init))});
+    let status = null;
+    await always.upload(vm).catch(e => {
+        status = e.status;
+    });
+    ok('a second 409 surfaces instead of looping', status === 409, status);
+}
+
 section('asset store');
 {
     const added = [];

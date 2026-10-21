@@ -94,10 +94,18 @@ const readJSON = response => {
     if (!response.ok) {
         const error = snapshotError('http', String(response.status));
         error.status = response.status;
-        throw error;
+        return response.json().then(body => {
+            error.body = body;
+            throw error;
+        }, () => {
+            throw error;
+        });
     }
     return response.json().catch(() => ({}));
 };
+
+const missingAssetsOf = error => (error && error.status === 409 && error.body &&
+    error.body.error === 'missing-assets' && Array.isArray(error.body.missing) ? error.body.missing : null);
 
 const missingFrom = (reply, asked) => {
     if (reply && Array.isArray(reply.missing)) return reply.missing.filter(name => asked.includes(name));
@@ -176,10 +184,17 @@ const createSnapshotHttp = ({slug, base, fetchImpl, concurrency}) => {
             });
     });
 
-    const upload = vm => {
-        const json = typeof vm.toJSON === 'function' ? vm.toJSON() : '';
-        return uploadAssets(projectAssets(vm))
-            .then(() => uploadProject(json))
+    const upload = (vm, text) => {
+        const json = typeof text === 'string' ? text : vm.toJSON();
+        const assets = projectAssets(vm);
+        const send = () => uploadAssets(assets).then(() => uploadProject(json));
+        return send()
+            .catch(error => {
+                const missing = missingAssetsOf(error);
+                if (!missing) throw error;
+                missing.forEach(name => known.delete(String(name).toLowerCase()));
+                return send();
+            })
             .then(result => Object.assign({json}, result));
     };
 

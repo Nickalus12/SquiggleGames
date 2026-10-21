@@ -219,6 +219,14 @@ const rememberSpriteAdd = (name, sprite) => {
         .concat({at: now, name, sprite});
 };
 
+const exportAddedSprite = target => {
+    if (!state.httpSnapshots || !state.snapshotHttp) {
+        return state.vm.exportSprite(target.id, 'base64').then(b64 => ({sprite: b64}));
+    }
+    return state.snapshotHttp.uploadAssets(projectAssets({runtime: {targets: [target]}}))
+        .then(() => ({sprite: state.vm.toJSON(target.id), format: 'json'}));
+};
+
 const sendBlockEvent = msg => {
     if (state.exportingSprites.has(msg.target)) {
         if (state.heldSpriteEvents.length < 500) state.heldSpriteEvents.push(msg);
@@ -616,11 +624,7 @@ const readProject = async () => {
     return {b64, key: b64};
 };
 
-const uploadProject = async json => {
-    const http = state.snapshotHttp;
-    await http.uploadAssets(projectAssets(state.vm));
-    return http.uploadProject(json);
-};
+const uploadProject = json => state.snapshotHttp.upload(state.vm, json);
 
 const retrySnapshotLater = cacheOnly => {
     const wait = Math.min(SNAPSHOT_RETRY_MAX_MS, SNAPSHOT_RETRY_BASE_MS * (2 ** state.snapshotRetries));
@@ -870,21 +874,48 @@ const offerRescueDownload = b64 => {
     });
 };
 
-const rescueHttpProject = async incomingKey => {
-    const key = await sha256Hex(state.vm.toJSON());
+const claimRescue = () => {
+    const now = Date.now();
+    state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
+    if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) return false;
+    state.rescueTimes.push(now);
+    return true;
+};
+
+const rescueName = () => `Rescued: ${state.appliedTitle || 'project'} (${new Date().toLocaleString()})`;
+
+const downloadRescue = key => zipProject().then(b64 => {
+    offerRescueDownload(b64);
+    state.rescuedKey = key;
+    return key;
+});
+
+const savedRescue = (key, why) => {
+    state.rescuedKey = key;
+    overlay.toast(`💾 Your unsaved changes were saved to your library (${why})`, '#f0912b');
+    return key;
+};
+
+const rescueHttpProject = async (why, incomingKey) => {
+    const json = state.vm.toJSON();
+    const key = await sha256Hex(json);
     if (key === incomingKey || key === state.rescuedKey) return key;
-    return zipProject().then(b64 => {
-        offerRescueDownload(b64);
-        state.rescuedKey = key;
-        return key;
-    });
+    if (!claimRescue()) return downloadRescue(key);
+    let uploaded;
+    try {
+        uploaded = await state.snapshotHttp.upload(state.vm, json);
+    } catch (e) {
+        return downloadRescue(key);
+    }
+    const sent = client.send({type: 'save-project', sha: uploaded.sha, name: rescueName(), quiet: true});
+    return sent ? savedRescue(key, why) : downloadRescue(key);
 };
 
 const rescueLocalProject = async (why, incomingKey) => {
     if (!state.vm || !state.canEdit) return null;
     if (state.httpSnapshots) {
         try {
-            return await rescueHttpProject(incomingKey);
+            return await rescueHttpProject(why, incomingKey);
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[collab] rescue save failed', e);
@@ -900,17 +931,13 @@ const rescueLocalProject = async (why, incomingKey) => {
         return null;
     }
     if (b64 === incomingKey || b64 === state.rescuedB64) return b64;
-    const now = Date.now();
-    state.rescueTimes = state.rescueTimes.filter(t => now - t < RESCUE_WINDOW_MS);
-    if (state.rescueTimes.length >= RESCUE_MAX_PER_WINDOW || !client.connected) {
+    if (!claimRescue()) {
         offerRescueDownload(b64);
         return b64;
     }
-    state.rescueTimes.push(now);
-    const when = new Date().toLocaleString();
     const sent = client.send({
         type: 'save-project',
-        name: `Rescued: ${state.appliedTitle || 'project'} (${when})`,
+        name: rescueName(),
         b64,
         quiet: true
     });
@@ -1157,9 +1184,9 @@ const wrapVm = vm => {
                         claimName('sprite', name);
                         if (hasPeers()) {
                             state.exportingSprites.add(name);
-                            vm.exportSprite(t.id, 'base64').then(b64 => {
-                                client.send({type: 'vm-action', action: 'spriteAdd', sprite: b64, name});
-                                rememberSpriteAdd(name, b64);
+                            exportAddedSprite(t).then(out => {
+                                client.send(Object.assign({type: 'vm-action', action: 'spriteAdd', name}, out));
+                                rememberSpriteAdd(name, out.sprite);
                                 releaseSpriteEvents(name);
                             }, () => {
                                 releaseSpriteEvents(name);
@@ -1944,7 +1971,8 @@ const applySpriteAdd = msg => {
     const before = new Set(state.vm.runtime.targets.map(t => t.id));
     const projectStorage = state.vm.runtime.extensionStorage;
     state.installingRemote++;
-    state.vm.addSprite(new Uint8Array(bufferFromB64(msg.sprite))).then(() => {
+    const input = msg.format === 'json' ? msg.sprite : new Uint8Array(bufferFromB64(msg.sprite));
+    state.vm.addSprite(input).then(() => {
         state.vm.runtime.extensionStorage = projectStorage;
         state.installingRemote--;
         rebuildTargetIndex();
@@ -2565,7 +2593,7 @@ const wireSocket = () => {
         overlay.setPeers(msg.peers, msg.id);
         overlay.setProjects(msg.projects);
         applyRoomTitle(msg.title || msg.room);
-        useHttpSnapshots(msg.proto === 2 || msg.snapshots === 'http', msg.room);
+        useHttpSnapshots(msg.proto >= 2, msg.room);
         /*
          * First welcome records the build this tab is running against; every
          * later one compares. Reconnecting into a server that has been deployed
@@ -2625,8 +2653,8 @@ const wireSocket = () => {
         cachedGameVars = Object.assign(Object.create(null), msg.gameVars || {});
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
-        if (state.httpSnapshots && msg.snapshot && typeof msg.snapshot.sha === 'string') {
-            applySnapshot(Object.assign({type: 'snapshot', version: msg.version}, msg.snapshot));
+        if (state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string') {
+            applySnapshot(Object.assign({type: 'snapshot', version: msg.version}, msg.snap));
         }
     });
     client.on('disconnected', msg => {

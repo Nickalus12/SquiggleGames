@@ -98,7 +98,9 @@ globalThis.__collabStubs = {
     '@turbowarp/paper': noopObject({})
 };
 globalThis.window = noopObject({addEventListener: noop, dispatchEvent: () => true});
-globalThis.document = noopObject({hidden: false, addEventListener: noop});
+globalThis.document = noopObject({
+    hidden: false, addEventListener: noop, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null
+});
 globalThis.localStorage = {getItem: () => null, setItem: noop};
 globalThis.location = {port: '', hostname: 'sq.test', search: '', hash: ''};
 
@@ -185,18 +187,38 @@ section('a snapshot by sha loads from the server');
     ok('a repeat of it is skipped', gets().length === 1);
 }
 
-section('a refused send rescues to a download, never a save-project frame');
+section('a refused send rescues to the library by sha');
 {
     const dog = vm.runtime.targets.find(t => t.getName && t.getName() === 'Dog');
     vm.renameSprite(dog.id, 'Puppy');
+    const local = vm.toJSON();
     const text = project(['Owl']);
     const sha = await sha256Hex(text);
     pages.set(sha, await gzip(text));
     banners.length = 0;
     emit('snapshot-refused', {reason: 'stale', ref: 99, sha, roomVersion: 3});
     ok('the room version loads', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Owl')));
+    const save = sent.find(m => m && m.type === 'save-project');
+    ok('save-project carries the sha of the local copy', save && save.sha === await sha256Hex(local), save);
+    ok('and no project bytes', save && !('b64' in save));
+    ok('the local copy is on the server', save && pages.has(save.sha));
+    ok('no download banner when the save went out', !banners.some(b => /replaced/.test(b.text || '')), banners);
+}
+
+section('offline, the rescue is a download');
+{
+    const owl = vm.runtime.targets.find(t => t.getName && t.getName() === 'Owl');
+    vm.renameSprite(owl.id, 'Wren');
+    const text = project(['Owl']);
+    const sha = await sha256Hex(text);
+    banners.length = 0;
+    const saves = sent.filter(m => m && m.type === 'save-project').length;
+    client.connected = false;
+    emit('snapshot-refused', {reason: 'stale', ref: 98, sha, roomVersion: 3});
+    ok('the room version loads again', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Owl')));
+    client.connected = true;
     ok('the local copy is offered as a download', banners.some(b => /replaced/.test(b.text || '')), banners);
-    ok('no save-project goes over the socket', !sent.some(m => m && m.type === 'save-project'));
+    ok('no save-project while offline', sent.filter(m => m && m.type === 'save-project').length === saves);
 }
 
 section('a missing sha asks for a resync');
@@ -227,6 +249,20 @@ section('a builtin extension travels as a vm-action');
     ok('and is not relayed back', !sent.slice(count).some(m => m && m.type === 'vm-action'));
     emit('vm-action', {type: 'vm-action', action: 'extensionAdd', id: 'https://evil.test/x.js', from: 'pal'});
     ok('a url is never loaded', !vm.extensionManager.isExtensionLoaded('https://evil.test/x.js'));
+
+    const spriteText = JSON.stringify(sprite('Bee'));
+    const before2 = sent.length;
+    await vm.addSprite(spriteText).catch(() => null);
+    const add = await waitFor(() => sent.slice(before2).some(m => m && m.action === 'spriteAdd')) &&
+        sent.slice(before2).find(m => m && m.action === 'spriteAdd');
+    ok('a new sprite travels as json', add && add.format === 'json' && JSON.parse(add.sprite).name === 'Bee', add);
+
+    const remote = JSON.parse(add.sprite);
+    remote.name = 'Ant';
+    emit('vm-action', {type: 'vm-action', action: 'spriteAdd', format: 'json', sprite: JSON.stringify(remote),
+        name: 'Ant', from: 'pal', fromName: 'Pal'});
+    ok('a json sprite from a peer installs',
+        await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Ant')));
     overlay.peers.clear();
 }
 
@@ -261,7 +297,7 @@ section('a reconnect welcome with a pointer loads it');
     const sha = await sha256Hex(text);
     pages.set(sha, await gzip(text));
     emit('welcome', welcome({proto: 2, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version: 9,
-        snapshot: {sha}}));
+        snap: {sha, size: text.length, version: 9, atSeq: 0, hashes: {}}}));
     ok('the pointed project loads', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Fox')));
 }
 
