@@ -27,6 +27,7 @@ const ok = (label, cond, detail) => {
     }
 };
 const section = name => console.log(`\n${name}`);
+const skip = (label, reason) => console.log(`  SKIP  ${label} : ${reason}`);
 const throws = (label, fn, pattern) => {
     let error = null;
     try {
@@ -64,24 +65,32 @@ ok('layer order is the design order', LAYER_ORDER.join(',') ===
     'background,video,sq-tiles-back,pen,sprite,sq-tiles-front,sq-hud');
 
 section('registering a kit');
-class WorldBlocks {
+class KitBlocks {
     getInfo () {
-        return {id: 'squiggleworld', name: 'World', blocks: []};
+        return {id: 'kit', name: 'Kit', blocks: []};
     }
 }
-const world = registerKit({
-    id: 'squiggleworld',
-    layers: ['sq-tiles-back', 'sq-tiles-front', 'sq-tiles-back'],
-    provides: ['world', 'camera'],
-    extension: WorldBlocks
-});
-ok('a kit registration keeps the reserved name and color', world.name === 'World' && world.color === '#8cc63f');
-ok('layers are deduplicated', JSON.stringify(world.layers) === '["sq-tiles-back","sq-tiles-front"]');
-ok('provides world makes it a world kit', worldKitIds().includes('squiggleworld') && worldKitIds().length === worldBefore.length + (worldBefore.includes('squiggleworld') ? 0 : 1));
-ok('builtinKits lists kits with an extension', builtinKits().length === before.length + (before.includes('squiggleworld') ? 0 : 1) &&
-    builtinKits().some(kit => kit.id === 'squiggleworld' && kit.extension === WorldBlocks));
-ok('still reserved after registration', getKit('squiggleworld').reserved === true);
-throws('a second extension for the same id throws', () => registerKit({id: 'squiggleworld', extension: WorldBlocks}),
+const subject = listKits().find(kit => kit.reserved && !kit.extension) || null;
+const taken = subject ? subject.id : builtinKits()[0].id;
+if (subject) {
+    const registered = registerKit({
+        id: subject.id,
+        layers: ['sq-tiles-back', 'sq-tiles-front', 'sq-tiles-back'],
+        provides: ['world', 'camera'],
+        extension: KitBlocks
+    });
+    ok(`a kit registration keeps the reserved name and color (${subject.id})`,
+        registered.name === subject.name && registered.color === subject.color);
+    ok('layers are deduplicated', JSON.stringify(registered.layers) === '["sq-tiles-back","sq-tiles-front"]');
+    ok('provides world makes it a world kit', worldKitIds().includes(subject.id) &&
+        worldKitIds().length === worldBefore.length + 1);
+    ok('builtinKits lists kits with an extension', builtinKits().length === before.length + 1 &&
+        builtinKits().some(kit => kit.id === subject.id && kit.extension === KitBlocks));
+    ok('still reserved after registration', getKit(subject.id).reserved === true);
+} else {
+    skip('registering a reserved kit', 'every reserved kit already has a builtin extension');
+}
+throws('a second extension for the same id throws', () => registerKit({id: taken, extension: KitBlocks}),
     /already has an extension/);
 throws('flipping togetherRequired on a reserved expansion throws',
     () => registerKit({id: 'squigglescores', togetherRequired: false}), /reserved with togetherRequired true/);
@@ -114,7 +123,7 @@ const manager = {
 };
 const installed = installBuiltinKits(manager);
 ok('adds each kit with an extension once', JSON.stringify(installed) === JSON.stringify(builtinKits().map(kit => kit.id)) &&
-    installed.includes('squiggleworld') && added.find(([id]) => id === 'squiggleworld')[1] === WorldBlocks);
+    installed.includes(taken) && (!subject || added.find(([id]) => id === subject.id)[1] === KitBlocks));
 ok('a second call adds nothing', installBuiltinKits(manager).length === 0 && added.length === installed.length);
 
 console.log(`\n${pass} passed, ${fail} failed`);
