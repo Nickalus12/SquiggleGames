@@ -40,6 +40,31 @@
     flex: 0 0 auto;
 }
 
+.sheet-wrap {
+    width: 100%;
+}
+
+.pill.sheet {
+    width: 100%;
+    height: var(--sq-target-touch, 44px);
+    padding: 0 var(--sq-space-4, 16px);
+    border-radius: var(--sq-radius-panel, 12px);
+    justify-content: flex-start;
+    gap: var(--sq-space-3, 12px);
+}
+
+.pill.sheet .count {
+    margin-left: auto;
+}
+
+.pill.sheet::after {
+    left: 28px;
+}
+
+.label {
+    flex: 0 1 auto;
+}
+
 .count {
     min-width: 1ch;
     font-variant-numeric: tabular-nums;

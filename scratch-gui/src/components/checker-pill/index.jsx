@@ -1,4 +1,5 @@
 import bindAll from 'lodash.bindall';
+import classNames from 'classnames';
 import PropTypes from 'prop-types';
 import React from 'react';
 import ReactDOM from 'react-dom';
@@ -10,7 +11,7 @@ import messages from './messages';
 import styles from './checker-pill.css';
 import {createChecker} from '../../lib/checker/index.js';
 import {createFixer} from '../../lib/checker/fixes.js';
-import {setCheckerItems, topSeverity} from '../../reducers/checker.js';
+import {closeCheckerPanel, setCheckerItems, topSeverity} from '../../reducers/checker.js';
 
 const PORTAL_ID = 'sq-menu-right';
 const PANEL_ID = 'sq-checker-panel';
@@ -49,6 +50,7 @@ class CheckerPillContainer extends React.Component {
         document.addEventListener('touchstart', this.handleDocumentDown, true);
     }
     componentDidUpdate (prevProps) {
+        if (this.props.requestOpen && !prevProps.requestOpen) this.openFromRequest();
         if (prevProps.vm !== this.props.vm) {
             this.stop();
             this.start(this.props.vm);
@@ -59,6 +61,10 @@ class CheckerPillContainer extends React.Component {
         if (this.observer) this.observer.disconnect();
         document.removeEventListener('mousedown', this.handleDocumentDown, true);
         document.removeEventListener('touchstart', this.handleDocumentDown, true);
+    }
+    openFromRequest () {
+        this.setState({open: true, notice: ''});
+        this.props.onOpened();
     }
     start (vm) {
         if (!vm || !vm.runtime) return;
@@ -145,7 +151,7 @@ class CheckerPillContainer extends React.Component {
         const shown = hidden.length ? items.filter(entry => hidden.indexOf(entry.key) === -1) : items;
         const pill = (
             <div
-                className={styles.wrap}
+                className={classNames(styles.wrap, {[styles.sheetWrap]: this.props.sheet})}
                 ref={this.setWrap}
             >
                 <CheckerPill
@@ -155,6 +161,7 @@ class CheckerPillContainer extends React.Component {
                     open={open}
                     panelId={PANEL_ID}
                     severity={topSeverity(shown)}
+                    sheet={this.props.sheet}
                 />
                 {open ? (
                     <React.Suspense fallback={null}>
@@ -182,15 +189,20 @@ CheckerPillContainer.propTypes = {
     inline: PropTypes.bool,
     intl: intlShape.isRequired,
     onItems: PropTypes.func.isRequired,
+    onOpened: PropTypes.func.isRequired,
+    requestOpen: PropTypes.bool,
+    sheet: PropTypes.bool,
     vm: PropTypes.object
 };
 
 const mapStateToProps = state => ({
+    requestOpen: !!(state.scratchGui.checker && state.scratchGui.checker.open),
     vm: state.scratchGui.vm
 });
 
 const mapDispatchToProps = dispatch => ({
-    onItems: items => dispatch(setCheckerItems(items))
+    onItems: items => dispatch(setCheckerItems(items)),
+    onOpened: () => dispatch(closeCheckerPanel())
 });
 
 export {PORTAL_ID, PANEL_ID};

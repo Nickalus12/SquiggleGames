@@ -13,14 +13,17 @@ const SEVERITY_CLASS = {
     info: styles.info
 };
 
-const CheckerPill = ({buttonRef, count, intl, onToggle, open, panelId, severity}) => {
+const CheckerPill = ({buttonRef, count, intl, onToggle, open, panelId, severity, sheet}) => {
     const spoken = intl.formatMessage(messages.count, {count});
     return (
         <button
             aria-controls={open ? panelId : null}
             aria-expanded={open}
             aria-haspopup="dialog"
-            className={classNames(styles.pill, SEVERITY_CLASS[severity], {[styles.open]: open})}
+            className={classNames(styles.pill, SEVERITY_CLASS[severity], {
+                [styles.open]: open,
+                [styles.sheet]: sheet
+            })}
             data-checker-pill
             onClick={onToggle}
             ref={buttonRef}
@@ -32,6 +35,7 @@ const CheckerPill = ({buttonRef, count, intl, onToggle, open, panelId, severity}
                 name="check"
                 size={18}
             />
+            {sheet ? <span className={styles.label}>{intl.formatMessage(messages.title)}</span> : null}
             <span
                 aria-hidden="true"
                 className={styles.count}
@@ -55,7 +59,8 @@ CheckerPill.propTypes = {
     onToggle: PropTypes.func.isRequired,
     open: PropTypes.bool,
     panelId: PropTypes.string.isRequired,
-    severity: PropTypes.oneOf(['error', 'warn', 'info'])
+    severity: PropTypes.oneOf(['error', 'warn', 'info']),
+    sheet: PropTypes.bool
 };
 
 export default injectIntl(CheckerPill);
