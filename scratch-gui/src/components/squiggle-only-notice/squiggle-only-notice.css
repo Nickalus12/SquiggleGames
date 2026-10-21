@@ -59,7 +59,7 @@
 .primary-button {
     border: 2px solid var(--sq-brand-600, $looks-secondary);
     background: var(--sq-brand-600, $looks-secondary);
-    color: var(--sq-menu-bar-text, $ui-white);
+    color: var(--sq-on-brand, $ui-white);
 }
 
 .primary-button:hover {
