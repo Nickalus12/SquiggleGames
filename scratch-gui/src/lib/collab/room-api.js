@@ -28,6 +28,14 @@ const patchRoom = (slug, body, fetcher) => {
 const listProjects = fetcher => request('/api/projects', {fetcher})
     .then(out => (out && Array.isArray(out.mine) ? out.mine : []));
 
+const createRoom = (body, fetcher) =>
+    request('/api/rooms', {method: 'POST', body: body || {}, fetcher}).then(out => (out && out.room) || null);
+
+const createInvite = (slug, body, fetcher) =>
+    request(`/api/rooms/${encodeURIComponent(slug)}/invites`, {method: 'POST', body: body || {}, fetcher});
+
+const roomPageUrl = slug => `/editor.html?room=${encodeURIComponent(slug)}`;
+
 const roomHistory = (slug, fetcher) =>
     request(`/api/rooms/${encodeURIComponent(slug)}/history`, {fetcher});
 
@@ -36,9 +44,12 @@ const historySummary = (slug, v, fetcher) =>
 
 export {
     apiBase,
+    createInvite,
+    createRoom,
     historySummary,
     listProjects,
     patchRoom,
     request,
-    roomHistory
+    roomHistory,
+    roomPageUrl
 };

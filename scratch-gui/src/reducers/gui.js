@@ -35,6 +35,7 @@ import worldUiReducer, {worldUiInitialState} from './world-ui';
 import checkerReducer, {checkerInitialState} from './checker';
 import commandPaletteReducer, {commandPaletteInitialState} from './command-palette';
 import focusModeReducer, {focusModeInitialState} from './focus-mode';
+import roomPanelReducer, {roomPanelInitialState} from './room-panel';
 import throttle from 'redux-throttle';
 
 import decks from '../lib/libraries/decks/index.jsx';
@@ -77,7 +78,8 @@ const guiInitialState = {
     worldUi: worldUiInitialState,
     checker: checkerInitialState,
     commandPalette: commandPaletteInitialState,
-    focusMode: focusModeInitialState
+    focusMode: focusModeInitialState,
+    roomPanel: roomPanelInitialState
 };
 
 const initPlayer = function (currentState) {
@@ -188,7 +190,8 @@ const guiReducer = combineReducers({
     worldUi: worldUiReducer,
     checker: checkerReducer,
     commandPalette: commandPaletteReducer,
-    focusMode: focusModeReducer
+    focusMode: focusModeReducer,
+    roomPanel: roomPanelReducer
 });
 
 export {
