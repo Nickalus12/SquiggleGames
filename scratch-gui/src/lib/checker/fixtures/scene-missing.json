@@ -1,0 +1,21 @@
+{
+    "noWorld": {
+        "targets": [{"name": "Cat", "scripts": [[{"op": "squigglescenes_switchTo", "in": {"SCENE": ["squigglescenes_menu_scenes", "scenes", "Ghost"]}}]]}]
+    },
+    "scenes": {
+        "world": {"scenes": ["Title", "Level 1"], "canCreateScene": true},
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"},
+             {"op": "squigglescenes_switchTo", "in": {"SCENE": ["squigglescenes_menu_scenes", "scenes", "title"]}},
+             {"id": "bad", "op": "squigglescenes_switchTo", "in": {"SCENE": ["squigglescenes_menu_scenes", "scenes", "Boss"]}},
+             {"op": "squigglescenes_switchTo", "in": {"SCENE": ["squigglescenes_menu_scenes", "scenes", "boss"]}},
+             {"op": "squigglescenes_switchTo", "in": {"SCENE": {"op": "data_variable", "f": {"VARIABLE": ["next", "v"]}}}}],
+            [{"op": "squigglescenes_whenSceneStarts", "f": {"SCENE": "_any_"}}],
+            [{"id": "hat", "op": "squigglescenes_whenSceneEnds", "f": {"SCENE": "Gone"}}]
+        ]}]
+    },
+    "noCreate": {
+        "world": {"scenes": []},
+        "targets": [{"name": "Cat", "scripts": [[{"op": "squigglescenes_switchTo", "in": {"SCENE": ["squigglescenes_menu_scenes", "scenes", "Boss"]}}]]}]
+    }
+}

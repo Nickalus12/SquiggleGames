@@ -1,0 +1,17 @@
+{
+    "mixed": {
+        "squiggleOnlyIds": ["together", "squiggletools", "thunderboltvfx"],
+        "kitNames": {"squiggletools": "Game Tools"},
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"},
+             {"id": "t1", "op": "squiggletools_moveToward", "in": {"N": 5, "X": 0, "Y": 0}},
+             {"op": "squiggletools_broadcastWithData", "in": {"MESSAGE": ["squiggletools_menu_messages", "messages", "go"], "DATA": "x"}},
+             {"id": "g1", "op": "together_broadcastGameMessage", "in": {"NAME": "a", "VALUE": 1}},
+             {"op": "pen_penDown"}]
+        ]}]
+    },
+    "plain": {
+        "squiggleOnlyIds": ["together"],
+        "targets": [{"name": "Cat", "scripts": [[{"op": "event_whenflagclicked"}, {"op": "pen_penDown"}]]}]
+    }
+}

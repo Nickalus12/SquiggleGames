@@ -1,0 +1,20 @@
+{
+    "defined": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "procedures_definition", "in": {"custom_block": {"op": "procedures_prototype", "shadow": true, "m": {"proccode": "jump %s"}}}}],
+            [{"op": "event_whenflagclicked"}, {"op": "procedures_call", "m": {"proccode": "jump %s"}}]
+        ]}]
+    },
+    "missing": {
+        "targets": [
+            {"id": "cat", "name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"},
+                 {"id": "c1", "op": "procedures_call", "m": {"proccode": "spin %n times"}},
+                 {"id": "c2", "op": "procedures_call", "m": {"proccode": "spin %n times"}}]
+            ]},
+            {"id": "dog", "name": "Dog", "scripts": [
+                [{"op": "procedures_definition", "in": {"custom_block": {"op": "procedures_prototype", "shadow": true, "m": {"proccode": "spin %n times"}}}}]
+            ]}
+        ]
+    }
+}

@@ -1,0 +1,35 @@
+{
+    "waited": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "together_broadcastGameMessage", "in": {"NAME": "pos", "VALUE": 1}},
+                {"op": "control_wait", "in": {"DURATION": 0.1}}
+            ]}]
+        ]}]
+    },
+    "flood": {
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "control_if", "in": {"CONDITION": {"op": "sensing_keypressed"}}, "sub": [
+                    {"id": "send", "op": "together_broadcastGameMessage", "in": {"NAME": "jump", "VALUE": 1}}
+                ]},
+                {"op": "motion_movesteps", "in": {"STEPS": 1}}
+            ]}]
+        ]}]
+    },
+    "innerLoop": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "control_repeat", "in": {"TIMES": 10}, "sub": [
+                    {"id": "inner", "op": "together_broadcastGameMessage", "in": {"NAME": "tick", "VALUE": 1}}
+                ]},
+                {"op": "control_wait", "in": {"DURATION": 1}}
+            ]}]
+        ]}]
+    },
+    "noLoop": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenkeypressed"}, {"op": "together_broadcastGameMessage", "in": {"NAME": "jump", "VALUE": 1}}]
+        ]}]
+    }
+}

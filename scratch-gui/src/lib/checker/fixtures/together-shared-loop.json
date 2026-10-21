@@ -1,0 +1,25 @@
+{
+    "everyFrame": {
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"id": "set", "op": "together_setSharedVariable", "in": {"NAME": "x", "VALUE": {"op": "motion_xposition"}}}
+            ]}]
+        ]}]
+    },
+    "fine": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "together_setSharedVariable", "in": {"NAME": "x", "VALUE": 1}},
+                {"op": "control_wait", "in": {"DURATION": 0.2}}
+            ]}],
+            [{"op": "event_whenflagclicked"}, {"op": "control_forever", "sub": [
+                {"op": "control_if", "in": {"CONDITION": {"op": "sensing_mousedown"}}, "sub": [
+                    {"op": "together_changeSharedVariable", "in": {"NAME": "clicks", "VALUE": 1}}
+                ]}
+            ]}],
+            [{"op": "event_whenflagclicked"}, {"op": "control_repeat", "in": {"TIMES": 3}, "sub": [
+                {"op": "together_changeSharedVariable", "in": {"NAME": "lives", "VALUE": 1}}
+            ]}]
+        ]}]
+    }
+}

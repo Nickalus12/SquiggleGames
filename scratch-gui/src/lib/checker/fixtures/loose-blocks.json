@@ -1,0 +1,34 @@
+{
+    "clean": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "motion_movesteps", "in": {"STEPS": 10}}],
+            [{"op": "procedures_definition"}]
+        ]}]
+    },
+    "loose": {
+        "targets": [{"id": "cat", "name": "Cat", "scripts": [
+            [{"op": "event_whenflagclicked"}, {"op": "motion_movesteps", "in": {"STEPS": 10}}],
+            [{"id": "lone", "op": "motion_movesteps", "in": {"STEPS": 5}}],
+            [{"op": "looks_say", "in": {"MESSAGE": "hi"}}, {"op": "motion_turnright", "in": {"DEGREES": 15}}]
+        ]}]
+    },
+    "reporters": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "operator_add", "in": {"NUM1": 1, "NUM2": 2}}],
+            [{"op": "data_variable", "f": {"VARIABLE": ["score", "v1"]}}],
+            [{"op": "squiggletools_distanceTo"}]
+        ]}],
+        "reporterOpcodes": ["squiggletools_distanceTo"]
+    },
+    "extensionHat": {
+        "targets": [{"name": "Cat", "scripts": [
+            [{"op": "together_whenGameMessage"}, {"op": "motion_movesteps", "in": {"STEPS": 10}}]
+        ]}],
+        "hatOpcodes": ["together_whenGameMessage"]
+    },
+    "stage": {
+        "targets": [{"isStage": true, "id": "stage", "scripts": [
+            [{"op": "looks_switchbackdropto", "in": {"BACKDROP": ["looks_backdrops", "BACKDROP", "night"]}}]
+        ]}]
+    }
+}

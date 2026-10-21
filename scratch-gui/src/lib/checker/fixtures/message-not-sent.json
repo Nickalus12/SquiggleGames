@@ -1,0 +1,25 @@
+{
+    "paired": {
+        "targets": [
+            {"name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "squiggletools_broadcastWithData", "in": {"MESSAGE": ["squiggletools_menu_messages", "messages", "go"], "DATA": ""}}]
+            ]},
+            {"name": "Dog", "scripts": [[{"op": "event_whenbroadcastreceived", "f": {"BROADCAST_OPTION": ["GO", "m1"]}}]]}
+        ]
+    },
+    "orphan": {
+        "targets": [
+            {"id": "dog", "name": "Dog", "scripts": [
+                [{"id": "hat1", "op": "event_whenbroadcastreceived", "f": {"BROADCAST_OPTION": ["lose", "m3"]}}, {"op": "looks_hide"}]
+            ]}
+        ]
+    },
+    "dynamic": {
+        "targets": [
+            {"name": "Cat", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "event_broadcast", "in": {"BROADCAST_INPUT": {"op": "data_variable", "f": {"VARIABLE": ["next", "v1"]}}}}]
+            ]},
+            {"name": "Dog", "scripts": [[{"op": "event_whenbroadcastreceived", "f": {"BROADCAST_OPTION": ["lose", "m3"]}}]]}
+        ]
+    }
+}

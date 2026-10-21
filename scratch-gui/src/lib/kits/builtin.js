@@ -6,6 +6,7 @@ import '../libraries/extensions/squiggleworld/index.js';
 import '../libraries/extensions/squiggleanimate/index.js';
 import '../libraries/extensions/squigglescenes/index.js';
 import '../libraries/extensions/squiggle3d/index.js';
+import '../libraries/extensions/squiggletools/index.js';
 
 const installBuiltinKits = extensionManager => {
     const installed = [];

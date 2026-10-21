@@ -1,0 +1,30 @@
+{
+    "used": {
+        "targets": [
+            {"isStage": true, "id": "stage", "variables": {"g1": {"name": "score"}, "g2": {"name": "shown"}, "c1": {"name": "☁ hi", "isCloud": true}}},
+            {"id": "cat", "name": "Cat", "variables": {"l1": {"name": "speed"}, "l2": {"name": "peeked"}}, "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "motion_movesteps", "in": {"STEPS": {"op": "data_variable", "f": {"VARIABLE": ["speed", "l1"]}}}},
+                 {"op": "looks_say", "in": {"MESSAGE": {"op": "data_variable", "f": {"VARIABLE": ["score", "g1"]}}}}]
+            ]},
+            {"id": "dog", "name": "Dog", "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "looks_say", "in": {"MESSAGE": {"op": "sensing_of", "f": {"PROPERTY": "peeked"}, "in": {"OBJECT": ["sensing_of_object_menu", "OBJECT", "Cat"]}}}}]
+            ]}
+        ],
+        "monitored": ["g2"]
+    },
+    "unused": {
+        "targets": [
+            {"isStage": true, "id": "stage", "variables": {"g1": {"name": "never"}, "list1": {"name": "things", "type": "list"}}},
+            {"id": "cat", "name": "Cat", "variables": {"l1": {"name": "written"}}, "scripts": [
+                [{"op": "event_whenflagclicked"}, {"op": "data_setvariableto", "f": {"VARIABLE": ["written", "l1"]}, "in": {"VALUE": 1}},
+                 {"op": "data_changevariableby", "f": {"VARIABLE": ["written", "l1"]}, "in": {"VALUE": 1}}]
+            ]}
+        ]
+    },
+    "rules": {
+        "targets": [
+            {"id": "rules", "name": "Game Rules", "rules": {"role": "rules", "v": 1}, "variables": {"r1": {"name": "coins"}}},
+            {"id": "cat", "name": "Cat", "rules": false, "variables": {}}
+        ]
+    }
+}
