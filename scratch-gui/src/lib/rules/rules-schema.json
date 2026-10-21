@@ -210,7 +210,7 @@
       "source": "variables"
     },
     "playerValues": {
-      "source": "players"
+      "source": "playerValues"
     },
     "timers": {
       "source": "timers"

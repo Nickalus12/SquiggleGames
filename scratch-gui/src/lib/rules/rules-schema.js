@@ -82,7 +82,7 @@ export default {
     fields: {control_stop: {STOP_OPTION: ['this script']}},
     menus: {
         gameValues: {source: 'variables'},
-        playerValues: {source: 'players'},
+        playerValues: {source: 'playerValues'},
         timers: {source: 'timers'},
         teams: {source: 'teams'},
         boards: {source: 'boards'},
