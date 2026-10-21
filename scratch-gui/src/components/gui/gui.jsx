@@ -60,9 +60,7 @@ import {isRendererSupported, isBrowserSupported} from '../../lib/tw-environment-
 
 import styles from './gui.css';
 import addExtensionIcon from './icon--extensions.svg';
-import codeIcon from '!../../lib/tw-recolor/build!./icon--code.svg';
-import costumesIcon from '!../../lib/tw-recolor/build!./icon--costumes.svg';
-import soundsIcon from '!../../lib/tw-recolor/build!./icon--sounds.svg';
+import SqIcon from '../sq-icon/sq-icon.jsx';
 
 const messages = defineMessages({
     addExtension: {
@@ -407,9 +405,10 @@ const GUIComponent = props => {
                             >
                                 <TabList className={tabClassNames.tabList}>
                                     <Tab className={tabClassNames.tab}>
-                                        <img
-                                            draggable={false}
-                                            src={codeIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="code"
+                                            size={22}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Code"
@@ -421,9 +420,10 @@ const GUIComponent = props => {
                                         className={tabClassNames.tab}
                                         onClick={onActivateCostumesTab}
                                     >
-                                        <img
-                                            draggable={false}
-                                            src={costumesIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="art"
+                                            size={22}
                                         />
                                         {targetIsStage ? (
                                             <FormattedMessage
@@ -443,9 +443,10 @@ const GUIComponent = props => {
                                         className={tabClassNames.tab}
                                         onClick={onActivateSoundsTab}
                                     >
-                                        <img
-                                            draggable={false}
-                                            src={soundsIcon()}
+                                        <SqIcon
+                                            className={styles.tabIcon}
+                                            name="sounds"
+                                            size={22}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Sounds"
