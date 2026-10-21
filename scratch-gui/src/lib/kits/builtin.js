@@ -1,5 +1,6 @@
 import {builtinKits} from './registry.js';
 import '../libraries/extensions/squiggleworld/index.js';
+import '../libraries/extensions/squiggleanimate/index.js';
 
 const installBuiltinKits = extensionManager => {
     const installed = [];
