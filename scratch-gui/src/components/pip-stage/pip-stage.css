@@ -1,0 +1,132 @@
+@import "../../css/z-index.css";
+
+.pip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: $z-index-card;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--sq-line);
+    border-radius: var(--sq-radius-panel, 12px);
+    background: var(--sq-panel);
+    box-shadow: var(--sq-elevation-3);
+    overflow: hidden;
+    animation: pip-in var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+    touch-action: none;
+}
+
+.pip.dragging {
+    box-shadow: var(--sq-elevation-3), 0 0 0 2px var(--sq-brand-600);
+}
+
+@keyframes pip-in {
+    from {
+        opacity: 0;
+        scale: 0.96;
+    }
+    to {
+        opacity: 1;
+        scale: 1;
+    }
+}
+
+.bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-2, 8px);
+    padding: var(--sq-space-1, 4px) var(--sq-space-1, 4px) var(--sq-space-1, 4px) var(--sq-space-2, 8px);
+    border-bottom: 1px solid var(--sq-line);
+    background: var(--sq-raised);
+}
+
+.handle {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    border: 0;
+    border-radius: var(--sq-radius-card, 10px);
+    background: transparent;
+    cursor: grab;
+}
+
+.dragging .handle {
+    cursor: grabbing;
+}
+
+.grip {
+    width: 40px;
+    height: 4px;
+    border-radius: var(--sq-radius-pill, 999px);
+    background: var(--sq-text-muted);
+    opacity: 0.6;
+}
+
+.handle:hover .grip,
+.handle:focus-visible .grip {
+    opacity: 1;
+}
+
+.exit {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--sq-space-1, 4px);
+    height: 32px;
+    padding: 0 var(--sq-space-3, 12px) 0 var(--sq-space-2, 8px);
+    border: 0;
+    border-radius: var(--sq-radius-pill, 999px);
+    background: var(--sq-brand-600);
+    color: var(--sq-on-brand, #ffffff);
+    font-family: var(--sq-font);
+    font-size: var(--sq-text-xs, 12px);
+    font-weight: var(--sq-weight-bold, 700);
+    cursor: pointer;
+    transition: background var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.exit:hover {
+    background: var(--sq-brand-700);
+}
+
+.handle:focus-visible,
+.exit:focus-visible {
+    outline: 2px solid var(--sq-focus-ring, var(--sq-focus));
+    outline-offset: 2px;
+}
+
+.stage {
+    display: flex;
+    justify-content: center;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+    .handle,
+    .exit {
+        height: var(--sq-target-touch, 44px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pip {
+        animation: none;
+    }
+
+    .exit {
+        transition: none;
+    }
+}
