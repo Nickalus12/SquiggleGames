@@ -1,0 +1,21 @@
+{
+    "ref": "v1.8.0 (76124fe)",
+    "budgets": {
+        "editor": 150,
+        "player": 60
+    },
+    "mode": "production",
+    "gzipLevel": 9,
+    "bundles": {
+        "editor": {
+            "files": 5,
+            "raw": 7452647,
+            "gzip": 1799370
+        },
+        "player": {
+            "files": 5,
+            "raw": 7453107,
+            "gzip": 1799378
+        }
+    }
+}
