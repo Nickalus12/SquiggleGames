@@ -163,15 +163,16 @@ class ThunderboltSystem {
             for (const p of system.particles) {
                 const at = project(p.x, p.y);
                 const drawSize = Math.max(1, p.size * at.scale);
-                if (!this.overlay.onScreen(at, drawSize * 2)) continue;
                 ctx.fillStyle = p.color;
                 if (p.trailEnabled && p.history.length > 1) {
                     for (let i = 0; i < p.history.length; i++) {
                         const pt = project(p.history[i].x, p.history[i].y);
+                        if (!this.overlay.onScreen(pt, drawSize)) continue;
                         ctx.globalAlpha = p.alpha * ((i + 1) / p.history.length) * 0.5;
                         this._drawShape(ctx, p.shape, pt.x, pt.y, drawSize * 0.6);
                     }
                 }
+                if (!this.overlay.onScreen(at, drawSize * 2)) continue;
                 ctx.globalAlpha = p.alpha;
                 this._drawShape(ctx, p.shape, at.x, at.y, drawSize);
             }

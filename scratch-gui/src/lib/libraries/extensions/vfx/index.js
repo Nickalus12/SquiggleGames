@@ -258,6 +258,8 @@ class ThunderboltVFX {
     resetCamera () {
         const zoom = this.zoom;
         if (zoom.camera && zoom.elapsed < zoom.duration) zoom.camera.setZoom(zoom.base * 100);
+        const camera = this.worldCamera();
+        if (camera) camera.shake(0, 0);
         Object.assign(this, idle());
         this.setTransform('');
         this.overlay.wake();

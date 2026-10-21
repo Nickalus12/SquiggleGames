@@ -2,6 +2,8 @@ const AFTER_EXECUTE = 'AFTER_EXECUTE';
 const RUN_START = 'PROJECT_RUN_START';
 const RUN_STOP = 'PROJECT_RUN_STOP';
 const READY = 'SquiggleWorldReady';
+const MAX_DT = 0.05;
+const FIRST_DT = 1 / 60;
 
 const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
 
@@ -14,6 +16,62 @@ const seamFor = runtime => {
 const cameraActive = runtime => {
     const seam = seamFor(runtime);
     return !!(seam && typeof seam.camera === 'function' && seam.camera());
+};
+
+const loop = {overlays: new Set(), handle: null, request: null, run: null};
+
+const requestFrame = fn => {
+    if (loop.request) return loop.request(fn);
+    if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
+    return setTimeout(fn, 16);
+};
+
+const drawIfAwake = overlay => {
+    if (overlay.awake()) overlay.draw();
+};
+
+const keepsLoop = () => {
+    for (const overlay of loop.overlays) {
+        if (overlay.awake() || overlay.isRunning()) return true;
+    }
+    return false;
+};
+
+const schedule = () => {
+    if (loop.handle === null && loop.overlays.size) loop.handle = requestFrame(loop.run);
+};
+
+loop.run = () => {
+    loop.handle = null;
+    loop.overlays.forEach(drawIfAwake);
+    if (keepsLoop()) schedule();
+};
+
+const setFrameRequest = request => {
+    loop.request = request || null;
+    loop.handle = null;
+};
+
+const liveness = new WeakMap();
+
+const livenessFor = runtime => {
+    let entry = liveness.get(runtime);
+    if (!entry) {
+        entry = {set: new Set(), stale: true};
+        liveness.set(runtime, entry);
+    }
+    return entry;
+};
+
+const isAlive = (runtime, target) => {
+    const entry = livenessFor(runtime);
+    if (entry.stale) {
+        entry.set.clear();
+        const targets = runtime.executableTargets || [];
+        for (let i = 0; i < targets.length; i++) entry.set.add(targets[i]);
+        entry.stale = false;
+    }
+    return entry.set.has(target);
 };
 
 const onStep = (runtime, fn) => {
@@ -39,7 +97,7 @@ const onStep = (runtime, fn) => {
 const mountCanvas = (runtime, zIndex, onResize) => {
     const stageCanvas = runtime.renderer && runtime.renderer.canvas;
     const parent = stageCanvas && stageCanvas.parentElement;
-    if (typeof document === 'undefined' || !parent) return null;
+    if (typeof document === 'undefined' || !parent) return {canvas: null, release: () => {}};
     const canvas = document.createElement('canvas');
     canvas.style.position = 'absolute';
     canvas.style.pointerEvents = 'none';
@@ -58,18 +116,31 @@ const mountCanvas = (runtime, zIndex, onResize) => {
     parent.style.position = parent.style.position || 'relative';
     parent.appendChild(canvas);
     sync();
-    if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(stageCanvas);
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-        window.addEventListener('resize', sync);
-    }
-    return canvas;
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sync) : null;
+    if (observer) observer.observe(stageCanvas);
+    const listens = typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+    if (listens) window.addEventListener('resize', sync);
+    const release = () => {
+        if (observer) observer.disconnect();
+        if (listens) window.removeEventListener('resize', sync);
+        if (canvas.parentElement) canvas.parentElement.removeChild(canvas);
+    };
+    return {canvas, release};
 };
 
 const createOverlay = (runtime, options) => {
     const opts = options || {};
-    const maxDt = opts.maxDt || 0.05;
-    const state = {awake: false, pending: false, last: null, drawn: false, running: false};
+    const state = {
+        awake: false,
+        last: null,
+        drawn: false,
+        running: !!(runtime.threads && runtime.threads.length),
+        view: null,
+        world: null,
+        pinned: null
+    };
     const stats = {draws: 0, total: 0, max: 0, last: 0};
+    const identity = (x, y) => ({x, y});
 
     const overlay = {
         canvas: null,
@@ -78,27 +149,51 @@ const createOverlay = (runtime, options) => {
         clock: opts.clock || now,
         stageCanvas: runtime.renderer ? runtime.renderer.canvas : null,
         isRunning: () => state.running,
+        awake: () => state.awake,
         stageSize () {
             return [runtime.stageWidth || 480, runtime.stageHeight || 360];
         },
         unit () {
             return overlay.canvas ? overlay.canvas.width / overlay.stageSize()[0] : 1;
         },
+        view () {
+            const seam = seamFor(runtime);
+            return seam && typeof seam.getView === 'function' ? seam.getView() : null;
+        },
         projector (pinned) {
-            const seam = pinned ? null : seamFor(runtime);
+            const cached = pinned ? state.pinned : state.world;
+            if (cached) return cached;
             const [w, h] = overlay.stageSize();
             const canvas = overlay.canvas;
             const sx = (canvas ? canvas.width : w) / w;
             const sy = (canvas ? canvas.height : h) / h;
-            if (!seam) return (x, y) => ({x: (x + (w / 2)) * sx, y: ((h / 2) - y) * sy, scale: sx});
-            return (x, y) => {
-                const view = seam.toView(x, y);
-                return {x: (view.x + (w / 2)) * sx, y: ((h / 2) - view.y) * sy, scale: view.scale * sx};
-            };
+            const view = pinned ? null : (state.view || overlay.view());
+            if (!view) return (x, y) => ({x: (x + (w / 2)) * sx, y: ((h / 2) - y) * sy, scale: sx});
+            const vx = view.x;
+            const vy = view.y;
+            const zoom = view.zoom;
+            return (x, y) => ({
+                x: (((x - vx) * zoom) + (w / 2)) * sx,
+                y: ((h / 2) - ((y - vy) * zoom)) * sy,
+                scale: zoom * sx
+            });
         },
         project (x, y, pinned) {
-            return overlay.projector(pinned)(x, y);
+            const cached = pinned ? state.pinned : state.world;
+            return (cached || overlay.projector(pinned))(x, y);
         },
+        toScreen (x, y) {
+            const seam = seamFor(runtime);
+            if (!seam || typeof seam.toView !== 'function') return identity(x, y);
+            const at = seam.toView(x, y);
+            return {x: at.x, y: at.y};
+        },
+        toWorld (x, y) {
+            const seam = seamFor(runtime);
+            if (!seam || typeof seam.toWorld !== 'function') return identity(x, y);
+            return seam.toWorld(x, y);
+        },
+        alive: target => isAlive(runtime, target),
         onScreen (point, margin) {
             const canvas = overlay.canvas;
             if (!canvas) return true;
@@ -107,16 +202,22 @@ const createOverlay = (runtime, options) => {
         },
         wake () {
             state.awake = true;
+            schedule();
         },
         draw () {
-            state.pending = false;
             const started = now();
             const t = overlay.clock();
-            const dt = state.last === null ? 1 / 30 : Math.min(maxDt, Math.max(0, (t - state.last) / 1000));
+            const dt = state.last === null ? FIRST_DT : Math.min(MAX_DT, Math.max(0, (t - state.last) / 1000));
             state.last = t;
+            state.view = overlay.view();
+            state.world = overlay.projector(false);
+            state.pinned = overlay.projector(true);
             const ctx = overlay.ctx;
             if (ctx && state.drawn) ctx.clearRect(0, 0, overlay.canvas.width, overlay.canvas.height);
             const live = !!opts.frame(ctx, dt, t / 1000);
+            state.view = null;
+            state.world = null;
+            state.pinned = null;
             const spent = now() - started;
             stats.draws++;
             stats.total += spent;
@@ -129,15 +230,17 @@ const createOverlay = (runtime, options) => {
             }
         },
         step () {
-            if (!state.awake || state.pending) return;
-            state.pending = true;
-            Promise.resolve().then(overlay.draw);
+            livenessFor(runtime).stale = true;
+            if (!state.awake && opts.sample && opts.sample()) state.awake = true;
+            if (state.awake || state.running) schedule();
         },
         dispose: null
     };
 
-    overlay.canvas = mountCanvas(runtime, opts.zIndex || 10, overlay.wake);
+    const mounted = mountCanvas(runtime, opts.zIndex || 10, overlay.wake);
+    overlay.canvas = mounted.canvas;
     overlay.ctx = overlay.canvas ? overlay.canvas.getContext('2d') : null;
+    loop.overlays.add(overlay);
     const disposeStep = onStep(runtime, overlay.step);
     const start = () => {
         state.running = true;
@@ -151,11 +254,13 @@ const createOverlay = (runtime, options) => {
     runtime.on(RUN_STOP, stop);
     overlay.dispose = () => {
         disposeStep();
+        loop.overlays.delete(overlay);
         runtime.removeListener(RUN_START, start);
         runtime.removeListener(RUN_STOP, stop);
-        if (overlay.canvas && overlay.canvas.parentElement) overlay.canvas.parentElement.removeChild(overlay.canvas);
+        mounted.release();
     };
+    overlay.wake();
     return overlay;
 };
 
-export {createOverlay, cameraActive, seamFor};
+export {createOverlay, cameraActive, seamFor, setFrameRequest};

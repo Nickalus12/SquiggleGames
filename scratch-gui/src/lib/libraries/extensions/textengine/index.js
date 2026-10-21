@@ -1,34 +1,61 @@
 import {createOverlay} from '../vfx/overlay.js';
-import bangersUrl from '../../../../../static/fonts/textengine/bangers-latin.woff2';
-import luckiestGuyUrl from '../../../../../static/fonts/textengine/luckiest-guy-latin.woff2';
-import pacificoUrl from '../../../../../static/fonts/textengine/pacifico-latin.woff2';
-import permanentMarkerUrl from '../../../../../static/fonts/textengine/permanent-marker-latin.woff2';
-import pressStartUrl from '../../../../../static/fonts/textengine/press-start-2p-latin.woff2';
 
 const menuIconURI = 'data:image/svg+xml;base64,' +
     'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0i' +
     'MCAwIDQwIDQwIj4gPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiByeD0iOCIgZmlsbD0iIzk5NjZGRiIvPiA8cGF0aCBk' +
     'PSJNMTQgMTJoMTJ2M2gtNHYxM2gtM3YtMTNoLTR2LTN6IiBmaWxsPSIjZmZmIi8+PC9zdmc+';
 
+const LATIN = 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, ' +
+    'U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD';
+const LATIN_EXT = 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, ' +
+    'U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF';
+const VIETNAMESE = 'U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, ' +
+    'U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB';
+const CYRILLIC = 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116';
+const GREEK = 'U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF';
+
 const KIT_FONTS = {
-    'Bangers': bangersUrl,
-    'Press Start 2P': pressStartUrl,
-    'Pacifico': pacificoUrl,
-    'Permanent Marker': permanentMarkerUrl,
-    'Luckiest Guy': luckiestGuyUrl
+    'Bangers': [['bangers-latin', LATIN], ['bangers-latin-ext', LATIN_EXT], ['bangers-vietnamese', VIETNAMESE]],
+    'Press Start 2P': [
+        ['press-start-2p-latin', LATIN],
+        ['press-start-2p-latin-ext', LATIN_EXT],
+        ['press-start-2p-cyrillic', CYRILLIC],
+        ['press-start-2p-greek', GREEK]
+    ],
+    'Pacifico': [['pacifico-latin', LATIN], ['pacifico-latin-ext', LATIN_EXT], ['pacifico-cyrillic', CYRILLIC]],
+    'Permanent Marker': [['permanent-marker-latin', LATIN]],
+    'Luckiest Guy': [['luckiest-guy-latin', LATIN], ['luckiest-guy-latin-ext', LATIN_EXT]]
 };
+
+const FONT_PATH = 'fonts/textengine/';
+
+const fontUrl = file => `${process.env.ROOT || ''}${FONT_PATH}${file}.woff2`;
 
 const fontLoads = new Map();
 
-const loadKitFont = (family, onLoad) => {
-    const url = KIT_FONTS[family];
-    if (!url || typeof document === 'undefined' || !document.fonts || typeof FontFace !== 'function') return;
-    if (!fontLoads.has(family)) {
-        const face = new FontFace(family, `url(${url}) format("woff2")`, {display: 'swap'});
+const settle = promise => promise.then(() => true, () => false);
+
+const registerFont = family => {
+    const faces = KIT_FONTS[family].map(([file, unicodeRange]) => {
+        const face = new FontFace(family, `url(${fontUrl(file)}) format("woff2")`, {display: 'swap', unicodeRange});
         document.fonts.add(face);
-        fontLoads.set(family, face.load().catch(() => null));
+        return face;
+    });
+    return {
+        ready: settle(faces[0].load()),
+        extra: faces.slice(1).map(face => settle(face.loaded || Promise.resolve()))
+    };
+};
+
+const loadKitFont = (family, onLoad) => {
+    if (!KIT_FONTS[family] || typeof document === 'undefined' || !document.fonts || typeof FontFace !== 'function') {
+        return null;
     }
-    fontLoads.get(family).then(onLoad);
+    if (!fontLoads.has(family)) fontLoads.set(family, registerFont(family));
+    const load = fontLoads.get(family);
+    load.ready.then(onLoad);
+    load.extra.forEach(extra => extra.then(loaded => loaded && onLoad()));
+    return load.ready;
 };
 
 const clamp01 = n => Math.max(0, Math.min(1, n));
@@ -67,26 +94,39 @@ class ThunderboltText {
     constructor (runtime) {
         this.runtime = runtime;
         this.objects = new Map();
-        this.overlay = createOverlay(runtime, {zIndex: 12, frame: this.frame.bind(this)});
+        this.stuck = new Set();
+        this.overlay = createOverlay(runtime, {
+            zIndex: 12,
+            frame: this.frame.bind(this),
+            sample: () => this.stuck.size > 0
+        });
     }
 
-    anchor (obj) {
-        const target = obj.target;
-        if (target && this.runtime.executableTargets.indexOf(target) === -1) obj.target = null;
-        if (obj.target) return this.overlay.project(obj.target.x, obj.target.y + obj.offsetY, false);
-        return this.overlay.project(obj.x, obj.y, obj.pinned);
+    anchor (obj, world, pinned) {
+        if (obj.target && !this.overlay.alive(obj.target)) this.release(obj);
+        if (obj.target) return (world || this.overlay.projector(false))(obj.target.x, obj.target.y + obj.offsetY);
+        return ((obj.pinned ? pinned : world) || this.overlay.projector(obj.pinned))(obj.x, obj.y);
+    }
+
+    release (obj) {
+        obj.x = obj.target.x;
+        obj.y = obj.target.y + obj.offsetY;
+        obj.target = null;
+        this.stuck.delete(obj);
     }
 
     frame (ctx, dt, time) {
         let animating = false;
         let shown = false;
+        const world = this.overlay.projector(false);
+        const pinned = this.overlay.projector(true);
         for (const obj of this.objects.values()) {
             if (!obj.visible) continue;
             shown = true;
             obj.elapsed += dt;
             if (obj.animation !== 'none') animating = true;
             if (!ctx) continue;
-            const at = this.anchor(obj);
+            const at = this.anchor(obj, world, pinned);
             if (!this.overlay.onScreen(at, obj.size * at.scale * Math.max(2, obj.text.length))) continue;
             this._drawObject(ctx, obj, time, at);
         }
@@ -374,6 +414,7 @@ class ThunderboltText {
     }
 
     createText (args) {
+        this.stuck.delete(this.objects.get(args.ID));
         const obj = new TextObject(args.ID, args.TEXT, Number(args.X), Number(args.Y));
         this.objects.set(args.ID, obj);
         this.overlay.wake();
@@ -391,6 +432,7 @@ class ThunderboltText {
         obj.x = Number(args.X);
         obj.y = Number(args.Y);
         obj.target = null;
+        this.stuck.delete(obj);
         this.overlay.wake();
     }
 
@@ -399,17 +441,21 @@ class ThunderboltText {
         obj.target = util.target.isStage ? null : util.target;
         obj.offsetY = Number(args.DY) || 0;
         obj.pinned = false;
+        if (obj.target) this.stuck.add(obj);
+        else this.stuck.delete(obj);
         this.overlay.wake();
     }
 
     pinToScreen (args) {
         const obj = this._getObj(args.ID, true);
-        if (obj.target) {
-            obj.x = obj.target.x;
-            obj.y = obj.target.y + obj.offsetY;
-            obj.target = null;
+        const pin = args.ONOFF !== 'off';
+        if (obj.target) this.release(obj);
+        if (pin !== obj.pinned) {
+            const at = pin ? this.overlay.toScreen(obj.x, obj.y) : this.overlay.toWorld(obj.x, obj.y);
+            obj.x = at.x;
+            obj.y = at.y;
         }
-        obj.pinned = args.ONOFF !== 'off';
+        obj.pinned = pin;
         this.overlay.wake();
     }
 
@@ -481,9 +527,11 @@ class ThunderboltText {
     }
 
     deleteText (args) {
+        this.stuck.delete(this.objects.get(args.ID));
         this.objects.delete(args.ID);
         this.overlay.wake();
     }
 }
 
+export {KIT_FONTS, FONT_PATH, loadKitFont};
 export default ThunderboltText;

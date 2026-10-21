@@ -67,6 +67,8 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
 const easeFor = name => EASES[str(name).toLowerCase()] || EASES.linear;
 
+const clearSet = set => set.clear();
+
 const isCameraProp = prop => prop.indexOf(CAMERA) === 0;
 
 const seamFor = runtime => {
@@ -130,9 +132,16 @@ class SquiggleAnimateBlocks {
         this.tweens = [];
         this.clips = new WeakMap();
         this.playing = new Map();
-        this.hits = new Map();
+        this.hits = new WeakMap();
+        this.hitTargets = new Set();
+        this.pending = [];
+        this.live = new Set();
+        this.liveReady = false;
         this.detachTick = null;
         this.tick = this.tick.bind(this);
+        this.stepClip = this.stepClip.bind(this);
+        this.clearHits = this.clearHits.bind(this);
+        this.startHat = this.startHat.bind(this);
         this.stopAll = this.stopAll.bind(this);
         runtime.on(PROJECT_STOP_ALL, this.stopAll);
         this.attachClock();
@@ -269,8 +278,12 @@ class SquiggleAnimateBlocks {
         return !!(seam && typeof seam.camera === 'function' && seam.camera());
     }
 
+    worldLoaded () {
+        return !!peekWorld(this.runtime);
+    }
+
     propMenu () {
-        return this.cameraActive() ? BASE_PROPS.concat(CAMERA_PROPS) : BASE_PROPS.slice();
+        return this.worldLoaded() ? BASE_PROPS.concat(CAMERA_PROPS) : BASE_PROPS.slice();
     }
 
     costumeMenu () {
@@ -308,12 +321,11 @@ class SquiggleAnimateBlocks {
         }
     }
 
-    write (target, prop, values) {
-        const v = values[0];
+    write (target, prop, v, w) {
         switch (prop) {
         case 'x': target.setXY(v, target.y); return;
         case 'y': target.setXY(target.x, v); return;
-        case 'xy': target.setXY(v, values[1]); return;
+        case 'xy': target.setXY(v, w); return;
         case 'size': target.setSize(v); return;
         case 'direction': target.setDirection(v); return;
         case 'ghost': target.setEffect('ghost', clamp(v, 0, 100)); return;
@@ -328,7 +340,9 @@ class SquiggleAnimateBlocks {
     }
 
     startTween (args, util) {
-        return this.begin(util.target, str(args.PROP).toLowerCase(), [num(args.V)], num(args.T), args.EASE);
+        const prop = str(args.PROP).toLowerCase();
+        if (this.propMenu().indexOf(prop) === -1) return {done: true};
+        return this.begin(util.target, prop, [num(args.V)], num(args.T), args.EASE);
     }
 
     begin (target, prop, to, seconds, ease) {
@@ -356,7 +370,7 @@ class SquiggleAnimateBlocks {
             return tween;
         }
         if (tween.duration === 0) {
-            this.write(target, prop, to);
+            this.write(target, prop, to[0], to[1]);
             tween.done = true;
             return tween;
         }
@@ -434,7 +448,7 @@ class SquiggleAnimateBlocks {
         };
         this.playing.set(target, playback);
         target.setCostume(frames[0]);
-        this.hit(target, playback);
+        this.pending.push(target, key, 1);
         return playback;
     }
 
@@ -446,19 +460,35 @@ class SquiggleAnimateBlocks {
         this.waitFor(util, () => this.play(util.target, args.NAME, 'once'));
     }
 
-    hit (target, playback) {
-        let set = this.hits.get(target);
-        if (!set) {
-            set = new Set();
-            this.hits.set(target, set);
+    hit (target, key, frame) {
+        let keys = this.hits.get(target);
+        if (!keys) {
+            keys = new Map();
+            this.hits.set(target, keys);
         }
-        set.add(`${playback.key}|${playback.index + 1}`);
+        let frames = keys.get(key);
+        if (!frames) {
+            frames = new Set();
+            keys.set(key, frames);
+        }
+        frames.add(frame);
+        this.hitTargets.add(target);
+    }
+
+    clearHits (target) {
+        const keys = this.hits.get(target);
+        if (keys) keys.forEach(clearSet);
+    }
+
+    startHat (target) {
+        this.runtime.startHats(HAT, null, target);
     }
 
     whenClipFrame (args, util) {
-        const set = this.hits.get(util.target);
-        return !!set && set.has(`${str(args.NAME).trim()
-            .toLowerCase()}|${Math.round(num(args.N))}`);
+        if (!this.hitTargets.has(util.target)) return false;
+        const frames = this.hits.get(util.target).get(str(args.NAME).trim()
+            .toLowerCase());
+        return !!frames && frames.has(Math.round(num(args.N)));
     }
 
     clipFrame (args, util) {
@@ -471,7 +501,13 @@ class SquiggleAnimateBlocks {
     }
 
     alive (target) {
-        return this.runtime.executableTargets.indexOf(target) !== -1;
+        if (!this.liveReady) {
+            const targets = this.runtime.executableTargets;
+            this.live.clear();
+            for (let i = 0; i < targets.length; i++) this.live.add(targets[i]);
+            this.liveReady = true;
+        }
+        return this.live.has(target);
     }
 
     tick () {
@@ -479,17 +515,25 @@ class SquiggleAnimateBlocks {
         const raw = this.last === null ? DEFAULT_DT : (now - this.last) / 1000;
         this.last = now;
         this.dt = clamp(raw, 0, MAX_DT);
-        this.hits.clear();
+        this.liveReady = false;
+        if (this.hitTargets.size) {
+            this.hitTargets.forEach(this.clearHits);
+            this.hitTargets.clear();
+        }
+        const pending = this.pending;
+        for (let i = 0; i < pending.length; i += 3) this.hit(pending[i], pending[i + 1], pending[i + 2]);
+        pending.length = 0;
         this.stepTweens(this.dt);
-        this.stepClips(this.dt);
-        if (!this.hits.size) return;
-        for (const target of this.hits.keys()) this.runtime.startHats(HAT, null, target);
+        if (this.playing.size) this.playing.forEach(this.stepClip);
+        if (this.hitTargets.size) this.hitTargets.forEach(this.startHat);
     }
 
     stepTweens (dt) {
-        if (!this.tweens.length) return;
-        const live = [];
-        for (const tween of this.tweens) {
+        const tweens = this.tweens;
+        if (!tweens.length) return;
+        let kept = 0;
+        for (let i = 0; i < tweens.length; i++) {
+            const tween = tweens[i];
             if (tween.done) continue;
             if (!isCameraProp(tween.prop) && !this.alive(tween.owner)) {
                 tween.done = true;
@@ -498,34 +542,35 @@ class SquiggleAnimateBlocks {
             tween.elapsed += dt;
             const t = tween.elapsed >= tween.duration - EPSILON ? 1 : tween.elapsed / tween.duration;
             const k = t >= 1 ? 1 : tween.ease(t);
-            this.write(tween.owner, tween.prop, tween.to.map((to, i) => tween.from[i] + ((to - tween.from[i]) * k)));
+            const from = tween.from;
+            const to = tween.to;
+            const v = from[0] + ((to[0] - from[0]) * k);
+            const w = to.length > 1 ? from[1] + ((to[1] - from[1]) * k) : 0;
+            this.write(tween.owner, tween.prop, v, w);
             if (t >= 1) tween.done = true;
-            else live.push(tween);
+            else tweens[kept++] = tween;
         }
-        this.tweens = live;
+        tweens.length = kept;
     }
 
-    stepClips (dt) {
-        if (!this.playing.size) return;
-        for (const [target, playback] of Array.from(this.playing)) {
-            if (!this.alive(target)) {
-                playback.done = true;
-                this.playing.delete(target);
-                continue;
-            }
-            if (playback.done) continue;
-            const step = 1 / playback.fps;
-            playback.elapsed += dt;
-            let moved = false;
-            while (playback.elapsed >= step - EPSILON && !playback.done) {
-                playback.elapsed -= step;
-                if (advanceFrame(playback)) {
-                    moved = true;
-                    this.hit(target, playback);
-                }
-            }
-            if (moved) target.setCostume(playback.frames[playback.index]);
+    stepClip (playback, target) {
+        if (!this.alive(target)) {
+            playback.done = true;
+            this.playing.delete(target);
+            return;
         }
+        if (playback.done) return;
+        const step = 1 / playback.fps;
+        playback.elapsed += this.dt;
+        let moved = false;
+        while (playback.elapsed >= step - EPSILON && !playback.done) {
+            playback.elapsed -= step;
+            if (advanceFrame(playback)) {
+                moved = true;
+                this.hit(target, playback.key, playback.index + 1);
+            }
+        }
+        if (moved) target.setCostume(playback.frames[playback.index]);
     }
 
     stopAll () {
@@ -537,7 +582,9 @@ class SquiggleAnimateBlocks {
             playback.done = true;
         });
         this.playing.clear();
-        this.hits.clear();
+        this.hitTargets.forEach(this.clearHits);
+        this.hitTargets.clear();
+        this.pending.length = 0;
     }
 }
 

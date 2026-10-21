@@ -146,19 +146,29 @@ ext.stopTweens({}, util(cat));
 ok('stop my tweens ends them all', !ext.isTweening({}, util(cat)) && ext.tweens.length === 0);
 ext.startTween({PROP: 'ghost', V: 500, T: 0, EASE: 'linear'}, util(cat));
 ok('a zero-second tween sets at once and clamps ghost', cat.effects.ghost === 100);
+const xyBefore = [cat.x, cat.y];
+const rejected = ext.startTween({PROP: 'xy', V: 5, T: 1, EASE: 'linear'}, util(cat));
+const waiting = util(cat);
+ext.tween({PROP: 'XY', V: 5, T: 1, EASE: 'linear'}, waiting);
+ext.startTween({PROP: 'camera x', V: 5, T: 0, EASE: 'linear'}, util(cat));
+ext.startTween({PROP: 'nose', V: 5, T: 0, EASE: 'linear'}, util(cat));
+runtime._step();
+ok('a reporter that returns xy is rejected before the tween starts', rejected.done && waiting.yields === 0 &&
+    cat.x === xyBefore[0] && cat.y === xyBefore[1], [cat.x, cat.y]);
+ok('props outside the menu start nothing', ext.tweens.length === 0);
 ext.startTween({PROP: 'y', V: 10, T: 1, EASE: 'linear'}, util(cat));
 runtime.emit('PROJECT_STOP_ALL');
 ok('the stop sign ends every tween', ext.tweens.length === 0);
 
 section('camera tweens only with a camera');
-ok('no camera properties without a camera', ext.propMenu().indexOf('camera x') === -1);
+ok('no camera properties without the World kit', ext.propMenu().indexOf('camera x') === -1);
 const stageUtil = util(runtime.getTargetForStage());
 ext.startTween({PROP: 'camera x', V: 50, T: 1, EASE: 'linear'}, stageUtil);
 ok('a camera tween with no World kit finishes at once', ext.tweens.length === 0);
 const world = getWorld(runtime, {createCanvas: () => null, loadImage: () => null});
 world.attach(seam);
 world.camera.set(0, 0);
-ok('camera properties appear once a camera is active', ext.propMenu().indexOf('camera zoom') !== -1);
+ok('camera properties appear once the World kit is loaded', ext.propMenu().indexOf('camera zoom') !== -1);
 ext.startTween({PROP: 'camera zoom', V: 200, T: 0.5, EASE: 'linear'}, stageUtil);
 for (let i = 0; i < 15; i++) runtime._step();
 ok('camera zoom tweens through the world camera', near(world.camera.state.zoom, 2), world.camera.state.zoom);
@@ -176,16 +186,25 @@ runtime.startHats = (opcode, fields, target) => {
     if (opcode === 'squiggleanimate_whenClipFrame') started++;
     return startHats(opcode, fields, target);
 };
+const fired = [];
+const firedNow = name => {
+    const now = [];
+    for (let n = 1; n <= 4; n++) if (ext.whenClipFrame({NAME: name, N: n}, util(cat))) now.push(n);
+    return now;
+};
 ext.defineClip({NAME: 'walk', A: 'walk1', B: 'walk4', FPS: 30}, util(cat));
 ext.playClip({NAME: 'walk', MODE: 'ping-pong'}, util(cat));
 frames.push(ext.clipFrame({}, util(cat)));
 for (let i = 0; i < 9; i++) {
     runtime._step();
     frames.push(ext.clipFrame({}, util(cat)));
+    fired.push(...firedNow('walk'));
 }
 ok('ping-pong runs 1 2 3 4 3 2 1 2 3 4', frames.join(' ') === '1 2 3 4 3 2 1 2 3 4', frames.join(' '));
 ok('the costume follows the clip', cat.currentCostume === 3);
-ok('each frame starts the frame hat for the sprite', started === 9, started);
+ok('the frame hat fires for all 10 of 10 frames, frame 1 included', fired.join(' ') === frames.join(' '),
+    fired.join(' '));
+ok('each step with a hit starts the frame hat for the sprite', started === 9, started);
 ok('the hat matches the clip name and frame', ext.whenClipFrame({NAME: 'Walk', N: 4}, util(cat)) &&
     !ext.whenClipFrame({NAME: 'walk', N: 3}, util(cat)));
 
@@ -194,14 +213,27 @@ const once = util(cat);
 ext.playClipWait({NAME: 'walk'}, once);
 let steps = 0;
 let before = 0;
+const onceFired = [];
 do {
     before = once.yields;
     runtime._step();
     steps++;
+    onceFired.push(...firedNow('walk'));
     ext.playClipWait({NAME: 'walk'}, once);
 } while (once.yields > before && steps < 60);
+ok('once mode fires frame 1', onceFired[0] === 1 && onceFired.join(' ') === '1 2 3 4', onceFired.join(' '));
 ok('a clip with no define uses walk1 to walk4 at 12 fps and plays once', steps === 10 && cat.currentCostume === 3,
     [steps, cat.currentCostume]);
+
+ext.defineClip({NAME: 'pose', A: 'idle', B: 'idle', FPS: 30}, util(cat));
+started = 0;
+ext.playClip({NAME: 'pose', MODE: 'loop'}, util(cat));
+const poseFired = [];
+for (let i = 0; i < 4; i++) {
+    runtime._step();
+    poseFired.push(...firedNow('pose'));
+}
+ok('a one-frame clip fires once', poseFired.join(' ') === '1' && started === 1, [poseFired, started]);
 
 ext.playClip({NAME: 'walk', MODE: 'loop'}, util(cat));
 const loop = [];

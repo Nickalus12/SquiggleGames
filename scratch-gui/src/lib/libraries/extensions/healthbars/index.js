@@ -1,10 +1,10 @@
+import {createOverlay} from '../vfx/overlay.js';
+
 const menuIconURI = 'data:image/svg+xml;base64,' +
     'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0i' +
     'MCAwIDQwIDQwIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI4IiBmaWxsPSIjRkY0NDQ0Ii8+PHBhdGggZD0i' +
     'TTEyIDE1YTUgNSAwIDAgMSA1LTVjMS40IDAgMi43LjYgMy41IDEuN2MuOC0xLjEgMi4xLTEuNyAzLjUtNWE1IDUgMCAwIDEg' +
     'NSA1YzAgNS43LTcuNiAxMC41LTEyIDE0Yy00LjQtMy41LTEyLTguMy0xMi0xNHoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
-
-import {createOverlay} from '../vfx/overlay.js';
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -62,15 +62,26 @@ class ThunderboltHealthBars {
     constructor (runtime) {
         this.runtime = runtime;
         this.bars = new Map();
-        this.overlay = createOverlay(runtime, {zIndex: 13, frame: this.frame.bind(this)});
+        this.stuck = new Set();
+        this.overlay = createOverlay(runtime, {
+            zIndex: 13,
+            frame: this.frame.bind(this),
+            sample: () => this.stuck.size > 0
+        });
         this.ctx = this.overlay.ctx;
     }
 
-    anchor (bar) {
-        const target = bar.target;
-        if (target && this.runtime.executableTargets.indexOf(target) === -1) bar.target = null;
-        if (bar.target) return this.overlay.project(bar.target.x, bar.target.y + bar.offsetY, false);
-        return this.overlay.project(bar.x, bar.y, bar.pinned);
+    anchor (bar, world, pinned) {
+        if (bar.target && !this.overlay.alive(bar.target)) this.release(bar);
+        if (bar.target) return (world || this.overlay.projector(false))(bar.target.x, bar.target.y + bar.offsetY);
+        return ((bar.pinned ? pinned : world) || this.overlay.projector(bar.pinned))(bar.x, bar.y);
+    }
+
+    release (bar) {
+        bar.x = bar.target.x;
+        bar.y = bar.target.y + bar.offsetY;
+        bar.target = null;
+        this.stuck.delete(bar);
     }
 
     _roundRect (ctx, x, y, w, h, r) {
@@ -332,6 +343,8 @@ class ThunderboltHealthBars {
     frame (ctx, dt) {
         let live = false;
         let shown = false;
+        const world = this.overlay.projector(false);
+        const pinned = this.overlay.projector(true);
         for (const bar of this.bars.values()) {
             if (!bar.visible) continue;
             shown = true;
@@ -342,7 +355,7 @@ class ThunderboltHealthBars {
                 this._agePopups(bar, dt);
                 continue;
             }
-            const at = this.anchor(bar);
+            const at = this.anchor(bar, world, pinned);
             const scale = at.scale;
             const cx = at.x;
             const cy = at.y;
@@ -605,6 +618,7 @@ class ThunderboltHealthBars {
     }
 
     createBar (args) {
+        this.stuck.delete(this.bars.get(args.ID));
         const bar = new HealthBar(args.ID, Number(args.X), Number(args.Y), Number(args.MAX));
         this.bars.set(args.ID, bar);
         this.overlay.wake();
@@ -620,6 +634,7 @@ class ThunderboltHealthBars {
         bar.x = Number(args.X);
         bar.y = Number(args.Y);
         bar.target = null;
+        this.stuck.delete(bar);
         this.overlay.wake();
     }
 
@@ -628,17 +643,21 @@ class ThunderboltHealthBars {
         bar.target = util.target.isStage ? null : util.target;
         bar.offsetY = Number(args.DY) || 0;
         bar.pinned = false;
+        if (bar.target) this.stuck.add(bar);
+        else this.stuck.delete(bar);
         this.overlay.wake();
     }
 
     pinToScreen (args) {
         const bar = this._getBar(args.ID, true);
-        if (bar.target) {
-            bar.x = bar.target.x;
-            bar.y = bar.target.y + bar.offsetY;
-            bar.target = null;
+        const pin = args.ONOFF !== 'off';
+        if (bar.target) this.release(bar);
+        if (pin !== bar.pinned) {
+            const at = pin ? this.overlay.toScreen(bar.x, bar.y) : this.overlay.toWorld(bar.x, bar.y);
+            bar.x = at.x;
+            bar.y = at.y;
         }
-        bar.pinned = args.ONOFF !== 'off';
+        bar.pinned = pin;
         this.overlay.wake();
     }
 
@@ -714,6 +733,7 @@ class ThunderboltHealthBars {
     }
 
     deleteBar (args) {
+        this.stuck.delete(this.bars.get(args.ID));
         this.bars.delete(args.ID);
         this.overlay.wake();
     }
