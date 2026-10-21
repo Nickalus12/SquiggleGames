@@ -33,6 +33,10 @@ section('the rules game project');
     ok('every costume ships in the zip', missing.length === 0, missing);
     ok('the rules sprite carries the mark', rules.extensionStorage.together.role === 'rules' &&
         rules.extensionStorage.together.opcodeSet === 1);
+    ok('the mark is in the PROTOCOL shape', JSON.stringify(rules.extensionStorage.together.playerValues) ===
+        '[{"n":"score","d":0,"see":"all","save":false}]' && !('players' in rules.extensionStorage.together));
+    ok('the player mark carries v 1', JSON.stringify(project.targets.find(t => t.name === 'Player').extensionStorage.together) ===
+        '{"role":"player","v":1}');
     ok('the rules sprite holds blocks, so the game is authoritative', opcodes(rules).includes('together_ruleWhenPlayerSends'));
     ok('the player sprite is the one that streams', findPlayerSprite(asRuntime(project)).name === 'Player');
 }

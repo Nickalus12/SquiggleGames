@@ -37,7 +37,7 @@ const reorder = value => {
 console.log('\ncanonical JSON');
 ok('sorted keys, no whitespace', canonical({b: 1, a: [true, null, 'x']}) === '{"a":[true,null,"x"],"b":1}');
 ok('undefined keys are dropped', canonical({a: 1, b: undefined}) === '{"a":1}');
-ok('non-finite numbers become 0', canonical({a: Infinity, b: NaN}) === '{"a":0,"b":0}');
+ok('non-finite numbers are written as JSON.stringify writes them', canonical({a: Infinity, b: NaN}) === '{"a":null,"b":null}');
 ok('matches the shared fixture byte for byte', canonical(rulesPayload(fixture.sprite)) === fixture.canonical);
 
 console.log('\nhash');
