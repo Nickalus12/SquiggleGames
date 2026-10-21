@@ -13,6 +13,7 @@ import {
     playerValue as readPlayerValue
 } from '../../../together2/game-state.js';
 import menuIconURI from './together-small.svg';
+import log from '../../../log.js';
 
 const isMissing = v => v === null || typeof v === 'undefined';
 
@@ -36,6 +37,7 @@ const getNet = () => (typeof window === 'undefined' ? null : window.SquiggleNet)
  * latest value, which is what the receiving side would have ended up with
  * anyway.
  */
+const GAME_SERVER_READY = false;
 const OUT_PER_SEC = 25;
 const VAR_FLUSH_MS = 50;
 // Beyond this the sender is in a runaway loop and dropping is kinder than an
@@ -522,10 +524,12 @@ class TogetherBlocks {
                 },
                 {
                     blockType: 'label',
+                    hideFromPalette: !GAME_SERVER_READY,
                     text: 'Game server'
                 },
                 {
                     opcode: 'tellGame',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'command',
                     text: 'tell the game [NAME] with [VALUE]',
                     arguments: {
@@ -541,6 +545,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'whenGameSays',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'event',
                     text: 'when the game says [EVENT]',
                     isEdgeActivated: false,
@@ -554,6 +559,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'gameValue',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'reporter',
                     text: 'game value [NAME]',
                     arguments: {
@@ -566,6 +572,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'myPlayerValue',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'reporter',
                     text: 'my player value [NAME]',
                     arguments: {
@@ -578,16 +585,19 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'gameRound',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'reporter',
                     text: 'round'
                 },
                 {
                     opcode: 'myTeam',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'reporter',
                     text: 'my team'
                 },
                 {
                     opcode: 'timeLeft',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'reporter',
                     text: 'time left on [TIMER]',
                     arguments: {
@@ -600,6 +610,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'inGame',
+                    hideFromPalette: !GAME_SERVER_READY,
                     blockType: 'Boolean',
                     text: 'in a game?'
                 },
@@ -624,13 +635,22 @@ class TogetherBlocks {
         return ensureRulesSprite(vm).then(target => {
             vm.setEditingTarget(target.id);
             return target;
-        });
+        })
+            .catch(error => {
+                log.warn('[together] Game Rules did not open', error && error.message);
+                return null;
+            });
     }
 
     openGameSetup () {
         const vm = this.runtime.extensionManager && this.runtime.extensionManager.vm;
         if (!vm) return Promise.resolve(null);
-        return openGameSetup(vm);
+        return Promise.resolve()
+            .then(() => openGameSetup(vm))
+            .catch(error => {
+                log.warn('[together] Game setup did not open', error && error.message);
+                return null;
+            });
     }
 
     tellGame (args) {

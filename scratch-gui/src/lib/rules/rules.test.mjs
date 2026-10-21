@@ -117,13 +117,29 @@ const deviceTypes = typesIn(deviceView);
 ok('rules mode shows only rule blocks', rulesTypes.length > 0 && rulesTypes.every(t => ruleSet.has(t)), rulesTypes.filter(t => !ruleSet.has(t)));
 ok('rules mode shows every rule block', rulesTypes.length === ruleSet.size, [rulesTypes.length, ruleSet.size]);
 ok('device mode shows no rule blocks', deviceTypes.every(t => !ruleSet.has(t)));
-ok('device mode keeps the 16 legacy blocks and the 8 game server blocks',
-    deviceTypes.filter(t => t.startsWith('together_')).length === 24, deviceTypes.filter(t => t.startsWith('together_')));
+ok('device mode keeps the 16 legacy blocks', deviceTypes.filter(t => t.startsWith('together_')).length === 16,
+    deviceTypes.filter(t => t.startsWith('together_')));
+ok('the game server blocks stay hidden until the game socket lands',
+    !deviceTypes.some(t => /^together_(tellGame|whenGameSays|gameValue|myPlayerValue|gameRound|myTeam|timeLeft|inGame)$/
+        .test(t)) && !/Game server/.test(xml.map(c => c.xml).join('')));
 ok('expansions in device mode show only the Open Game Rules button', deviceView
     .filter(c => c.id !== 'together')
     .every(c => !/<block/.test(c.xml) && /callbackData="[a-z]+_openGameRules"/.test(c.xml)));
 ok('rules mode drops the Open Game Rules button', rulesView.every(c => !/openGameRules/.test(c.xml)));
 ok('rule blocks are gold-edged', /"colourTertiary":"#ffc53d"/.test(JSON.stringify(reloaded.runtime.getBlocksJSON())));
+
+section('a viewer opening Game Rules');
+{
+    const viewerVm = new VM();
+    viewerVm.addSprite = () => Promise.resolve();
+    const quiet = console.warn;
+    console.warn = () => {};
+    const together = await new TogetherBlocks(viewerVm.runtime).openGameRules().then(r => ({r}), e => ({e}));
+    const scores = await new expansions.squigglescores(viewerVm.runtime).openGameRules().then(r => ({r}), e => ({e}));
+    console.warn = quiet;
+    ok('the together button settles to null instead of throwing', !together.e && together.r === null, together);
+    ok('an expansion button settles to null instead of throwing', !scores.e && scores.r === null, scores);
+}
 
 section('packaging');
 const empty = await buildRulesUpload(vm);

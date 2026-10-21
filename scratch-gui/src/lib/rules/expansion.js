@@ -3,6 +3,7 @@ import {getKit} from '../kits/registry.js';
 import {installRuleMethods, openRulesButton, ruleBlocks, ruleMenus} from './rule-blocks.js';
 import {installRulesGuard} from './guard.js';
 import {ensureRulesSprite} from './ensure-sprite.js';
+import log from '../log.js';
 
 const vmOf = runtime => (runtime && runtime.extensionManager && runtime.extensionManager.vm) || null;
 
@@ -36,7 +37,11 @@ const makeExpansion = id => {
             return ensureRulesSprite(vm).then(target => {
                 vm.setEditingTarget(target.id);
                 return target;
-            });
+            })
+                .catch(error => {
+                    log.warn('[rules] Game Rules did not open', error && error.message);
+                    return null;
+                });
         }
     }
     return ExpansionBlocks;
