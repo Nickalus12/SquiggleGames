@@ -113,7 +113,11 @@ const NIGHT = {
     'sq-elevation-1': '0 0 0 1px #2e3760',
     'sq-elevation-2': '0 0 0 1px #3a4573',
     'sq-elevation-3': '0 0 0 1px #46528a, 0 8px 24px rgba(0, 0, 0, 0.45)',
-    'sq-scrim': 'rgba(6, 8, 18, 0.72)'
+    'sq-scrim': 'rgba(6, 8, 18, 0.72)',
+    'sq-tint-card': 'rgba(255, 255, 255, 0.055)',
+    'sq-tint-line': 'rgba(255, 255, 255, 0.11)',
+    'sq-tint-line-hi': 'rgba(255, 255, 255, 0.22)',
+    'sq-tint-well': 'rgba(0, 0, 0, 0.3)'
 };
 
 const DAY = {
@@ -133,7 +137,11 @@ const DAY = {
     'sq-elevation-1': '0 1px 2px rgba(27, 31, 58, 0.08)',
     'sq-elevation-2': '0 2px 8px rgba(27, 31, 58, 0.12)',
     'sq-elevation-3': '0 8px 24px rgba(27, 31, 58, 0.18)',
-    'sq-scrim': 'rgba(27, 31, 58, 0.45)'
+    'sq-scrim': 'rgba(27, 31, 58, 0.45)',
+    'sq-tint-card': 'rgba(27, 31, 58, 0.05)',
+    'sq-tint-line': 'rgba(27, 31, 58, 0.12)',
+    'sq-tint-line-hi': 'rgba(27, 31, 58, 0.24)',
+    'sq-tint-well': 'rgba(27, 31, 58, 0.06)'
 };
 
 const sqTokens = ({dark, reducedMotion}) => Object.assign(

@@ -1,18 +1,21 @@
 .panel {
-    --chat-surface: #161c36;
-    --chat-raised: #1d2445;
-    --chat-card: rgba(255, 255, 255, 0.055);
-    --chat-line: rgba(255, 255, 255, 0.11);
-    --chat-line-hi: rgba(255, 255, 255, 0.22);
-    --chat-ink: #f2f4fb;
-    --chat-dim: #a3abc8;
+    --chat-surface: var(--sq-panel, #161c36);
+    --chat-raised: var(--sq-raised, #1d2445);
+    --chat-card: var(--sq-tint-card, rgba(255, 255, 255, 0.055));
+    --chat-line: var(--sq-tint-line, rgba(255, 255, 255, 0.11));
+    --chat-line-hi: var(--sq-tint-line-hi, rgba(255, 255, 255, 0.22));
+    --chat-well: var(--sq-tint-well, rgba(0, 0, 0, 0.3));
+    --chat-ink: var(--sq-text, #f2f4fb);
+    --chat-dim: var(--sq-text-muted, #a3abc8);
     --chat-accent: #7c5cff;
     --chat-accent-strong: #6646f0;
     --chat-accent-soft: rgba(124, 92, 255, 0.26);
     --chat-accent-line: rgba(124, 92, 255, 0.6);
-    --chat-good: #34d399;
-    --chat-warn: #fbbf24;
-    --chat-danger: #fda4af;
+    --chat-good: var(--sq-success, #34d399);
+    --chat-warn: var(--sq-warn, #fbbf24);
+    --chat-danger: var(--sq-danger, #fda4af);
+    --chat-focus: var(--sq-focus, #c4b5fd);
+    --chat-scrim: var(--sq-scrim, rgba(6, 8, 20, 0.62));
     --chat-font: ui-rounded, "SF Pro Rounded", "Segoe UI Variable", Nunito, system-ui, sans-serif;
     position: relative;
     display: flex;
@@ -136,7 +139,7 @@
     width: 34px;
     height: 20px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.18);
+    background: var(--chat-line-hi);
 }
 
 .switch-thumb {
@@ -345,7 +348,7 @@
     padding: 0 3px;
     border-radius: 5px;
     background: rgba(251, 191, 36, 0.24);
-    color: #fde68a;
+    color: var(--chat-warn);
     font-weight: 800;
 }
 
@@ -416,7 +419,7 @@
 
 .action-warn {
     border-color: rgba(251, 191, 36, 0.45);
-    color: #fde68a;
+    color: var(--chat-warn);
 }
 
 .new-pill {
@@ -481,7 +484,7 @@
     border: 1px solid rgba(253, 164, 175, 0.4);
     border-radius: 10px;
     background: rgba(244, 63, 94, 0.12);
-    color: #fecdd3;
+    color: var(--chat-danger);
     font-size: 13px;
     font-weight: 700;
 }
@@ -563,7 +566,7 @@
     border: 1.5px solid var(--chat-line);
     border-radius: 11px;
     outline: none;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--chat-well);
     color: var(--chat-ink);
     font: inherit;
     font-size: 16px;
@@ -696,7 +699,7 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    background: rgba(6, 8, 20, 0.62);
+    background: var(--chat-scrim);
 }
 
 .sheet-desktop {
@@ -862,7 +865,7 @@
 .panel button:focus-visible,
 .panel input:focus-visible,
 .reason:focus-within {
-    outline: 2px solid #c4b5fd;
+    outline: 2px solid var(--chat-focus);
     outline-offset: 2px;
 }
 
