@@ -383,7 +383,7 @@ $fade-out-distance: 15px;
     font-size: max(16px, 1em);
 }
 
-.phone-sheet {
+.page-wrapper .phone-sheet {
     display: none;
 }
 
