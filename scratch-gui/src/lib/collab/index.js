@@ -2580,7 +2580,7 @@ const wireSocket = () => {
     });
     client.on('peer-joined', msg => {
         const wasAlone = !hasPeers();
-        overlay.addPeer(msg.peer.id, msg.peer.name, msg.peer.color, msg.peer.cursor);
+        overlay.addPeer(msg.peer.id, msg.peer.name, msg.peer.color, msg.peer.cursor, msg.peer);
         if (wasAlone && canWrite() && hasUnsavedEdits()) {
             clearTimeout(state.snapshotTimer);
             state.snapshotTimer = null;

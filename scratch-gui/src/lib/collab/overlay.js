@@ -86,7 +86,13 @@ class Overlay {
             connected: this.connected,
             projects: this.projects,
             peers: [...this.peers.entries()].map(([id, p]) => ({
-                id, name: p.name, color: p.color, status: p.status, sprite: p.sprite
+                id,
+                name: p.name,
+                color: p.color,
+                status: p.status,
+                sprite: p.sprite,
+                userId: p.userId,
+                handle: p.handle
             }))
         };
     }
@@ -181,14 +187,16 @@ class Overlay {
         this._notify();
     }
 
-    addPeer (id, name, color, style) {
+    addPeer (id, name, color, style, account) {
         this.peers.set(id, {
             name,
             color,
             style: style || 'arrow',
             status: 'here',
             sprite: null,
-            cursor: null
+            cursor: null,
+            userId: account && typeof account.userId === 'number' ? account.userId : null,
+            handle: account && typeof account.handle === 'string' ? account.handle : null
         });
         this._notify();
     }
@@ -208,7 +216,9 @@ class Overlay {
                     style: p.cursor || 'arrow',
                     status: 'here',
                     sprite: null,
-                    cursor: null
+                    cursor: null,
+                    userId: typeof p.userId === 'number' ? p.userId : null,
+                    handle: typeof p.handle === 'string' ? p.handle : null
                 });
             }
         });
