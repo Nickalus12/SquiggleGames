@@ -1,3 +1,6 @@
+import '../libraries/extensions/squigglescores/kit.js';
+import '../libraries/extensions/squiggleteams/kit.js';
+import '../libraries/extensions/squigglearena/kit.js';
 import {builtinKits} from './registry.js';
 
 const installBuiltinKits = extensionManager => {
