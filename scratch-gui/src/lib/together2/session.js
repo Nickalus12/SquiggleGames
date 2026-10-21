@@ -137,6 +137,7 @@ const createGameLink = ({
     vm,
     base,
     slug,
+    url,
     WebSocketImpl,
     now = Date.now,
     setTimer = setTimeout,
@@ -144,7 +145,10 @@ const createGameLink = ({
     onRulesStatus,
     onGameMessage,
     onEnded,
-    onClosed
+    onClosed,
+    onWelcome: onOpen,
+    onDropped,
+    onSharedVar
 }) => {
     const runtime = vm.runtime;
     const tickHandlers = new Set();
@@ -310,14 +314,21 @@ const createGameLink = ({
             if (session && !session.stopped) return session;
             reset();
             session = createGameSession({
-                url: gameSocketUrl(base, slug),
+                url: url || gameSocketUrl(base, slug),
                 WebSocketImpl,
                 now,
                 setTimer,
                 clearTimer
             });
             const current = session;
-            unsubs.push(session.on('welcome', onWelcome));
+            unsubs.push(session.on('welcome', msg => {
+                onWelcome(msg);
+                if (onOpen) onOpen(msg);
+            }));
+            unsubs.push(session.on('dropped', msg => onDropped && onDropped(msg)));
+            unsubs.push(session.on('game', msg => {
+                if (onSharedVar && msg && msg.action === 'var') onSharedVar(msg);
+            }));
             unsubs.push(session.on('tick', onTick));
             unsubs.push(session.on('correction', onCorrection));
             unsubs.push(session.on('rules-status', msg => onRulesStatus && onRulesStatus(msg)));
@@ -354,6 +365,9 @@ const createGameLink = ({
             return ops.filter(Boolean)
                 .map(op => session.queueOp(op))
                 .every(Boolean);
+        },
+        queue (op) {
+            return !!(session && !session.stopped && op && session.queueOp(op));
         },
         relay (msg) {
             const op = session && session.open && !session.stopped ? outboundOp(msg) : null;

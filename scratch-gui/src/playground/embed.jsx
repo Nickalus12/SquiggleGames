@@ -7,7 +7,6 @@ import TWEmbedFullScreenHOC from '../lib/tw-embed-fullscreen-hoc.jsx';
 import TWStateManagerHOC from '../lib/tw-state-manager-hoc.jsx';
 import runAddons from '../addons/entry';
 import {Theme} from '../lib/themes/index.js';
-import coplay from '../lib/coplay/index.js';
 
 import GUI from './render-gui.jsx';
 import TWWindchimeSubmitter from '../containers/tw-windchime-submitter.jsx';
@@ -36,10 +35,11 @@ let vm;
 
 const onVmInit = _vm => {
     vm = _vm;
-    // Playing together: one person's hands drive everyone's copy of the game.
-    // Nothing loads or listens unless a session code is actually present.
     const code = urlParams.get('coplay');
-    if (code) coplay.init(vm, {code, name: urlParams.get('name') || ''});
+    if (code) {
+        import('../lib/together2/play.js')
+            .then(play => play.initPlay(vm, {code, name: urlParams.get('name') || ''}));
+    }
 };
 
 const onProjectLoaded = () => {

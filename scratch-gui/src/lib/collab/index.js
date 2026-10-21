@@ -24,6 +24,7 @@ import {gameServerReady} from '../rules/flags.js';
 import {createGameLink} from '../together2/session.js';
 import {VOCAB_LOCK} from '../together2/net.js';
 import {lockedNames} from '../together2/vocab-lock.js';
+import {BAD_FRAME_TEXT, RELOAD_TEXT} from '../together2/texts.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
@@ -2841,8 +2842,6 @@ const CLOSE_TEXT = {
     1013: 'The connection is running slow. Reconnecting…',
     4008: 'The connection is running slow. Reconnecting…'
 };
-const RELOAD_TEXT = 'Squiggle has a new version. Reload the page to keep working together.';
-const BAD_FRAME_TEXT = 'The room could not read something this editor sent. Reload the page to fix it.';
 const GAME_LOCKED_TEXT = 'That game message was not sent. While a guest or younger player is here, ' +
     `names and words must be ${VOCAB_LOCK.text} letters or fewer with no ${VOCAB_LOCK.digitRun} numbers in a row.`;
 const REFUSAL_TEXTS = Object.freeze({
