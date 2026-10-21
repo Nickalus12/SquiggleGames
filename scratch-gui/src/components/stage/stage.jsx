@@ -19,6 +19,7 @@ const StageComponent = props => {
         canvas,
         customStageSize,
         dragRef,
+        fixedWidth,
         isColorPicking,
         isFullScreen,
         isPlayerOnly,
@@ -35,8 +36,8 @@ const StageComponent = props => {
         ...boxProps
     } = props;
 
-    const stageDimensions = getStageDimensions(stageSize, customStageSize, isFullScreen);
-    const minWidth = getMinWidth(stageSize);
+    const stageDimensions = getStageDimensions(stageSize, customStageSize, isFullScreen, fixedWidth);
+    const minWidth = fixedWidth || getMinWidth(stageSize);
     const transformStyle = stageDimensions.width < minWidth && !isFullScreen ? {
         transform: `translateX(${(minWidth - stageDimensions.width) / (isRtl ? -2 : 2)}px)`
     } : {};
@@ -158,6 +159,7 @@ StageComponent.propTypes = {
     overlay: PropTypes.instanceOf(Element).isRequired,
     colorInfo: Loupe.propTypes.colorInfo,
     dragRef: PropTypes.func,
+    fixedWidth: PropTypes.number,
     isColorPicking: PropTypes.bool,
     isFullScreen: PropTypes.bool.isRequired,
     isPlayerOnly: PropTypes.bool,

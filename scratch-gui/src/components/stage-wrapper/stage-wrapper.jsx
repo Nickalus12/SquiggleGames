@@ -13,6 +13,7 @@ import styles from './stage-wrapper.css';
 
 const StageWrapperComponent = function (props) {
     const {
+        fixedWidth,
         isEmbedded,
         isFullScreen,
         isRtl,
@@ -30,21 +31,24 @@ const StageWrapperComponent = function (props) {
                     [styles.embedded]: isEmbedded,
                     [styles.fullScreen]: isFullScreen,
                     [styles.loading]: loading,
-                    [styles.offsetControls]: !(isEmbedded || isFullScreen)
+                    [styles.offsetControls]: !(isEmbedded || isFullScreen || fixedWidth)
                 }
             )}
             dir={isRtl ? 'rtl' : 'ltr'}
         >
-            <Box className={styles.stageMenuWrapper}>
-                <StageHeader
-                    stageSize={stageSize}
-                    vm={vm}
-                />
-            </Box>
+            {fixedWidth && !isFullScreen ? null : (
+                <Box className={styles.stageMenuWrapper}>
+                    <StageHeader
+                        stageSize={stageSize}
+                        vm={vm}
+                    />
+                </Box>
+            )}
             <Box className={styles.stageCanvasWrapper}>
                 {
                     isRendererSupported ?
                         <Stage
+                            fixedWidth={fixedWidth}
                             stageSize={stageSize}
                             vm={vm}
                         /> :
@@ -59,6 +63,7 @@ const StageWrapperComponent = function (props) {
 };
 
 StageWrapperComponent.propTypes = {
+    fixedWidth: PropTypes.number,
     isEmbedded: PropTypes.bool,
     isFullScreen: PropTypes.bool,
     isRendererSupported: PropTypes.bool.isRequired,

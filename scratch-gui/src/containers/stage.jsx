@@ -100,6 +100,7 @@ class Stage extends React.Component {
             this.props.isFullScreen !== nextProps.isFullScreen ||
             this.props.isWindowFullScreen !== nextProps.isWindowFullScreen ||
             this.props.dimensions !== nextProps.dimensions ||
+            this.props.fixedWidth !== nextProps.fixedWidth ||
             this.state.question !== nextState.question ||
             this.props.micIndicator !== nextProps.micIndicator ||
             this.props.isStarted !== nextProps.isStarted ||
@@ -477,6 +478,7 @@ Stage.propTypes = {
     isRtl: PropTypes.bool,
     isWindowFullScreen: PropTypes.bool,
     dimensions: PropTypes.arrayOf(PropTypes.number),
+    fixedWidth: PropTypes.number,
     isStarted: PropTypes.bool,
     micIndicator: PropTypes.bool,
     onActivateColorPicker: PropTypes.func,
