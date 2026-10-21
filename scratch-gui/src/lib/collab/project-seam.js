@@ -1,3 +1,5 @@
+import {isKit} from '../kits/registry.js';
+
 const RULES_KEY = 'together';
 const RULES_ROLE = 'rules';
 const RULES_VERSION = 1;
@@ -10,6 +12,29 @@ const present = value => value !== null && typeof value !== 'undefined';
 const preserveExtensionStorage = id => {
     if (typeof id !== 'string' || !id) throw new Error('preserveExtensionStorage needs an extension id');
     preservedKeys.add(id);
+};
+
+const preserved = key => preservedKeys.has(key) || isKit(key);
+
+const storedKitKeys = storage => (
+    storage ? Object.keys(storage).filter(key => isKit(key) && present(storage[key])) : []
+);
+
+const loadStoredKits = vm => {
+    const runtime = vm && vm.runtime;
+    const manager = vm && vm.extensionManager;
+    if (!runtime || !manager) return [];
+    const keys = new Set(storedKitKeys(runtime.extensionStorage));
+    runtime.targets.forEach(target => {
+        if (target && target.isOriginal) storedKitKeys(target.extensionStorage).forEach(key => keys.add(key));
+    });
+    const loaded = [];
+    for (const key of keys) {
+        if (manager.isExtensionLoaded(key) || !manager.isBuiltinExtension(key)) continue;
+        manager.loadExtensionIdSync(key);
+        loaded.push(key);
+    }
+    return loaded;
 };
 
 const isRulesTarget = target => {
@@ -26,17 +51,14 @@ const markRulesTarget = target => {
 
 const holdsPreserved = storage => {
     if (!storage) return false;
-    for (const key of preservedKeys) {
-        if (present(storage[key])) return true;
-    }
-    return false;
+    return Object.keys(storage).some(key => preserved(key) && present(storage[key]));
 };
 
 const withPreserved = (serialized, storage) => {
     if (!storage) return serialized;
     let result = serialized;
-    for (const key of preservedKeys) {
-        if (!present(storage[key])) continue;
+    for (const key of Object.keys(storage)) {
+        if (!preserved(key) || !present(storage[key])) continue;
         if (result && Object.prototype.hasOwnProperty.call(result, key)) continue;
         if (result === serialized) result = Object.assign({}, serialized);
         result[key] = storage[key];
@@ -82,6 +104,13 @@ const installProjectSeam = vm => {
         }
         return stringify(obj);
     };
+    const loadProject = vm.loadProject;
+    vm.loadProject = function (input) {
+        return Promise.resolve(loadProject.call(this, input)).then(result => {
+            loadStoredKits(this);
+            return result;
+        });
+    };
     const addSprite = vm.addSprite;
     vm.addSprite = function (input) {
         const runtime = this.runtime;
@@ -91,6 +120,7 @@ const installProjectSeam = vm => {
         };
         return Promise.resolve(addSprite.call(this, input)).then(result => {
             restore();
+            loadStoredKits(this);
             return result;
         }, error => {
             restore();
@@ -106,6 +136,7 @@ export {
     RULES_VERSION,
     installProjectSeam,
     preserveExtensionStorage,
+    loadStoredKits,
     isRulesTarget,
     markRulesTarget
 };

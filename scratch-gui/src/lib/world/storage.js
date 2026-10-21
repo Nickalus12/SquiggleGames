@@ -92,6 +92,7 @@ const normalizeScene = (scene, index) => {
         backdrop: name(source.backdrop, ''),
         level: name(source.level, ''),
         bounds: normalizeBounds(source.bounds),
+        keepClones: source.keepClones === true,
         spawns: (Array.isArray(source.spawns) ? source.spawns : [])
             .slice(0, MAX_SPAWNS)
             .map(normalizeSpawn)

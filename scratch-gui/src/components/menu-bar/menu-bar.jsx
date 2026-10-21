@@ -188,7 +188,7 @@ MenuItemTooltip.propTypes = {
 
 const AboutButton = props => (
     <Button
-        className={classNames(styles.menuBarItem, styles.hoverable)}
+        className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
         iconClassName={styles.aboutIcon}
         iconSrc={aboutIcon}
         onClick={props.onClick}
@@ -901,7 +901,7 @@ class MenuBar extends React.Component {
 
                         {this.props.onClickAddonSettings && (
                             <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
+                                className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
                                 onClick={this.props.onClickAddonSettings}
                             >
                                 <img
@@ -921,7 +921,7 @@ class MenuBar extends React.Component {
                         )}
                         {this.props.onClickSettingsModal && (
                             <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
+                                className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
                                 onClick={this.props.onClickSettingsModal}
                             >
                                 <img
@@ -996,7 +996,7 @@ class MenuBar extends React.Component {
                             {remixButton}
                         </div>
                     )}
-                    <div className={classNames(styles.menuBarItem, styles.communityButtonWrapper)}>
+                    <div className={classNames(styles.menuBarItem, styles.communityButtonWrapper, styles.focusExtra)}>
                         {this.props.enableCommunity ? (
                             (this.props.isShowingProject || this.props.isUpdating) && (
                                 <ProjectWatcher onDoneUpdating={this.props.onSeeCommunity}>
@@ -1026,7 +1026,7 @@ class MenuBar extends React.Component {
                         ) : []))}
                     </div>
                     {/* tw: add a feedback button */}
-                    <div className={styles.menuBarItem}>
+                    <div className={classNames(styles.menuBarItem, styles.focusExtra)}>
                         <a
                             className={styles.feedbackLink}
                             // Upstream points this at the TurboWarp author's Scratch
@@ -1052,6 +1052,7 @@ class MenuBar extends React.Component {
                 </div>
 
                 <div className={styles.accountInfoGroup}>
+                    {this.props.rightSlot}
                     <OutlinePanel />
                     <HistoryPanel />
                     <MessagesButton sheet={this.props.isPhoneSheet} />
@@ -1168,6 +1169,7 @@ MenuBar.propTypes = {
     projectId: PropTypes.string,
     projectTitle: PropTypes.string,
     renderLogin: PropTypes.func,
+    rightSlot: PropTypes.node,
     sessionExists: PropTypes.bool,
     settingsMenuOpen: PropTypes.bool,
     shouldSaveBeforeTransition: PropTypes.func,

@@ -56,4 +56,52 @@ ok('shake ends after its time', cam.report('x') === 0 && cam.state.shake === nul
 cam.reset();
 ok('reset makes the camera inactive', cam.info() === null && cam.report('zoom') === 100);
 
+section('set target');
+const glide = createCamera();
+glide.set(0, 0);
+glide.step(1 / 30, null);
+glide.setTarget(100);
+ok('set target keeps the previous frame to glide from', near(glide.view(0).x, 0) &&
+    glide.view(0.5).x > 0 && glide.view(0.5).x < 100 && glide.report('x') === 100, glide.view(0.5));
+ok('a missing argument keeps its value', glide.report('y') === 0 && glide.report('zoom') === 100);
+glide.step(1 / 30, null);
+glide.setTarget(null, null, 300);
+ok('zoom alone glides too and is a percent', near(glide.view(0).zoom, 1) &&
+    glide.view(0.5).zoom > 1 && glide.view(0.5).zoom < 3 && glide.report('x') === 100);
+glide.setTarget(null, null, 100000);
+ok('set target clamps zoom like set zoom and null skips', near(glide.report('zoom'), 1000) &&
+    glide.report('x') === 100 && glide.report('y') === 0);
+glide.setZoom(100);
+glide.follow('hero', 50);
+glide.setTarget(null, null, 150);
+ok('zoom alone keeps following', glide.state.follow === 'hero');
+glide.setTarget(10, 20);
+ok('moving stops following', glide.state.follow === null);
+glide.setBounds({left: 0, right: 1000, bottom: -500, top: 0});
+glide.keepInside(true);
+glide.setTarget(5000, -5000);
+ok('keep inside clamps a set target', glide.report('right') === 1000 && glide.report('bottom') === -500);
+glide.keepInside(false);
+glide.step(1 / 30, null);
+glide.set(400, 0);
+ok('set still cuts', near(glide.view(0).x, 400) && near(glide.view(0.5).x, 400));
+const fresh = createCamera();
+fresh.setTarget(5, 6);
+ok('set target activates the camera', fresh.isActive() && fresh.report('x') === 5 && fresh.report('y') === 6);
+
+section('hold');
+const held = createCamera();
+held.set(40, 0);
+const release = held.hold({kit: 'a'});
+ok('a held camera is not active', !held.isActive() && held.isHeld());
+held.follow('Hero', 0);
+ok('camera blocks still set the camera while held', held.state.follow === 'Hero' && !held.isActive());
+const second = held.hold({kit: 'b'});
+release();
+ok('every holder must let go', !held.isActive());
+second();
+ok('the camera resumes after the last release', held.isActive() && !held.isHeld() && held.view(1).x === 40);
+release();
+ok('releasing twice is harmless', held.isActive());
+
 done();
