@@ -120,7 +120,7 @@ const createTestServer = ({port = 0, host = '127.0.0.1', log = () => {}} = {}) =
             return;
         }
         if (msg.type === 'save-project') {
-            send(ws, {type: 'project-saved', name: msg.name, quiet: !!msg.quiet});
+            send(ws, {type: 'project-saved', name: msg.name, owner: peer.name, projects: [], quiet: !!msg.quiet});
         }
     };
 
@@ -128,7 +128,7 @@ const createTestServer = ({port = 0, host = '127.0.0.1', log = () => {}} = {}) =
         if (!ws.sq) return;
         const {room, peer} = ws.sq;
         room.peers.delete(ws);
-        broadcast(room, {type: 'peer-left', id: peer.id});
+        broadcast(room, {type: 'peer-left', id: peer.id, name: peer.name});
         pushConfig(room);
         if (!room.peers.size) rooms.delete(room.slug);
         log(`leave ${room.slug} ${peer.id}`);
