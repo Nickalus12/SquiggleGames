@@ -94,12 +94,8 @@ import mystuffIcon from './icon--mystuff.png';
 import profileIcon from './icon--profile.png';
 import remixIcon from './icon--remix.svg';
 import dropdownCaret from './dropdown-caret.svg';
-import aboutIcon from './icon--about.svg';
-import fileIcon from './icon--file.svg';
-import editIcon from './icon--edit.svg';
-import addonsIcon from './addons.svg';
 import errorIcon from './tw-error.svg';
-import advancedIcon from './tw-advanced.svg';
+import {sqIconDataUri} from '../sq-icon';
 
 import ninetiesLogo from './nineties_logo.svg';
 import catLogo from './cat_logo.svg';
@@ -112,6 +108,13 @@ import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
 import {APP_NAME} from '../../lib/brand.js';
 import collab from '../../lib/collab';
+
+const MENU_ICON = {color: '#ffffff'};
+const aboutIcon = sqIconDataUri('help', MENU_ICON);
+const fileIcon = sqIconDataUri('file', MENU_ICON);
+const editIcon = sqIconDataUri('edit', MENU_ICON);
+const addonsIcon = sqIconDataUri('addons', MENU_ICON);
+const advancedIcon = sqIconDataUri('advanced', MENU_ICON);
 
 const ariaMessages = defineMessages({
     tutorials: {

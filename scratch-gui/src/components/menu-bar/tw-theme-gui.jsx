@@ -7,42 +7,41 @@ import {connect} from 'react-redux';
 import check from './check.svg';
 import dropdownCaret from './dropdown-caret.svg';
 import {MenuItem, Submenu} from '../menu/menu.jsx';
-import {GUI_DARK, GUI_LIGHT, GUI_SQUIGGLE, Theme} from '../../lib/themes/index.js';
+import {GUI_AUTO, GUI_SQUIGGLE, GUI_SQUIGGLE_DAY, Theme} from '../../lib/themes/index.js';
 import {openGuiThemeMenu, guiThemeMenuOpen, closeSettingsMenu} from '../../reducers/menus.js';
 import {setTheme} from '../../reducers/theme.js';
 import {persistTheme} from '../../lib/themes/themePersistance.js';
-import squiggleIcon from './sq-theme-squiggle.svg';
-import lightModeIcon from './tw-sun.svg';
-import darkModeIcon from './tw-moon.svg';
+import {sqIconDataUri} from '../sq-icon';
 import styles from './settings-menu.css';
 
 const options = defineMessages({
     [GUI_SQUIGGLE]: {
-        defaultMessage: 'Squiggle',
-        description: 'Name of the default color scheme, which uses Squiggle\'s own colors.',
-        id: 'sq.guiTheme.squiggle'
+        defaultMessage: 'Night',
+        description: 'Name of the default dark color scheme.',
+        id: 'sq.guiTheme.night'
     },
-    [GUI_DARK]: {
-        defaultMessage: 'Dark',
-        description: 'Name of the neutral dark color scheme.',
-        id: 'sq.guiTheme.dark'
-    },
-    [GUI_LIGHT]: {
-        defaultMessage: 'Light',
+    [GUI_SQUIGGLE_DAY]: {
+        defaultMessage: 'Day',
         description: 'Name of the light color scheme.',
-        id: 'sq.guiTheme.light'
+        id: 'sq.guiTheme.day'
+    },
+    [GUI_AUTO]: {
+        defaultMessage: 'Auto',
+        description: 'Name of the color scheme that follows the device setting for light or dark.',
+        id: 'sq.guiTheme.auto'
     }
 });
 
+const MENU_ICON = {color: '#ffffff', size: 24};
 const icons = {
-    [GUI_SQUIGGLE]: squiggleIcon,
-    [GUI_DARK]: darkModeIcon,
-    [GUI_LIGHT]: lightModeIcon
+    [GUI_SQUIGGLE]: sqIconDataUri('night', MENU_ICON),
+    [GUI_SQUIGGLE_DAY]: sqIconDataUri('day', MENU_ICON),
+    [GUI_AUTO]: sqIconDataUri('auto', MENU_ICON)
 };
 
 const ThemeIcon = ({id}) => (
     <img
-        src={icons[id]}
+        src={icons[id] || icons[GUI_AUTO]}
         draggable={false}
         width={24}
         height={24}

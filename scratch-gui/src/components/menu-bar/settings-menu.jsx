@@ -15,7 +15,9 @@ import menuBarStyles from './menu-bar.css';
 import styles from './settings-menu.css';
 
 import dropdownCaret from './dropdown-caret.svg';
-import settingsIcon from './icon--settings.svg';
+import {sqIconDataUri} from '../sq-icon';
+
+const settingsIcon = sqIconDataUri('settings', {color: '#ffffff'});
 
 const SettingsMenu = ({
     canChangeLanguage,

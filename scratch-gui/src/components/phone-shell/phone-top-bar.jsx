@@ -11,6 +11,8 @@ import {setPhoneMenuOpen} from '../../reducers/layout-mode';
 import greenFlagIcon from '../green-flag/icon--green-flag.svg';
 import stopAllIcon from '../stop-all/icon--stop-all.svg';
 
+import SqIcon from '../sq-icon';
+import {getState as getSlots, subscribe as subscribeSlots} from './phone-slots';
 import styles from './phone-shell.css';
 
 const SHEET_ID = 'phone-menu-sheet';
@@ -43,8 +45,13 @@ class PhoneTopBar extends React.Component {
             'handleToggleMenu',
             'handleContextMenu',
             'handleKeyDown',
+            'handleSlotsChange',
             'setMenuButton'
         ]);
+        this.state = {topBarItems: getSlots().topBar};
+    }
+    componentDidMount () {
+        this.unsubscribeSlots = subscribeSlots(this.handleSlotsChange);
     }
     componentDidUpdate (prevProps) {
         if (this.props.menuOpen === prevProps.menuOpen) return;
@@ -63,6 +70,10 @@ class PhoneTopBar extends React.Component {
     }
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyDown);
+        if (this.unsubscribeSlots) this.unsubscribeSlots();
+    }
+    handleSlotsChange (slots) {
+        if (slots.topBar !== this.state.topBarItems) this.setState({topBarItems: slots.topBar});
     }
     setMenuButton (el) {
         this.menuButton = el;
@@ -97,28 +108,7 @@ class PhoneTopBar extends React.Component {
                     type="button"
                     onClick={this.handleToggleMenu}
                 >
-                    <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                    >
-                        {menuOpen ? (
-                            <path
-                                d="M6 6l12 12M18 6L6 18"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeLinecap="round"
-                                strokeWidth="2.4"
-                            />
-                        ) : (
-                            <path
-                                d="M4 7h16M4 12h16M4 17h16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeLinecap="round"
-                                strokeWidth="2.4"
-                            />
-                        )}
-                    </svg>
+                    <SqIcon name={menuOpen ? 'close' : 'menu'} />
                 </button>
                 <div className={styles.title}>
                     {canEditTitle ? (
@@ -127,6 +117,16 @@ class PhoneTopBar extends React.Component {
                         <span className={styles.titleText}>{projectTitle}</span>
                     )}
                 </div>
+                {this.state.topBarItems.length ? (
+                    <div
+                        className={styles.slots}
+                        data-phone-top-bar-slots
+                    >
+                        {this.state.topBarItems.map(item => (
+                            <React.Fragment key={item.id}>{item.render()}</React.Fragment>
+                        ))}
+                    </div>
+                ) : null}
                 <div
                     className={styles.controls}
                     onContextMenu={this.handleContextMenu}

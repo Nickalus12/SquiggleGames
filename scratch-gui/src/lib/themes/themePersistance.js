@@ -3,6 +3,7 @@ import {BLOCKS_CUSTOM, Theme} from '.';
 const matchMedia = query => (window.matchMedia ? window.matchMedia(query) : null);
 const PREFERS_HIGH_CONTRAST_QUERY = matchMedia('(prefers-contrast: more)');
 const PREFERS_DARK_QUERY = matchMedia('(prefers-color-scheme: dark)');
+const PREFERS_REDUCED_MOTION_QUERY = matchMedia('(prefers-reduced-motion: reduce)');
 
 const STORAGE_KEY = 'tw:theme';
 
@@ -34,12 +35,12 @@ const onSystemPreferenceChange = onChange => {
         return () => {};
     }
 
-    PREFERS_HIGH_CONTRAST_QUERY.addEventListener('change', onChange);
-    PREFERS_DARK_QUERY.addEventListener('change', onChange);
+    const queries = [PREFERS_HIGH_CONTRAST_QUERY, PREFERS_DARK_QUERY, PREFERS_REDUCED_MOTION_QUERY]
+        .filter(query => query && query.addEventListener);
+    queries.forEach(query => query.addEventListener('change', onChange));
 
     return () => {
-        PREFERS_HIGH_CONTRAST_QUERY.removeEventListener('change', onChange);
-        PREFERS_DARK_QUERY.removeEventListener('change', onChange);
+        queries.forEach(query => query.removeEventListener('change', onChange));
     };
 };
 
