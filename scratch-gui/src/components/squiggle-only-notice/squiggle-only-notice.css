@@ -1,0 +1,177 @@
+@import "../../css/colors.css";
+@import "../../css/z-index.css";
+
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: calc($z-index-modal + 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sq-space-4, 16px);
+    background: var(--sq-scrim, rgba(6, 8, 18, 0.72));
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+}
+
+.sheet {
+    width: 100%;
+    max-width: 440px;
+    padding: var(--sq-space-6, 24px);
+    border-radius: var(--sq-radius-card, 16px);
+    background: var(--sq-panel, $ui-white);
+    color: var(--sq-text, $text-primary);
+    box-shadow: var(--sq-elevation-3, 0 8px 24px rgba(0, 0, 0, 0.45));
+    animation: sq-notice-rise var(--sq-motion-sheet, 240ms) var(--sq-ease, ease-out);
+}
+
+.title {
+    margin: 0 0 var(--sq-space-2, 8px) 0;
+    font-size: var(--sq-text-lg, 20px);
+    font-weight: var(--sq-weight-heavy, 800);
+    line-height: 1.3;
+}
+
+.body {
+    margin: 0 0 var(--sq-space-5, 20px) 0;
+    font-size: var(--sq-text-md, 16px);
+    line-height: 1.5;
+    color: var(--sq-text-muted, $text-primary);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--sq-space-3, 12px);
+}
+
+.primary-button,
+.secondary-button {
+    min-height: var(--sq-target, 36px);
+    padding: 0 var(--sq-space-5, 20px);
+    border-radius: var(--sq-radius-pill, 999px);
+    font: inherit;
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
+    cursor: pointer;
+}
+
+.primary-button {
+    border: 2px solid var(--sq-brand-600, $looks-secondary);
+    background: var(--sq-brand-600, $looks-secondary);
+    color: #ffffff;
+}
+
+.primary-button:hover {
+    background: var(--sq-brand-700, $looks-secondary);
+}
+
+.secondary-button {
+    border: 2px solid var(--sq-line, $ui-black-transparent);
+    background: transparent;
+    color: var(--sq-text, $text-primary);
+}
+
+.secondary-button:hover {
+    background: var(--sq-raised, $ui-secondary);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+    outline: 3px solid var(--sq-focus, $looks-secondary);
+    outline-offset: 2px;
+}
+
+.note {
+    position: fixed;
+    left: 50%;
+    bottom: var(--sq-space-6, 24px);
+    z-index: calc($z-index-modal + 1);
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-4, 16px);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: var(--sq-space-3, 12px) var(--sq-space-4, 16px);
+    border-radius: var(--sq-radius-panel, 10px);
+    background: var(--sq-panel, $ui-white);
+    color: var(--sq-text, $text-primary);
+    box-shadow: var(--sq-elevation-3, 0 8px 24px rgba(0, 0, 0, 0.45));
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    transform: translateX(-50%);
+    animation: sq-notice-fade var(--sq-motion-sheet, 240ms) var(--sq-ease, ease-out);
+}
+
+.note-text {
+    margin: 0;
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
+    line-height: 1.4;
+}
+
+@media (pointer: coarse) {
+    .primary-button,
+    .secondary-button {
+        min-height: var(--sq-target-touch, 44px);
+    }
+}
+
+@media (max-width: 600px) {
+    .scrim {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .sheet {
+        max-width: none;
+        border-radius: var(--sq-radius-card, 16px) var(--sq-radius-card, 16px) 0 0;
+        padding-bottom: calc(var(--sq-space-6, 24px) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .actions {
+        flex-direction: column-reverse;
+    }
+
+    .primary-button,
+    .secondary-button {
+        width: 100%;
+        min-height: var(--sq-target-touch, 44px);
+    }
+
+    .note {
+        left: var(--sq-space-4, 16px);
+        right: var(--sq-space-4, 16px);
+        bottom: calc(var(--sq-space-4, 16px) + 56px);
+        width: auto;
+        flex-direction: column;
+        align-items: stretch;
+        transform: none;
+    }
+}
+
+@keyframes sq-notice-rise {
+    from {
+        opacity: 0;
+        transform: translateY(calc(16px * var(--sq-motion-shift, 1)));
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes sq-notice-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sheet,
+    .note {
+        animation: none;
+    }
+}
