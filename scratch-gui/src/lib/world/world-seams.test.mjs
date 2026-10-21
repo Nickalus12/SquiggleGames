@@ -99,7 +99,6 @@ const stubRenderer = () => {
         destroyDrawable: noop,
         updateDrawableSkinId: noop,
         updateDrawableVisible: noop,
-        updateDrawableEffect: noop,
         setDrawableOrder: noop,
         getDrawableOrder: () => 0,
         getCurrentSkinSize: () => [0, 0],
@@ -120,6 +119,9 @@ const stubRenderer = () => {
     };
     renderer.updateDrawableProperties = function (id, properties) {
         this.calls.push(['properties', id, properties]);
+    };
+    renderer.updateDrawableEffect = function (id, effect, value) {
+        this.calls.push(['effect', id, effect, value]);
     };
     return renderer;
 };
@@ -263,9 +265,9 @@ renderer._addToDrawList(95, 'sq-tiles-back');
 renderer._addToDrawList(96, 'sprite');
 ok('kit layers draw in order: tiles-back under pen, hud on top',
     JSON.stringify(renderer._drawList) === JSON.stringify([90, 95, 93, 91, 92, 96, 94]), renderer._drawList);
-ok('hook names are the documented seven', JSON.stringify(HOOKS) === JSON.stringify(
-    ['drawablePosition', 'drawableDirectionScale', 'drawableProperties', 'bubble', 'touchingEdge', 'edgeBounce',
-        'toggleScript']));
+ok('hook names are the documented eight', JSON.stringify(HOOKS) === JSON.stringify(
+    ['drawablePosition', 'drawableDirectionScale', 'drawableProperties', 'drawableEffect', 'bubble', 'touchingEdge',
+        'edgeBounce', 'toggleScript']));
 
 section('no camera: exactly 1.8');
 const stockProjection = Float32Array.from(renderer._projection);
@@ -284,8 +286,10 @@ ok('clientSpaceToScratchBounds is stock', JSON.stringify(stockBounds) === JSON.s
 renderer.updateDrawablePosition(5, [1, 2]);
 renderer.updateDrawableDirectionScale(5, 90, [100, 100]);
 renderer.updateDrawableProperties(5, {visible: true});
-ok('drawable updates pass straight through', renderer.calls.length === 3 && renderer.calls[0][0] === 'position' &&
-    renderer.calls[1][0] === 'directionScale' && renderer.calls[2][0] === 'properties');
+renderer.updateDrawableEffect(5, 'ghost', 50);
+ok('drawable updates pass straight through', renderer.calls.length === 4 && renderer.calls[0][0] === 'position' &&
+    renderer.calls[1][0] === 'directionScale' && renderer.calls[2][0] === 'properties' &&
+    renderer.calls[3][0] === 'effect' && renderer.calls[3][3] === 50);
 ok('fencing stays on without a world kit', runtime.runtimeOptions.fencing === true && world.isWorldMode() === false);
 ok('window.SquiggleWorld is absent without a window', typeof globalThis.window === 'undefined');
 
@@ -345,6 +349,16 @@ ok('a position hook wraps the stock call', seen[0] === 7 && renderer.calls[0][2]
 dropHook();
 renderer.updateDrawablePosition(7, [10, 10]);
 ok('dropping a hook restores pass-through', renderer.calls[1][2][0] === 10);
+const effectHook = world.hook('drawableEffect', (next, id, effect, value) =>
+    next(id, effect, effect === 'ghost' ? 100 : value));
+renderer.calls.length = 0;
+renderer.updateDrawableEffect(7, 'ghost', 20);
+renderer.updateDrawableEffect(7, 'brightness', 20);
+ok('an effect hook wraps setEffect and clearEffects', renderer.calls[0][3] === 100 && renderer.calls[1][3] === 20,
+    renderer.calls);
+effectHook();
+renderer.updateDrawableEffect(7, 'ghost', 20);
+ok('dropping the effect hook restores pass-through', renderer.calls[2][3] === 20);
 let threw = false;
 try {
     world.hook('nope', () => {});

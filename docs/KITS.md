@@ -37,6 +37,7 @@ The renderer draws layers in this order: `background, video, sq-tiles-back, pen,
 | `drawablePosition` | `drawableID, [x, y]` |
 | `drawableDirectionScale` | `drawableID, direction, [sx, sy]` |
 | `drawableProperties` | `drawableID, properties` |
+| `drawableEffect` | `drawableID, effectName, value` (`setEffect` and `clearEffects` on a target) |
 | `bubble` | `target` (the looks bubble placement) |
 | `touchingEdge` | `target` |
 | `edgeBounce` | `target` |
@@ -48,6 +49,10 @@ With a camera set, drawing, picking, `mouse x` and `mouse y` all go through the 
 
 The Game Rules sprite is marked with `target.extensionStorage.together = {role: 'rules', v: 1}`. Stock `vm.toJSON` drops storage for extensions with no blocks. The seam keeps it, so the mark survives save, sprite export and collab snapshots. Use `isRulesTarget(target)` and `markRulesTarget(target)`. To keep a kit's own project-level data (for example level maps in `runtime.extensionStorage.squiggleworld`), call `preserveExtensionStorage('squiggleworld')` once when the kit loads.
 
+## 4. 3D views (`squiggle3d`)
+
+`show me in 3D as 8 views` picks a costume named `NAME-1` to `NAME-8` from where the viewer stands, following Doom exactly. `NAME-1` faces the viewer. The numbers go clockwise around the sprite as seen from above: `NAME-3` faces the viewer's left (its left side shows), `NAME-5` shows its back, `NAME-7` faces the viewer's right (its right side shows), and 2, 4, 6 and 8 are the diagonals in between in that order. A sheet drawn for Doom works unchanged. A missing view keeps the current costume.
+
 ## Known gaps
 
 - Sprite dragging in `src/containers/stage.jsx` still converts in stage space. A world kit with a camera needs a CR to the lead for that.
@@ -57,3 +62,21 @@ The Game Rules sprite is marked with `target.extensionStorage.together = {role: 
 ## Tests
 
 From `scratch-gui/`: `node src/lib/world/world-seams.test.mjs`, `node src/lib/kits/registry.test.mjs`, `node src/lib/collab/project-seam.test.mjs`. The world contract test fails if a scratch-vm or scratch-render bump moves anything a seam wraps. CI also fails if the gzipped editor grows more than 150 KB, or the player more than 60 KB, over `scratch-gui/size-baseline.json` (`node size-check.mjs` after a production build).
+
+## Kits
+
+| Kit | Reads | Writes |
+|---|---|---|
+| Animate (`squiggleanimate`) | `onBeforeExecute` for its clock, `camera()` to offer camera properties | sprite x, y, size, direction, ghost, costume; world `camera.setTarget` after execute, so camera tweens glide |
+| VFX (`thunderboltvfx`) | `camera()`, `onAfterExecute` | world `camera.shake`, and the zoom punch through `camera.setTarget` after execute, when a camera is active, else a CSS transform on the stage canvas; flash and vignette stay screen space |
+| Particles (`thunderboltparticlesystem`) | `getView` once per display frame, `onAfterExecute` | its overlay canvas; screen shake goes to world `camera.shake` when a camera is active |
+| Text (`thunderbolttext`) | `getView` once per display frame, `toView` and `toWorld` to pin and unpin, `onAfterExecute` | its overlay canvas |
+| Health bars (`thunderbolthealthbars`) | `getView` once per display frame, `toView` and `toWorld` to pin and unpin, `onAfterExecute` | its overlay canvas |
+
+- The four overlay kits share `extensions/vfx/overlay.js`. Each kit mounts one canvas over the stage, and all four draw from one shared `requestAnimationFrame` loop on the wall clock, with dt capped at 0.05 s. The loop runs while the project runs or any effect is live, and sleeps otherwise. The `onAfterExecute` hook only wakes the loop, marks the shared liveness set stale and samples whether a kit follows a sprite. Every draw reads the world view once and takes one projector. Particle simulation and trail sampling advance per display frame, so a default eight point trail covers about 133 ms as in 1.8.
+- Particles live in world units. Text and bars start pinned to the screen as in 1.8. `stick text [ID] to me` and `stick bar [ID] to me` (`stickToMe`) follow a sprite through the camera, read the sprite's x and y on every draw and scale with the zoom. `pin text [ID] to screen` and `pin bar [ID] to screen` (`pinToScreen`) detach the item and convert its spot through `toView` when pinning and `toWorld` when unpinning, so it does not jump; without the World kit both are the identity. `set position` detaches without converting. When a stuck clone is deleted the item stays where the clone last stood.
+- The kits read the camera through `peekWorld(runtime).camera` and never call `getWorld`, so a project without the World kit gets no world state.
+- Camera writes land in an `onAfterExecute` hook added once a camera exists, after the world's own camera step, so the stage shows them the same step and interpolates from the previous pose. The zoom punch is a factor over the zoom at punch start; the hand back divides the factor out of whatever the zoom is then, and a zoom a script sets mid punch becomes the new base.
+- None of these kits writes `extensionStorage`. A 1.8 project saves byte for byte. Co-play snapshots carry project JSON, so tween, overlay and font state stays local to each player and never enters sync.
+- Text fonts ship as woff2 under `static/fonts/textengine` with their licences and load from that copied path through `FontFace` when a project picks one, never through a bundler import and never from another origin. Each subset is its own face with a `unicodeRange`: latin for all five, latin-ext for Bangers, Pacifico, Press Start 2P and Luckiest Guy (Google Fonts serves Permanent Marker in latin only), vietnamese for Bangers, cyrillic for Pacifico and Press Start 2P, greek for Press Start 2P.
+- Tests, from `scratch-gui/`: `node src/lib/libraries/extensions/<kit>/<kit>.test.mjs` for `squiggleanimate/animate`, `vfx/vfx`, `particles/particles`, `textengine/textengine` and `healthbars/healthbars`. The overlay kits share `vfx/overlay-harness.mjs`, which drives the loop through an injected frame request.

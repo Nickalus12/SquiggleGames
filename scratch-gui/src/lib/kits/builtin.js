@@ -3,6 +3,7 @@ import '../libraries/extensions/squiggleteams/kit.js';
 import '../libraries/extensions/squigglearena/kit.js';
 import {builtinKits} from './registry.js';
 import '../libraries/extensions/squiggleworld/index.js';
+import '../libraries/extensions/squiggleanimate/index.js';
 import '../libraries/extensions/squigglescenes/index.js';
 import '../libraries/extensions/squiggle3d/index.js';
 

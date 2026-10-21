@@ -6,6 +6,10 @@ const {
     clampZoom, zoomAround, panBy, pinchView, revealCell
 } = await import('./painter.js');
 const {createTilemapSync, decodeSegments} = await import('./tilemap-sync.js');
+const {createTrayFocus, mountPlan, needsSync, openStep, releasePointer, shouldFocusToggle} =
+    await import('./painter-shell.js');
+const {default: kitLoaded, afterKitAdded} = await import('./kit-loaded.js');
+const {EventEmitter} = await import('events');
 const worldUi = (await import('../../reducers/world-ui.js'));
 const reduce = worldUi.default;
 
@@ -237,6 +241,127 @@ section('strokes reach tilemap-sync');
     sync.flush();
     ok('undo is sent as its own patch', sent.length === 2 && decodeSegments(sent[1].layers.main, 0).length === 4);
     sync.dispose();
+}
+
+section('kit loaded (N8, F1)');
+{
+    const loaded = new Set();
+    const runtime = new EventEmitter();
+    runtime.extensionManager = {isExtensionLoaded: id => loaded.has(id)};
+    const addKit = id => {
+        runtime.emit('EXTENSION_ADDED', {id});
+        loaded.add(id);
+    };
+    ok('kitLoaded reads the extension manager', !kitLoaded(runtime, 'squiggleworld'));
+    ok('kitLoaded is false with no manager', !kitLoaded({}, 'squiggleworld') && !kitLoaded(null, 'squiggleworld'));
+    const seen = {now: [], later: []};
+    const show = () => mountPlan({active: kitLoaded(runtime, 'squiggleworld'), phone: false, slot: {}});
+    const now = () => seen.now.push(show());
+    const later = afterKitAdded(() => seen.later.push(show()));
+    runtime.on('EXTENSION_ADDED', now);
+    runtime.on('EXTENSION_ADDED', later);
+    addKit('squiggleworld');
+    ok('the stock order emits before the kit counts as loaded', seen.now.length === 1 && !seen.now[0].desktop);
+    ok('the deferred sync has not run yet', seen.later.length === 0);
+    await Promise.resolve();
+    ok('the deferred sync shows the toggle and strip', seen.later.length === 1 && seen.later[0].desktop &&
+        seen.later[0].overlay);
+    runtime.removeListener('EXTENSION_ADDED', later);
+    addKit('squigglescenes');
+    await Promise.resolve();
+    ok('removing the same function stops it', seen.later.length === 1 &&
+        runtime.listenerCount('EXTENSION_ADDED') === 1);
+}
+
+section('painter mount plan (M2, F4)');
+{
+    const slot = {};
+    ok('desktop with a slot gets the toggle and the overlay',
+        JSON.stringify(mountPlan({active: true, phone: false, slot})) ===
+        '{"desktop":true,"topBar":false,"overlay":true,"docked":false}');
+    ok('a phone gets the top bar and a docked overlay, never the slot',
+        JSON.stringify(mountPlan({active: true, phone: true, slot})) ===
+        '{"desktop":false,"topBar":true,"overlay":true,"docked":true}');
+    ok('desktop without a slot waits', !mountPlan({active: true, phone: false, slot: null}).overlay);
+    ok('no kit, nothing mounts', JSON.stringify(mountPlan({active: false, phone: true, slot})) ===
+        '{"desktop":false,"topBar":false,"overlay":false,"docked":true}');
+    ok('desktop resyncs when the slot appears', needsSync({slot, phone: false, inSlot: false, rendered: false}));
+    ok('desktop is quiet once in the slot', !needsSync({slot, phone: false, inSlot: true, rendered: true}));
+    ok('a phone never resyncs on mutations while the slot exists',
+        !needsSync({slot, phone: true, inSlot: false, rendered: false}));
+    ok('a lost slot resyncs to unmount', needsSync({slot: null, phone: false, inSlot: false, rendered: true}));
+    ok('no slot and nothing rendered is quiet', !needsSync({slot: null, phone: true, inSlot: false, rendered: false}));
+}
+
+section('painter open on phones (M2)');
+{
+    const phone = {phone: true, onStage: true};
+    let step = openStep(false, Object.assign({open: true}, phone));
+    ok('opening on a phone opens the sheet', step.action === 'openSheet' && step.wasOpen === true);
+    step = openStep(step.wasOpen, Object.assign({open: true}, phone));
+    ok('no change does nothing', step.action === null);
+    step = openStep(step.wasOpen, Object.assign({open: false}, phone));
+    ok('closing on a phone closes the sheet', step.action === 'closeSheet' && step.wasOpen === false);
+    step = openStep(false, {open: true, phone: true, onStage: false});
+    ok('open off the stage tab closes the painter and keeps the old state', step.action === 'close' &&
+        step.wasOpen === false);
+    ok('desktop open does nothing extra', openStep(false, {open: true, phone: false, onStage: false}).action === null);
+    ok('desktop close hands focus back', openStep(true, {open: false, phone: false, onStage: false}).action ===
+        'focusToggle');
+}
+
+section('painter focus (N7, F3)');
+{
+    const focused = [];
+    const button = name => ({focus: () => focused.push(name)});
+    const tray = {querySelector: () => button('first tool')};
+    const focus = createTrayFocus();
+    focus.start(false);
+    ok('the tray takes focus when it mounts after start', focus.setTray(tray) && focused.join() === 'first tool');
+    ok('a re-render does not steal focus again', !focus.setTray(tray) && focused.length === 1);
+    focus.stop();
+    focus.setTray(null);
+    ok('closing clears the tray', focus.tray() === null);
+    ok('a tray mounted before start waits', !focus.setTray(tray) && focused.length === 1);
+    ok('the second open focuses the tray already mounted', focus.start(false) && focused.length === 2);
+    focus.stop();
+    ok('a docked painter leaves focus alone', !focus.start(true) && focused.length === 2);
+    const empty = createTrayFocus();
+    empty.start(false);
+    ok('a tray with no enabled button reports no focus', !empty.setTray({querySelector: () => null}));
+    const overlay = {contains: el => el === 'inside'};
+    const base = {button: {}, open: false, body: 'body', overlay};
+    ok('focus returns to the toggle from the body', shouldFocusToggle(Object.assign({active: 'body'}, base)));
+    ok('focus returns to the toggle from inside the painter',
+        shouldFocusToggle(Object.assign({active: 'inside'}, base)));
+    ok('focus returns when nothing is focused', shouldFocusToggle(Object.assign({active: null}, base)));
+    ok('focus elsewhere is left alone', !shouldFocusToggle(Object.assign({active: 'menu'}, base)));
+    ok('no toggle focus while open or without a button',
+        !shouldFocusToggle(Object.assign({}, base, {active: 'body', open: true})) &&
+        !shouldFocusToggle(Object.assign({}, base, {active: 'body', button: null})));
+}
+
+section('pointer release and cancel (N6)');
+{
+    const pointers = new Map([[1, {x: 0, y: 0}], [2, {x: 5, y: 5}]]);
+    let released = releasePointer(pointers, null, 1);
+    ok('a pointer with no gesture ends the stroke', released.stroke && released.gesture === null && !pointers.has(1));
+    const pinch = {kind: 'pinch', ids: [2, 3]};
+    released = releasePointer(pointers, pinch, 4);
+    ok('another pointer leaves the pinch running', !released.stroke && released.gesture === pinch);
+    released = releasePointer(pointers, pinch, 2);
+    ok('a pinch finger lifting or cancelling ends the pinch, not a stroke', !released.stroke &&
+        released.gesture === null && !pointers.has(2));
+    const pan = {kind: 'pan', id: 7};
+    ok('a pan ends only on its own pointer', releasePointer(pointers, pan, 8).gesture === pan &&
+        releasePointer(pointers, pan, 7).gesture === null);
+    const world = fakeWorld();
+    const painter = createPainter({world});
+    painter.begin('paint', {layer: 'main', tile: 1}, {col: 1, row: 1});
+    painter.move({col: 2, row: 1});
+    released = releasePointer(new Map(), null, 1);
+    if (released.stroke && painter.stroking()) painter.end({col: 2, row: 1});
+    ok('a cancelled touch closes the open stroke', !painter.stroking());
 }
 
 section('world-ui reducer');

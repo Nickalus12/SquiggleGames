@@ -15,7 +15,11 @@ const {installWorldSeams} = await import('./seams.js');
 const {getWorld} = await import('./world.js');
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {HEIGHT, WIDTH, pixel} = await import('./raycast.js');
-const {LAYER, RESOLUTION, TURN_PER_PIXEL, createView3d} = await import('./view3d.js');
+const {LAYER, RESOLUTION, TURN_PER_PIXEL, createPixelCache, createView3d} = await import('./view3d.js');
+const {default: guiLog} = await import('../log.js');
+
+const unhandled = [];
+process.on('unhandledRejection', reason => unhandled.push(reason));
 
 const RED = pixel(220, 30, 30);
 const GREEN = pixel(30, 200, 30);
@@ -113,6 +117,7 @@ const canvas = Object.assign(fakeTarget(listeners.canvas), {
     requests: 0,
     requestPointerLock () {
         this.requests++;
+        return Promise.reject(new Error('lock refused'));
     }
 });
 const doc = Object.assign(fakeTarget(listeners.doc), {
@@ -148,7 +153,10 @@ const view = createView3d(runtime, world, {
         };
     }
 });
+const seamEffect = renderer.updateDrawableEffect;
 view.attach(seam);
+ok('3D ghosts through the seam drawableEffect hook, not its own renderer wrap',
+    renderer.updateDrawableEffect === seamEffect && typeof seam.hooks.drawableEffect === 'function');
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 const centre = () => view.frame.pixels[((HEIGHT / 2) * WIDTH) + (WIDTH / 2)];
 
@@ -275,6 +283,8 @@ view.setMouseTurn(true);
 ok('mouse turning listens on the stage canvas', listeners.canvas.has('click') && listeners.doc.has('mousemove'));
 listeners.canvas.get('click')();
 ok('a click on the stage asks for pointer lock', canvas.requests === 1);
+await new Promise(resolve => setTimeout(resolve, 0));
+ok('a refused pointer lock is not an unhandled rejection', unhandled.length === 0, unhandled);
 doc.pointerLockElement = canvas;
 listeners.canvas.get('click')();
 ok('no second request while locked', canvas.requests === 1);
@@ -289,6 +299,24 @@ ok('Esc (lock lost) stops turning', near(hero.direction, facing + 10));
 doc.pointerLockElement = canvas;
 view.setMouseTurn(false);
 ok('turning it off releases the lock and the listeners', doc.exits === 1 && !listeners.canvas.has('click'));
+
+section('texture failures');
+{
+    const warned = [];
+    const warn = guiLog.warn;
+    guiLog.warn = (...args) => warned.push(args);
+    const cache = createPixelCache({
+        loadImage: () => Promise.reject(new Error('missing asset')),
+        createCanvas: () => null,
+        onLoad: () => null
+    });
+    const broken = {assetId: 'gone', asset: {}};
+    ok('a failing texture reads as empty', cache.get(broken, 'wall') === null);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    guiLog.warn = warn;
+    ok('a failing texture logs a warning', warned.length === 1 && warned[0][0] === 'squiggle3d texture did not load' &&
+        warned[0][1].message === 'missing asset', warned);
+}
 
 section('hide and viewer loss');
 view.hide();
@@ -319,6 +347,8 @@ view.show(hero);
 const detachedUploads = view.stats().uploads;
 runtime._step();
 ok('after detach the steps no longer reach the view', view.stats().uploads === detachedUploads);
+guard.setEffect('ghost', 20);
+ok('after detach the drawableEffect hook is gone', !seam.hooks.drawableEffect && ghosts.get(guard.drawableID) === 20);
 view.dispose();
 ok('dispose turns it off', !view.isOn());
 

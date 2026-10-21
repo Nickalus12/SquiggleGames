@@ -3,4 +3,7 @@ const kitLoaded = (runtime, id) => {
     return !!(manager && typeof manager.isExtensionLoaded === 'function' && manager.isExtensionLoaded(id));
 };
 
+const afterKitAdded = sync => () => Promise.resolve().then(sync);
+
+export {afterKitAdded};
 export default kitLoaded;

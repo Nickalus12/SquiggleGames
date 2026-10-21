@@ -15,9 +15,17 @@
   <rect width="192" height="120" rx="12" fill="url(#sq-squiggleanimate-bg)"/>
   <rect width="192" height="120" rx="12" fill="url(#sq-squiggleanimate-grid)"/>
   <ellipse cx="96" cy="60" rx="64" ry="48" fill="url(#sq-squiggleanimate-halo)"/>
-  <g transform="translate(60 24) scale(3.6)" fill="none" stroke="#f6f2ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="13" cy="10" r="4"/>
-    <path d="M2.5 7h4M2 10h5M2.5 13h4"/>
+  <path d="M44 78 C70 78 82 30 132 30" fill="none" stroke="#16b3c7" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 7"/>
+  <circle cx="58" cy="76" r="7" fill="#f6f2ff" fill-opacity="0.18"/>
+  <circle cx="76" cy="66" r="8" fill="#f6f2ff" fill-opacity="0.3"/>
+  <circle cx="92" cy="50" r="9" fill="#f6f2ff" fill-opacity="0.45"/>
+  <circle cx="110" cy="37" r="10" fill="#f6f2ff" fill-opacity="0.65"/>
+  <circle cx="134" cy="30" r="12" fill="#f6f2ff"/>
+  <path d="M128 26 a6 6 0 0 1 8 -2" fill="none" stroke="#16b3c7" stroke-width="2.4" stroke-linecap="round"/>
+  <g fill="#22d3ee">
+    <path d="M56 88 l4 4 -4 4 -4 -4z"/>
+    <path d="M96 88 l4 4 -4 4 -4 -4z" fill-opacity="0.6"/>
+    <path d="M136 88 l4 4 -4 4 -4 -4z"/>
   </g>
   <path d="M40 100 Q96 88 152 100" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-opacity="0.8"/>
 </svg>
