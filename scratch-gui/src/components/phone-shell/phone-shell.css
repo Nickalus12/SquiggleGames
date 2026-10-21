@@ -16,6 +16,7 @@
     background-image: $menu-bar-background-image;
     color: $menu-bar-foreground;
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    --sq-focus-ring: var(--sq-menu-bar-focus, #ffffff);
 }
 
 .icon-button {
@@ -37,12 +38,8 @@
 }
 
 .icon-button:focus-visible {
-    outline: 2px solid currentColor;
+    outline: 2px solid var(--sq-focus-ring, var(--sq-focus));
     outline-offset: -2px;
-}
-
-.sheet .icon-button:focus-visible {
-    outline-color: var(--sq-focus);
 }
 
 .icon-button:active,
@@ -140,7 +137,7 @@
 }
 
 .tab-button:focus-visible {
-    outline: 2px solid var(--sq-focus, $looks-secondary);
+    outline: 2px solid var(--sq-focus);
     outline-offset: -4px;
     border-radius: var(--sq-radius-panel, 10px);
 }
@@ -171,7 +168,7 @@
 }
 
 .tab-button.is-active .tab-icon {
-    color: $looks-secondary;
+    color: var(--sq-accent-text);
     background-color: $looks-transparent;
 }
 
@@ -186,7 +183,8 @@
     border-radius: 9px;
     background-color: $looks-secondary;
     color: $menu-bar-foreground;
-    font-size: 11px;
+    font-size: var(--sq-text-xs, 12px);
+    font-weight: var(--sq-weight-bold, 700);
     line-height: 18px;
     text-align: center;
 }
@@ -200,7 +198,7 @@
     box-sizing: border-box;
     border: 2px solid $ui-primary;
     border-radius: 50%;
-    background-color: var(--sq-danger, #ff5a6e);
+    background-color: var(--sq-danger);
 }
 
 .sprite-row {
@@ -231,7 +229,7 @@
 }
 
 .sprite-position {
-    font-size: 13px;
+    font-size: var(--sq-text-sm, 14px);
     color: $text-primary-transparent;
     font-variant-numeric: tabular-nums;
 }
@@ -296,6 +294,7 @@
     flex-direction: column;
     box-sizing: border-box;
     max-height: 55vh;
+    max-height: 55dvh;
     padding: 0 calc(var(--sq-space-3, 12px) + env(safe-area-inset-right, 0px)) var(--sq-space-3, 12px) calc(var(--sq-space-3, 12px) + env(safe-area-inset-left, 0px));
     border-radius: var(--sq-radius-card, 16px) var(--sq-radius-card, 16px) 0 0;
     background-color: var(--sq-panel, $ui-white);
@@ -323,6 +322,7 @@
 
 .sheet.sheet-full {
     max-height: calc(100vh - 52px - 60px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 52px - 60px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     height: 100%;
 }
 
@@ -331,9 +331,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 64px;
     height: var(--sq-target-touch, 44px);
-    margin: 0 0 calc(-1 * var(--sq-space-3, 12px));
+    margin: 0;
     padding: 0;
     border: 0;
     background: transparent;
@@ -351,20 +352,32 @@
     width: 36px;
     height: 4px;
     border-radius: var(--sq-radius-pill, 999px);
-    background-color: var(--sq-line);
+    background-color: var(--sq-text-muted);
 }
 
 .sheet-header {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: var(--sq-space-2, 8px);
     min-height: var(--sq-target-touch, 44px);
 }
 
+.sheet-title:focus {
+    outline: none;
+}
+
+.sheet-title:focus-visible {
+    outline: 2px solid var(--sq-focus);
+    outline-offset: 2px;
+    border-radius: var(--sq-radius-chip, 4px);
+}
+
 .sheet-title {
     flex: 1;
     min-width: 0;
     margin: 0;
+    padding: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

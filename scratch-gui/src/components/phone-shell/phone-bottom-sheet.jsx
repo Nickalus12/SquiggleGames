@@ -65,9 +65,9 @@ class PhoneBottomSheet extends React.Component {
     }
     focusSheet () {
         if (!this.sheetEl) return;
-        const body = this.sheetEl.querySelector('[data-sheet-body]');
-        const first = (body && body.querySelector(FOCUSABLE)) || this.sheetEl.querySelector(FOCUSABLE);
-        if (first) first.focus();
+        const title = this.sheetEl.querySelector('[data-sheet-title]');
+        const target = title || this.sheetEl.querySelector(FOCUSABLE);
+        if (target) target.focus();
     }
     handleChange (next) {
         if (next.sheet === this.state.sheet) return;
@@ -116,7 +116,9 @@ class PhoneBottomSheet extends React.Component {
                         <header className={styles.sheetHeader}>
                             <h2
                                 className={styles.sheetTitle}
+                                data-sheet-title
                                 id={titleId}
+                                tabIndex={-1}
                             >
                                 {sheet.title}
                             </h2>
