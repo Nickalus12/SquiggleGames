@@ -2,6 +2,8 @@ import {harness} from './fixtures/load.mjs';
 
 const {createChecker, runChecks, snapshotTarget, buildContext, DELAY_MS, PHONE_DELAY_MS, SLICE_MS} = await import('./index.js');
 const {default: RULES} = await import('./rules/index.js');
+const {default: rulesSchema} = await import('../rules/rules-schema.js');
+const {createRulesStatus} = await import('../rules/status.js');
 const {ok, done} = harness();
 
 const emitter = () => {
@@ -252,4 +254,50 @@ const flaky = buildContext(makeVm([]).runtime, {win: null, getRulesSchema: () =>
     throw new Error('not ready');
 }});
 ok('a throwing schema getter leaves rules empty', flaky.rules === null);
+const c4 = clock();
+const status = createRulesStatus();
+let wired = null;
+const goldHat = {
+    gold: {id: 'gold', opcode: 'together_ruleWhenGameStarts', next: null, parent: null, inputs: {}, fields: {},
+        topLevel: true, shadow: false}
+};
+const wiredChecker = createChecker({
+    vm: makeVm([
+        makeTarget('stage', 'Stage'),
+        makeTarget('rules', 'Game Rules', {}, {extensionStorage: {together: {role: 'rules', v: 1}}}),
+        makeTarget('cat4', 'Cat', goldHat)
+    ]),
+    win: null,
+    now: c4.now,
+    setTimer: c4.setTimer,
+    clearTimer: c4.clearTimer,
+    scheduler: c4.scheduler,
+    isPhone: () => false,
+    getRulesSchema: () => rulesSchema,
+    getRulesStatus: () => status.get(),
+    onResult: items => {
+        wired = items;
+    }
+});
+const unsubscribe = status.subscribe(wiredChecker.schedule);
+const drain = () => {
+    c4.fire(DELAY_MS);
+    while (c4.runSlice()) {
+        c4.advance(0);
+    }
+};
+wiredChecker.start();
+drain();
+const outsideItem = (wired || []).find(entry => entry.code === 'rules-outside');
+ok('with the real schema a gold block outside Game Rules is reported with a move', outsideItem &&
+    outsideItem.blockId === 'gold' && outsideItem.fix === 'move-to-rules' &&
+    outsideItem.fixData.rulesTargetId === 'rules', wired);
+ok('no server status means no rules-status items', wired.every(entry => entry.rule !== 'rules-status'));
+status.apply({hash: 'h1', ok: false, phase: 'compile', errors: [{code: 'too-big'}]});
+drain();
+const serverItem = wired.find(entry => entry.rule === 'rules-status');
+ok('a server compile error re-runs the checker and is reported', serverItem &&
+    serverItem.code === 'rules-too-big' && serverItem.targetId === 'rules', wired);
+unsubscribe();
+wiredChecker.stop();
 done();

@@ -36,7 +36,7 @@
              ]},
             {"id": "cat", "name": "Cat", "scripts": [
                 [{"id": "goldHat", "op": "together_ruleWhenGameStarts"}, {"op": "looks_hide"}],
-                [{"op": "event_whenflagclicked"}, {"id": "goldInner", "op": "together_ruleJoinTeam", "in": {"TEAM": ["together_menu_teams", "teams", "Red"]}}]
+                [{"op": "event_whenflagclicked"}, {"id": "goldInner", "op": "squiggleteams_putOnTeam", "in": {"TEAM": ["squiggleteams_menu_teams", "teams", "Red"]}}]
             ]}
         ]
     },

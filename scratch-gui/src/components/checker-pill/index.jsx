@@ -11,6 +11,8 @@ import messages, {fixedMessage} from './messages';
 import styles from './checker-pill.css';
 import {createChecker} from '../../lib/checker/index.js';
 import {createFixer} from '../../lib/checker/fixes.js';
+import rulesSchema from '../../lib/rules/rules-schema.js';
+import {rulesStatus} from '../../lib/rules/status.js';
 import {closeCheckerPanel, setCheckerItems, topSeverity} from '../../reducers/checker.js';
 
 const PORTAL_ID = 'sq-menu-right';
@@ -70,11 +72,19 @@ class CheckerPillContainer extends React.Component {
     }
     start (vm) {
         if (!vm || !vm.runtime) return;
-        this.checker = createChecker({vm, onResult: this.handleResult});
+        this.checker = createChecker({
+            vm,
+            onResult: this.handleResult,
+            getRulesSchema: () => rulesSchema,
+            getRulesStatus: () => rulesStatus.get()
+        });
         this.fixer = createFixer({vm});
+        this.unsubscribeRules = rulesStatus.subscribe(this.checker.schedule);
         this.checker.start();
     }
     stop () {
+        if (this.unsubscribeRules) this.unsubscribeRules();
+        this.unsubscribeRules = null;
         if (this.checker) this.checker.stop();
         this.checker = null;
         this.fixer = null;

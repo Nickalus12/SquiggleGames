@@ -10,6 +10,7 @@ import {
     rulesTarget,
     spriteTargets
 } from '../model.js';
+import {ruleOpcodeSet} from '../../rules/rule-blocks.js';
 
 const RULE = 'rules-wrong-place';
 const LIST_FIELDS = Object.freeze(['VARIABLE', 'LIST']);
@@ -18,19 +19,18 @@ const namesOf = list => (Array.isArray(list) ? list : [])
     .map(entry => (entry && typeof entry === 'object' ? entry.name : entry))
     .filter(name => typeof name === 'string' && name);
 
+let goldSet = null;
+
 const schemaSets = schema => {
-    const gold = new Set();
+    if (!goldSet) goldSet = ruleOpcodeSet();
     const specs = new Map();
     Object.keys(schema.cards || {}).forEach(card => {
         (schema.cards[card] || []).forEach(spec => {
-            if (!spec || typeof spec !== 'object') return;
-            gold.add(`${card}_${spec.opcode}`);
-            specs.set(`${card}_${spec.opcode}`, spec);
+            if (spec && typeof spec === 'object') specs.set(`${card}_${spec.opcode}`, spec);
         });
     });
-    const allowed = new Set(Object.keys(schema.core || {}));
-    gold.forEach(opcode => allowed.add(opcode));
-    return {gold, allowed, specs};
+    const allowed = new Set(Object.keys(schema.core || {}).concat(Array.from(goldSet)));
+    return {gold: goldSet, allowed, specs};
 };
 
 const proccodeOf = block => (block && block.mutation && block.mutation.proccode) || '';
