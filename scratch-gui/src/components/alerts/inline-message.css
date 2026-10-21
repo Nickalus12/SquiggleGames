@@ -3,7 +3,7 @@
 
 .inline-message {
     color: $menu-bar-foreground;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     display: flex;
     justify-content: flex-end;
     align-items: center;
