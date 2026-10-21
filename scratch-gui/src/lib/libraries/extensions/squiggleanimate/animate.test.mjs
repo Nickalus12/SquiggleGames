@@ -195,6 +195,28 @@ ok('a camera read sees the value written this step', (() => {
 for (let i = 0; i < 15; i++) runtime._step();
 ok('a camera x tween lands', near(world.camera.state.x, 80), world.camera.state.x);
 
+section('a camera reset mid tween');
+ext.startTween({PROP: 'camera x', V: 200, T: 1, EASE: 'linear'}, stageUtil);
+for (let i = 0; i < 3; i++) runtime._step();
+world.camera.reset();
+used.length = 0;
+for (let i = 0; i < 3; i++) runtime._step();
+ok('a reset mid tween leaves the camera off', !world.camera.state.active && world.camera.state.x === 0 &&
+    used.length === 0, used);
+ok('a reset mid tween ends the camera tween', !ext.cameraTweening() && Number.isNaN(ext.cameraWrite.x));
+ext.startTween({PROP: 'camera x', V: 40, T: 0.2, EASE: 'linear'}, stageUtil);
+for (let i = 0; i < 8; i++) runtime._step();
+ok('a fresh camera tween after a reset turns the camera on', world.camera.state.active &&
+    near(world.camera.state.x, 40), world.camera.state.x);
+ext.startTween({PROP: 'camera x', V: 200, T: 1, EASE: 'linear'}, stageUtil);
+for (let i = 0; i < 3; i++) runtime._step();
+world.camera.reset();
+ext.startTween({PROP: 'camera y', V: 30, T: 0.2, EASE: 'linear'}, stageUtil);
+for (let i = 0; i < 8; i++) runtime._step();
+ok('a tween started in the step of a reset runs alone', world.camera.state.active &&
+    near(world.camera.state.y, 30) && world.camera.state.x === 0, {x: world.camera.state.x, y: world.camera.state.y});
+world.camera.set(80, 0);
+
 section('clips');
 ['walk1', 'walk2', 'walk3', 'walk4', 'idle'].forEach((name, i) => {
     cat.sprite.addCostumeAt({name, skinId: i + 1, rotationCenterX: 0, rotationCenterY: 0, bitmapResolution: 1,

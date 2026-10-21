@@ -1,6 +1,7 @@
 import {registerKit} from '../../../kits/registry.js';
 import {KIT_COLORS} from '../../../themes/tokens.js';
 import {peekWorld} from '../../../world/world.js';
+import {AFTER_STEP_ORDER, onAfterStep} from '../vfx/after-step.js';
 
 const ID = 'squiggleanimate';
 const COLORS = KIT_COLORS[ID];
@@ -138,7 +139,8 @@ class SquiggleAnimateBlocks {
         this.live = new Set();
         this.liveReady = false;
         this.detachTick = null;
-        this.cameraWrite = {x: NaN, y: NaN, zoom: NaN, hooked: false};
+        this.cameraWrite = {x: NaN, y: NaN, zoom: NaN, armed: false};
+        this.detachFlush = null;
         this.flushCamera = this.flushCamera.bind(this);
         this.tick = this.tick.bind(this);
         this.stepClip = this.stepClip.bind(this);
@@ -340,27 +342,48 @@ class SquiggleAnimateBlocks {
         if (prop === 'camera x') pending.x = v;
         else if (prop === 'camera y') pending.y = v;
         else if (prop === 'camera zoom') pending.zoom = v;
-        if (pending.hooked) return;
-        const seam = seamFor(this.runtime);
-        if (!seam) {
-            this.flushCamera();
-            return;
+        if (!this.detachFlush) this.detachFlush = onAfterStep(this.runtime, this.flushCamera, AFTER_STEP_ORDER.animate);
+    }
+
+    cameraTweening () {
+        const tweens = this.tweens;
+        for (let i = 0; i < tweens.length; i++) {
+            if (!tweens[i].done && isCameraProp(tweens[i].prop)) return true;
         }
-        seam.onAfterExecute(this.flushCamera);
-        pending.hooked = true;
+        return false;
+    }
+
+    dropCamera () {
+        const pending = this.cameraWrite;
+        pending.x = NaN;
+        pending.y = NaN;
+        pending.zoom = NaN;
+        pending.armed = false;
+        const tweens = this.tweens;
+        for (let i = 0; i < tweens.length; i++) {
+            if (isCameraProp(tweens[i].prop)) tweens[i].done = true;
+        }
+    }
+
+    settleCamera () {
+        const camera = this.camera();
+        if (this.cameraWrite.armed && camera && !camera.state.active) this.dropCamera();
     }
 
     flushCamera () {
         const pending = this.cameraWrite;
         if (Number.isNaN(pending.x) && Number.isNaN(pending.y) && Number.isNaN(pending.zoom)) return;
         const camera = this.camera();
-        if (camera) {
-            camera.setTarget(Number.isNaN(pending.x) ? null : pending.x, Number.isNaN(pending.y) ? null : pending.y,
-                Number.isNaN(pending.zoom) ? null : pending.zoom);
+        if (!camera || (pending.armed && !camera.state.active)) {
+            this.dropCamera();
+            return;
         }
+        camera.setTarget(Number.isNaN(pending.x) ? null : pending.x, Number.isNaN(pending.y) ? null : pending.y,
+            Number.isNaN(pending.zoom) ? null : pending.zoom);
         pending.x = NaN;
         pending.y = NaN;
         pending.zoom = NaN;
+        pending.armed = this.cameraTweening();
     }
 
     startTween (args, util) {
@@ -380,6 +403,7 @@ class SquiggleAnimateBlocks {
             ease: easeFor(ease),
             done: false
         };
+        if (isCameraProp(prop)) this.settleCamera();
         const subject = isCameraProp(prop) ? CAMERA : target;
         const clash = CONFLICTS[prop] || [prop];
         this.tweens = this.tweens.filter(other => {
