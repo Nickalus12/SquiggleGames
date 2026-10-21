@@ -7,13 +7,14 @@
 const isDevHost = () => location.port === '8601' ||
     location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
-const defaultServerUrl = () => {
+const roomSocketPath = room => `/ws/room/${encodeURIComponent(room)}`;
+
+const defaultServerUrl = room => {
     const params = new URLSearchParams(location.search);
     if (isDevHost() && params.get('server')) return params.get('server');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    // Dev server (8601) -> collab server on 4455. Production -> same host:port.
     if (location.port === '8601') return `ws://${location.hostname}:4455`;
-    return `${proto}://${location.host}`;
+    return `${proto}://${location.host}${roomSocketPath(room)}`;
 };
 
 const apiBase = () => (location.port === '8601' ? `http://${location.hostname}:4455` : '');
@@ -76,7 +77,7 @@ const showLogin = () => new Promise(resolve => {
                 return;
             }
             held.remove();
-            resolve({name: data.user.displayName, room, url: defaultServerUrl()});
+            resolve({name: data.user.displayName, room, url: defaultServerUrl(room)});
         })
         .catch(() => {
             // Server unreachable: fall back to solo rather than trapping the
