@@ -201,6 +201,7 @@ export {
     EDIT_DELAY_MS,
     MIN_GAP_MS,
     markIsNewer,
+    markOpcodeSet,
     checkOpcodeSet,
     raiseOpcodeSet,
     stampProject,

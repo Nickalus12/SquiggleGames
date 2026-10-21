@@ -17,6 +17,7 @@ const {installProjectSeam, RULES_KEY} = await import('../collab/project-seam.js'
 const {installRulesGuard} = await import('./guard.js');
 const {LIMITS, fromMark, normalizeSetup, readSetup, setupVariables, writeSetup} = await import('./setup-model.js');
 const {openGameSetup} = await import('./open-setup.js');
+const {OPCODE_SET} = await import('./package.js');
 const {KIT_SET_EVENT} = await import('../collab/kit-set.js');
 const {OPEN_SETUP_FUNC, OPEN_RULES_FUNC} = await import('./rule-blocks.js');
 const {filterCategory, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
@@ -220,6 +221,13 @@ section('the mark on the wire');
     ok('boards go out as {n, order, keep}', JSON.stringify(mark.boards) === '[{"n":"Best","order":"low","keep":"last"}]',
         mark.boards);
     ok('the old players key is gone', !('players' in mark));
+    ok('a setup written without blocks still carries the opcode set', mark.opcodeSet === OPCODE_SET, mark.opcodeSet);
+    const rulesSprite = vm.runtime.targets.find(t => t.extensionStorage[RULES_KEY] &&
+        t.extensionStorage[RULES_KEY].role === 'rules');
+    rulesSprite.extensionStorage[RULES_KEY] = Object.assign({}, rulesSprite.extensionStorage[RULES_KEY],
+        {opcodeSet: OPCODE_SET + 4});
+    ok('a newer opcode set is never lowered',
+        writeSetup(vm, rulesSprite, readSetup(rulesSprite, vm.runtime)).opcodeSet === OPCODE_SET + 4);
     ok('the sheet was offered the sprites but not Game Rules',
         JSON.stringify(opened[0].sprites) === '["Cat","Hero"]', opened[0].sprites);
     const byName = name => vm.runtime.targets.find(t => t.isOriginal && t.getName() === name);

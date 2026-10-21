@@ -1,7 +1,7 @@
 process.removeAllListeners('warning');
 
 const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
-const {createGameSession, gameSocketUrl} = await import('./net.js');
+const {createGameSession, gameSocketUrl, MAX_FRAME_BYTES, cutOp} = await import('./net.js');
 
 const sockets = [];
 class FakeSocket {
@@ -105,6 +105,40 @@ section('at most 50 ops ride one frame');
         ins(next)[1].g[19].name === 'b19', ins(next).map(f => f.g.length));
 }
 
+section('ops are cut and frames are sized by bytes');
+{
+    const {clock, session, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0});
+    session.queueOp({action: 'msg', name: 'n'.repeat(150), value: 'v'.repeat(9000)});
+    clock.advance(50);
+    const cut = ins(ws)[0].g[0];
+    ok('a long value is cut to 4096 and still sent', cut.value.length === 4096, cut.value.length);
+    ok('a long name is cut to 100', cut.name.length === 100, cut.name.length);
+    ok('cutOp leaves short ops alone', JSON.stringify(cutOp({action: 'msg', name: 'a', value: 'b'})) ===
+        '{"action":"msg","name":"a","value":"b"}');
+    clock.advance(5000);
+    for (let i = 0; i < 50; i++) session.queueOp({action: 'msg', name: `m${i}`, value: 'x'.repeat(140)});
+    clock.advance(50);
+    clock.advance(50);
+    clock.advance(50);
+    const sized = ins(ws).slice(1);
+    const counts = sized.map(f => f.g.length);
+    const bytes = sized.map(f => new TextEncoder().encode(JSON.stringify(f)).length);
+    ok('50 ops of about 165 bytes spill into more frames', counts.reduce((a, b) => a + b, 0) === 50 &&
+        Math.max(...counts) < 50 && counts.length >= 2, counts);
+    ok('each frame stays under 7 KiB', bytes.every(n => n <= 7 * 1024), bytes);
+    clock.advance(5000);
+    const before = ins(ws).length;
+    const bigTaken = session.queueOp({action: 'msg', name: 'big', value: '\u20ac'.repeat(5000)});
+    session.queueOp({action: 'msg', name: 'small', value: ''});
+    clock.advance(50);
+    const after = ins(ws).slice(before);
+    ok('an op over 8 KiB once encoded is never queued and is counted', !bigTaken && session.oversized === 1 &&
+        after.length === 1 && after[0].g.length === 1 && after[0].g[0].name === 'small', after);
+    ok('no frame goes over 8 KiB', ins(ws).every(f => new TextEncoder().encode(JSON.stringify(f)).length <=
+        MAX_FRAME_BYTES));
+}
+
 section('ticks, acks and rtt');
 {
     const {clock, session, ws, events} = make();
@@ -157,6 +191,27 @@ section('a drop resumes and resends what was not acked');
     ok('frames from the old socket are ignored', session.k === -1);
     next.deliver({type: 'tick', t: 50, ack: 3});
     ok('rtt comes from the fresh frame, not the welcome or a resent frame', session.rtt === 60, session.rtt);
+}
+
+section('a refused resume starts over');
+{
+    const {clock, session, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0, resume: 'tok'});
+    session.queueOp({action: 'input', name: 'a', value: ''});
+    clock.advance(50);
+    session.queueOp({action: 'input', name: 'b', value: ''});
+    clock.advance(50);
+    ws.drop(1006);
+    clock.advance(250);
+    const next = sockets[1];
+    next.open();
+    ok('the join asks to resume', next.sent[0].resume === 'tok');
+    next.deliver({type: 'welcome', slot: 4, ack: 0, resume: 'tok2'});
+    ok('a new slot means nothing old is resent', ins(next).length === 0 && session.unacked === 0, ins(next));
+    session.queueOp({action: 'input', name: 'c', value: ''});
+    clock.advance(50);
+    ok('numbering starts again at 1', ins(next).length === 1 && ins(next)[0].s === 1, ins(next));
+    ok('the new slot is kept', session.slot === 4);
 }
 
 section('close codes');

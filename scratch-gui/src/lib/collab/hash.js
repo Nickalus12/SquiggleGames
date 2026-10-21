@@ -2,6 +2,7 @@ import {sha256Hex} from './snapshot-http.js';
 
 const MAX_HASHED_TARGETS = 512;
 const MAX_HASHED_NAME = 128;
+const MAX_HASHES_BYTES = 60 * 1024;
 
 const canonical = value => {
     if (value === null || typeof value === 'undefined') return 'null';
@@ -55,7 +56,8 @@ const projectHashes = async json => {
 const sendableHashes = hashes => {
     const names = Object.keys(hashes || {});
     if (!names.length || names.length > MAX_HASHED_TARGETS) return null;
-    return names.every(name => name.length <= MAX_HASHED_NAME) ? hashes : null;
+    if (!names.every(name => name.length <= MAX_HASHED_NAME)) return null;
+    return new TextEncoder().encode(JSON.stringify(hashes)).length <= MAX_HASHES_BYTES ? hashes : null;
 };
 
 const driftedTargets = (local, remote) => {

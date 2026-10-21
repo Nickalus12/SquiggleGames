@@ -1,4 +1,4 @@
-import {createGameSession, gameSocketUrl} from './net.js';
+import {MAX_OP_NAME, MAX_OP_VALUE, createGameSession, gameSocketUrl} from './net.js';
 import {createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
@@ -105,13 +105,13 @@ const createAvatarLayer = runtime => {
 
 const outboundOp = msg => {
     if (!msg || msg.type !== 'game') return null;
-    const name = String(msg.name || '');
+    const name = String(msg.name || '').slice(0, MAX_OP_NAME);
     if (!name) return null;
     if (msg.action === 'msg') {
         return {
             action: 'msg',
             name,
-            value: typeof msg.value === 'undefined' ? '' : String(msg.value)
+            value: (typeof msg.value === 'undefined' ? '' : String(msg.value)).slice(0, MAX_OP_VALUE)
         };
     }
     return null;
@@ -294,5 +294,6 @@ export {
     createAvatarLayer,
     createGameLink,
     findPlayerSprite,
+    outboundOp,
     renderedDirection
 };

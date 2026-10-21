@@ -1,6 +1,7 @@
 import {RULES_KEY, RULES_ROLE, RULES_VERSION} from '../collab/project-seam.js';
 import {announceKitSet} from '../collab/kit-set.js';
 import {schema} from './rule-blocks.js';
+import {OPCODE_SET, markOpcodeSet} from './package.js';
 
 const LIMITS = Object.freeze({
     players: schema.limits.playerValues,
@@ -161,7 +162,8 @@ const writeSetup = (vm, target, setup) => {
     const before = target.extensionStorage[RULES_KEY];
     const mark = Object.assign({}, before, toMark(clean), {
         role: RULES_ROLE,
-        v: RULES_VERSION
+        v: RULES_VERSION,
+        opcodeSet: Math.max(markOpcodeSet(before), OPCODE_SET)
     });
     delete mark.players;
     target.extensionStorage[RULES_KEY] = mark;

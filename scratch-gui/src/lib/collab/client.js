@@ -22,7 +22,8 @@ const PROTO = 2;
 const V2_FRAME_LIMITS = new Map([
     ['block-event', 4 * 1024 * 1024],
     ['vm-action', 1024 * 1024],
-    ['tilemap-patch', 32 * 1024],
+    ['snapshot', 64 * 1024],
+    ['tilemap-patch', 256 * 1024],
     ['kit-set', 20 * 1024],
     ['game', 32 * 1024],
     ['resync', 64 * 1024],
@@ -36,6 +37,8 @@ const RING_TYPES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-se
 const FINAL_CLOSE_CODES = new Set([4003, 4010]);
 const ACK_EVERY_MS = 1000;
 const RESTART_JITTER_MS = 2000;
+const TOO_SLOW_CODE = 1013;
+const TOO_SLOW_WAIT_MS = 5000;
 const SNAPSHOT_WINDOW_MS = 60 * 1000;
 const SNAPSHOT_BYTES_PER_WINDOW = Math.floor(0.6 * Math.min(128 * 1024 * 1024, 512 * 1024 * 1024));
 
@@ -123,6 +126,7 @@ class CollabClient {
         this.droppedReliable = false;
         this.proto = 1;
         this.rs = null;
+        this.freshJoin = false;
         this.resume = null;
         this._selfIds = new Set();
         this._received = 0;
@@ -211,8 +215,11 @@ class CollabClient {
         if (this.proto < 2) return;
         if (typeof msg.resume === 'string') this.resume = msg.resume;
         if (typeof msg.id !== 'undefined') this._selfIds.add(msg.id);
-        if (typeof msg.rs === 'number' && (!msg.replay || this.rs === null)) this.rs = msg.rs;
-        this._queue = this._queue.filter(e => e.type !== 'snapshot' || e.size <= this._frameLimit('snapshot'));
+        const snapSeq = msg.snap && typeof msg.snap.atSeq === 'number' ? msg.snap.atSeq : null;
+        if (msg.replay && this.freshJoin && snapSeq !== null) this.rs = snapSeq;
+        else if (typeof msg.rs === 'number' && (!msg.replay || this.rs === null)) this.rs = msg.rs;
+        this._queue = this._queue.filter(e => e.type !== 'snapshot' ||
+            (e.pointer && e.size <= this._frameLimit('snapshot')));
         this._purgeOversized();
     }
 
@@ -370,6 +377,7 @@ class CollabClient {
             const join = {type: 'join', proto: PROTO, room, name};
             if (token) join.token = token;
             if (typeof this.rs === 'number') join.rs = this.rs;
+            this.freshJoin = typeof join.rs !== 'number';
             if (this.resume) join.resume = this.resume;
             ws.send(JSON.stringify(join));
         };
@@ -435,16 +443,17 @@ class CollabClient {
             if (dropped) this._purgeOversized();
             if (code === 4010) this._emit('reload-needed', {code, reason});
             if (FINAL_CLOSE_CODES.has(code)) this.disconnect();
-            else if (!this._closedByUser) this._scheduleReconnect(code === 1012);
+            else if (!this._closedByUser) this._scheduleReconnect(code === 1012, code === TOO_SLOW_CODE);
         };
         ws.onerror = () => { /* onclose follows */ };
     }
 
-    _scheduleReconnect (restart) {
+    _scheduleReconnect (restart, tooSlow) {
         if (this._closedByUser || !this.session) return;
         this._clearReconnect();
-        const delay = restart ? Math.random() * RESTART_JITTER_MS :
+        let delay = restart ? Math.random() * RESTART_JITTER_MS :
             this._backoff * (0.75 + (Math.random() * 0.5));
+        if (tooSlow) delay = TOO_SLOW_WAIT_MS + (Math.random() * TOO_SLOW_WAIT_MS);
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;
             if (!this._closedByUser && this.session) this._open();
@@ -611,6 +620,7 @@ class CollabClient {
             size: frameSize(data, limit)
         };
         entry.cost = msg.type === 'snapshot' && typeof msg.size === 'number' ? msg.size : entry.size;
+        entry.pointer = msg.type === 'snapshot' && typeof msg.sha === 'string' && typeof msg.b64 === 'undefined';
         if (entry.size > limit) {
             this._refuse(entry, lossy);
             return false;

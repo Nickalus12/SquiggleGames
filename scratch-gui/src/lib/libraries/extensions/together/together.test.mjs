@@ -183,6 +183,11 @@ console.log('\nsending messages');
 
     ext.broadcastGameMessage({NAME: 'shoot', VALUE: '1'});
     ok('a broadcast goes out immediately', net.sent.length === 1, net.sent);
+    ext.broadcastGameMessage({NAME: 'n'.repeat(150), VALUE: 'v'.repeat(9000)});
+    const long = net.sent[1] || {};
+    ok('a long name and value are cut to 100 and 4096', String(long.name).length === 100 &&
+        String(long.value).length === 4096, [String(long.name).length, String(long.value).length]);
+    net.sent.length = 1;
     ok('the sender does not hear it in the same frame', runtime.hats.length === 0, runtime.hats);
     step(runtime, clock);
     ok('but does hear it on the next one, like everyone else',

@@ -20,6 +20,7 @@ import paintMerge from './paint-merge';
 import {installProjectSeam, isRulesTarget} from './project-seam.js';
 import {createRulesUploader} from '../rules/package.js';
 import {rulesStatus} from '../rules/status.js';
+import {gameServerReady} from '../rules/flags.js';
 import {createGameLink} from '../together2/session.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
@@ -676,6 +677,7 @@ const rulesUploader = () => {
 };
 
 const rulesEdited = () => {
+    if (!state.gameLink || !state.gameLink.inGame) return;
     const uploader = canWrite() && rulesUploader();
     if (uploader) uploader.edited();
 };
@@ -688,6 +690,7 @@ const hasRuleScripts = () => {
 };
 
 const gameLink = () => {
+    if (!gameServerReady() || state.snapshotLoading) return null;
     if (!state.httpSnapshots || !state.snapshotHttpRoom || !state.vm || !client.session) return null;
     if (!state.gameLink || state.gameLinkRoom !== state.snapshotHttpRoom) {
         if (state.gameLink) state.gameLink.stop();
@@ -716,14 +719,16 @@ const stopGame = () => {
 };
 
 const rulesGameStart = () => {
+    if (state.snapshotLoading) return Promise.resolve(null);
     const uploader = canWrite() && rulesUploader();
     const sent = uploader ? uploader.sendNow() : Promise.resolve(null);
-    if (!state.active || !state.httpSnapshots || !hasRuleScripts()) return sent;
-    if (!state.canEdit && !state.roomGame) return sent;
-    return sent.then(() => {
-        const link = state.active && gameLink();
-        if (link) link.start();
-    });
+    const joins = state.active && state.httpSnapshots && hasRuleScripts() && (state.canEdit || state.roomGame);
+    return sent
+        .then(() => {
+            const link = joins && state.active && gameLink();
+            if (link) link.start();
+        })
+        .catch(() => null);
 };
 
 const zipProject = async () => {
@@ -2937,8 +2942,10 @@ const wireSocket = () => {
         netEmit('game-state', {vars: cachedGameVars});
         if (state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string') {
             const pointer = Object.assign({type: 'snapshot', version: msg.version}, msg.snap);
-            if (!msg.replay || state.rescueOnNextSnapshot || state.skipNextSnapshot) applySnapshot(pointer);
-            else if (!unsent && client.rs === msg.snap.atSeq) checkDrift(pointer);
+            const freshReplay = msg.replay && client.freshJoin === true;
+            if (!msg.replay || freshReplay || state.rescueOnNextSnapshot || state.skipNextSnapshot) {
+                applySnapshot(pointer);
+            } else if (!unsent && client.rs === msg.snap.atSeq) checkDrift(pointer);
         }
     });
     client.on('disconnected', msg => {

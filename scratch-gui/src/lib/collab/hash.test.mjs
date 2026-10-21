@@ -94,6 +94,12 @@ const tooMany = {};
 for (let i = 0; i <= MAX_HASHED_TARGETS; i++) tooMany[`t${i}`] = 'x';
 ok('more than 512 targets send none', sendableHashes(tooMany) === null);
 ok('a name over 128 characters sends none', sendableHashes({['n'.repeat(129)]: 'x'}) === null);
+const sixty = {};
+for (let i = 0; i < 60; i++) sixty[`Sprite ${i}`] = 'a'.repeat(64);
+ok('a 60-sprite project still sends its hashes', sendableHashes(sixty) === sixty);
+const wide = {};
+for (let i = 0; i < 512; i++) wide[`${i}`.padStart(128, 'w')] = 'a'.repeat(64);
+ok('512 targets with 128-character names go over 60 KiB and send none', sendableHashes(wide) === null);
 
 const extra = project();
 extra.targets.push(target({name: 'Dog'}));

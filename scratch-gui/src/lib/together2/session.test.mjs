@@ -1,7 +1,8 @@
 process.removeAllListeners('warning');
 
 const {ok, section, done} = await import('./harness.test-util.mjs');
-const {avatarOf, blockedAt, createAvatarLayer, findPlayerSprite, renderedDirection} = await import('./session.js');
+const {avatarOf, blockedAt, createAvatarLayer, findPlayerSprite, outboundOp, renderedDirection} =
+    await import('./session.js');
 
 const sprite = (name, extra) => Object.assign({
     name, isOriginal: true, isStage: false, extensionStorage: {}, x: 0, y: 0, direction: 90, size: 100,
@@ -18,6 +19,15 @@ section('the own sprite');
     ok('a sprite marked player wins', findPlayerSprite({targets: [stage, rules, cat, hero]}) === hero);
     ok('else the first sprite that is not Game Rules', findPlayerSprite({targets: [stage, rules, cat]}) === cat);
     ok('Game Rules alone is nobody', findPlayerSprite({targets: [stage, rules]}) === null);
+}
+
+section('outbound messages are cut');
+{
+    const op = outboundOp({type: 'game', action: 'msg', name: 'n'.repeat(150), value: 'v'.repeat(9000)});
+    ok('the name is cut to 100 and the value to 4096', op.name.length === 100 && op.value.length === 4096,
+        [op.name.length, op.value.length]);
+    ok('a short message is untouched', JSON.stringify(outboundOp({type: 'game', action: 'msg', name: 'a', value: 1})) ===
+        '{"action":"msg","name":"a","value":"1"}');
 }
 
 section('the avatar frame');

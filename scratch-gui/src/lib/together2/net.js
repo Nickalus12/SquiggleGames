@@ -8,6 +8,12 @@ const RECONNECT_MAX_MS = 5000;
 const BACK_OFF_MS = 5000;
 const MAX_UNACKED = 200;
 const MAX_OPS_PER_FRAME = 50;
+const MAX_FRAME_BYTES = 8 * 1024;
+const FILL_BYTES = 7 * 1024;
+const OPS_KEY_BYTES = 7;
+const FRAME_HEAD_BYTES = 128;
+const MAX_OP_NAME = 100;
+const MAX_OP_VALUE = 4096;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
@@ -16,6 +22,17 @@ const gameSocketUrl = (base, slug) => {
     const origin = String(base || '').replace(/\/+$/, '')
         .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
     return `${origin}/ws/room/${encodeURIComponent(slug)}/game`;
+};
+
+const encoder = new TextEncoder();
+
+const byteLength = text => encoder.encode(text).length;
+
+const cutOp = op => {
+    const out = Object.assign({}, op);
+    if (typeof out.name === 'string') out.name = out.name.slice(0, MAX_OP_NAME);
+    if (typeof out.value === 'string') out.value = out.value.slice(0, MAX_OP_VALUE);
+    return out;
 };
 
 const sameAvatar = (a, b) => !!a && !!b && a.length === b.length && a.every((value, i) => value === b[i]);
@@ -60,6 +77,8 @@ const createGameSession = ({
     let resume = null;
     let rtt = null;
     let dropped = 0;
+    let oversized = 0;
+    let joinedWithResume = false;
     let pendingA = null;
     let lastSentA = null;
     const pendingG = [];
@@ -84,13 +103,25 @@ const createGameSession = ({
 
     let schedule = null;
 
+    const takeOps = baseBytes => {
+        const ops = [];
+        let bytes = baseBytes + OPS_KEY_BYTES;
+        while (pendingG.length && ops.length < MAX_OPS_PER_FRAME) {
+            const opBytes = pendingG[0].bytes + (ops.length ? 1 : 0);
+            if (ops.length && bytes + opBytes > FILL_BYTES) break;
+            ops.push(pendingG.shift().op);
+            bytes += opBytes;
+        }
+        return ops;
+    };
+
     const flush = () => {
         flushTimer = null;
         if (!open || (!pendingA && !pendingG.length)) return null;
         s += 1;
         const frame = {type: 'in', s, k, cid};
         if (pendingA) frame.a = pendingA;
-        if (pendingG.length) frame.g = pendingG.splice(0, MAX_OPS_PER_FRAME);
+        if (pendingG.length) frame.g = takeOps(byteLength(JSON.stringify(frame)));
         if (pendingA) lastSentA = pendingA;
         pendingA = null;
         lastFlushAt = now();
@@ -120,6 +151,11 @@ const createGameSession = ({
 
     const onWelcome = msg => {
         attempts = 0;
+        const refused = joinedWithResume && slot !== null && Number.isInteger(msg.slot) && msg.slot !== slot;
+        if (refused) {
+            unacked.length = 0;
+            s = 0;
+        }
         if (Number.isInteger(msg.slot)) slot = msg.slot;
         if (typeof msg.resume === 'string') resume = msg.resume;
         if (msg.mode === 'rules' || msg.mode === 'relay') mode = msg.mode;
@@ -127,9 +163,14 @@ const createGameSession = ({
         const ack = Number.isInteger(msg.ack) ? msg.ack : 0;
         settleAck(ack, false);
         s = Math.max(ack, unacked.length ? unacked[0].s - 1 : s);
-        unacked.forEach(entry => {
-            entry.resent = true;
+        const fits = unacked.filter(entry => {
             entry.frame.cid = cid;
+            return byteLength(JSON.stringify(entry.frame)) <= MAX_FRAME_BYTES;
+        });
+        unacked.length = 0;
+        fits.forEach(entry => {
+            entry.resent = true;
+            unacked.push(entry);
             sendRaw(entry.frame);
         });
         if (unacked.length) s = unacked[unacked.length - 1].s;
@@ -211,6 +252,7 @@ const createGameSession = ({
             open = true;
             const join = {type: 'join', proto: PROTO};
             if (resume) join.resume = resume;
+            joinedWithResume = !!resume;
             sendRaw(join);
         };
         socket.onmessage = event => {
@@ -254,11 +296,17 @@ const createGameSession = ({
         },
         queueOp (op) {
             if (!op || typeof op !== 'object' || typeof op.action !== 'string') return false;
+            const cut = cutOp(op);
+            const bytes = byteLength(JSON.stringify(cut));
+            if (FRAME_HEAD_BYTES + OPS_KEY_BYTES + bytes > MAX_FRAME_BYTES) {
+                oversized += 1;
+                return false;
+            }
             if (!bucket.take()) {
                 dropped += 1;
                 return false;
             }
-            pendingG.push(op);
+            pendingG.push({op: cut, bytes});
             schedule();
             return true;
         },
@@ -305,6 +353,9 @@ const createGameSession = ({
         get dropped () {
             return dropped;
         },
+        get oversized () {
+            return oversized;
+        },
         get unacked () {
             return unacked.length;
         }
@@ -317,6 +368,10 @@ export {
     OPS_PER_SECOND,
     OPS_BURST,
     MAX_OPS_PER_FRAME,
+    MAX_FRAME_BYTES,
+    MAX_OP_NAME,
+    MAX_OP_VALUE,
+    cutOp,
     gameSocketUrl,
     createGameSession
 };

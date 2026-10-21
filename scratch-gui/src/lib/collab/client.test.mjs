@@ -403,9 +403,12 @@ ok('a too-large error is a frame refusal, not an error toast',
     events[0].reliable === true, events);
 
 events.length = 0;
-ok('a v2 snapshot pointer over 4 KiB is refused locally',
-    client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(5000)}) === false &&
+ok('a v2 snapshot pointer with hashes up to 64 KiB goes out',
+    client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(60 * 1024)}) === true, events);
+ok('a v2 snapshot pointer over 64 KiB is refused locally',
+    client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(65 * 1024)}) === false &&
     events[0] && events[0].type === 'snapshot', events);
+ok('a tilemap-patch up to 256 KiB goes out', client.send({type: 'tilemap-patch', pad: 'x'.repeat(200 * 1024)}) === true);
 ok('a vm-action over 1 MiB is refused locally',
     client.send({type: 'vm-action', pad: 'x'.repeat(1024 * 1024)}) === false);
 ok('a kit-set within 20 KiB still goes out', client.send({type: 'kit-set', pad: 'x'.repeat(10 * 1024)}) === true);
@@ -413,6 +416,7 @@ ok('an unlisted frame type gets the 4 KiB default',
     client.send({type: 'viewport', pad: 'x'.repeat(5000)}) === false);
 
 client._snapshotLog = [];
+client._paced = null;
 client.send({type: 'snapshot', sha: 'c'.repeat(64), size: 80 * 1024 * 1024, ref: 30});
 ok('a pointer frame costs the project size against the budget',
     client._snapshotLog.length === 1 && client._snapshotLog[0].size === 80 * 1024 * 1024, client._snapshotLog);
@@ -461,9 +465,16 @@ ws.open();
 deliver(ws, v2Welcome({rs: 40}));
 events.length = 0;
 ws.readyState = 3;
+timeouts.length = 0;
+globalThis.setTimeout = (fn, delay) => {
+    timeouts.push(delay);
+    return 1;
+};
 ws.onclose({code: 1013, reason: 'too-slow'});
+globalThis.setTimeout = realSetTimeout;
 ok('a too-slow close reports and reconnects', events.some(e => e.on === 'disconnected' && e.code === 1013) &&
     client._reconnectTimer !== null, events);
+ok('after waiting 5 to 10 s', timeouts.length === 1 && timeouts[0] >= 5000 && timeouts[0] <= 10000, timeouts);
 client._clearReconnect();
 
 client._open();
@@ -490,6 +501,7 @@ client.connect({url: 'ws://test.invalid', room: 'another', name: 'Tester'});
 ws = sockets[sockets.length - 1];
 ws.open();
 ok('a different room starts without rs or resume', !('rs' in joinOf(ws)) && !('resume' in joinOf(ws)), joinOf(ws));
+ok('and counts as a fresh join', client.freshJoin === true);
 deliver(ws, {type: 'welcome', id: 1, color: '#fff'});
 deliver(ws, {type: 'block-event', from: 3, event: {}});
 await new Promise(r => setTimeout(r, 1100));
@@ -507,6 +519,19 @@ deliver(ws, v2Welcome({rs: 1}));
 ok('a queued v1 snapshot is dropped quietly when the welcome says v2',
     !events.some(e => e.on === 'frame-refused') && sentTypes(ws).includes('block-event') &&
     !sentTypes(ws).includes('snapshot'), {events, sent: sentTypes(ws)});
+
+client.disconnect();
+client.connect({url: 'ws://test.invalid', room: 'fresh', name: 'Tester'});
+ws = sockets[sockets.length - 1];
+ws.open();
+deliver(ws, v2Welcome({rs: 8, replay: true, snap: {sha: 'e'.repeat(64), size: 10, version: 4, atSeq: 5}}));
+ok('a first join answered with replay starts from the snapshot seq', client.rs === 5, client.rs);
+events.length = 0;
+deliver(ws, {type: 'block-event', from: 3, rs: 6, event: {type: 'a'}});
+deliver(ws, {type: 'block-event', from: 3, rs: 7, event: {type: 'b'}});
+deliver(ws, {type: 'block-event', from: 3, rs: 8, event: {type: 'c'}});
+ok('the three replayed frames all apply on top of it',
+    events.filter(e => e.on === 'block-event').map(e => e.rs).join() === '6,7,8' && client.rs === 8, events);
 
 client.disconnect();
 console.log(`\n${pass} passed, ${fail} failed`);

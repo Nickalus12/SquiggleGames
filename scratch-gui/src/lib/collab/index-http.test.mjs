@@ -12,6 +12,7 @@ vmLog.info = () => {};
 vmLog.error = () => {};
 
 const {gunzipText, sha256Hex, gzip} = await import('./snapshot-http.js');
+const {gameFlags} = await import('../rules/flags.js');
 
 let pass = 0;
 let fail = 0;
@@ -72,9 +73,11 @@ const pages = new Map();
 const calls = [];
 const status = {};
 const rulesPuts = [];
+let hold = null;
 globalThis.fetch = async (url, init) => {
     calls.push({url, method: init.method, headers: init.headers, body: init.body});
     const path = url.replace('https://sq.test', '');
+    if (hold && hold.match.test(path)) await hold.wait;
     if (status[path]) return new Response('', {status: status[path]});
     if (path === '/api/assets/have') return Response.json({missing: JSON.parse(init.body).md5ext});
     if (/^\/api\/assets\//.test(path)) return Response.json({ok: true});
@@ -112,8 +115,10 @@ globalThis.document = noopObject({
 });
 globalThis.localStorage = {getItem: () => null, setItem: noop};
 const gameSockets = [];
+let socketRefused = false;
 globalThis.WebSocket = class {
     constructor (url) {
+        if (socketRefused) throw new Error('refused');
         this.url = url;
         this.sent = [];
         this.closed = null;
@@ -515,10 +520,31 @@ section('the green flag puts the rules');
     ok('the url names the room', calls.some(c => c.method === 'PUT' && c.url === 'https://sq.test/api/rooms/blue%20fox/rules'));
     ok('the project is stamped after the PUT', await waitFor(() => vm.runtime.extensionStorage.together &&
         vm.runtime.extensionStorage.together.rulesHash === put.hash));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    ok('no game socket opens while the game server is off', gameSockets.length === 0, gameSockets.length);
+    vm.runtime.emit('PROJECT_STOP_ALL');
 }
+
+const workspaceListeners = [];
+collab.attachWorkspace(noopObject({
+    addChangeListener: fn => workspaceListeners.push(fn),
+    getParentSvg: () => null
+}), {});
+const rulesTarget = () => vm.runtime.targets.find(t => t.isOriginal && t.getName() === 'Game Rules');
+let editCount = 0;
+const editRules = () => {
+    editCount += 1;
+    const target = rulesTarget();
+    vm.setEditingTarget(target.id);
+    target.blocks.createBlock({id: `edit${editCount}`, opcode: 'event_whenflagclicked', next: null, parent: null,
+        inputs: {}, fields: {}, shadow: false, topLevel: true, x: editCount * 10, y: 0});
+    workspaceListeners.forEach(fn => fn({type: 'create', toJson: () => ({type: 'create', blockId: `edit${editCount}`})}));
+};
 
 section('the green flag opens the game socket');
 {
+    gameFlags.serverReady = true;
+    vm.runtime.emit('PROJECT_START');
     const net = globalThis.window.SquiggleNet;
     ok('the rules start opens the room game socket', await waitFor(() => gameSockets.length === 1) &&
         gameSockets[0].url === 'wss://sq.test/ws/room/blue%20fox/game', gameSockets.map(g => g.url));
@@ -556,12 +582,21 @@ section('the green flag opens the game socket');
     vm.runtime.emit('AFTER_EXECUTE');
     const last = ins().pop();
     ok('the own sprite goes out with the new cid', last && last.a && last.a[0] === 100 && last.cid === 1, last);
+    const putsInGame = rulesPuts.length;
+    await new Promise(resolve => setTimeout(resolve, 20));
+    editRules();
+    ok('a rules edit during a game puts the rules again', await waitFor(() => rulesPuts.length === putsInGame + 1),
+        rulesPuts.length - putsInGame);
     const toasts = [];
     overlay.toast = text => toasts.push(text);
     emit('game-started', {type: 'game-started', name: 'Pal'});
     ok('a game started by someone else is not announced while in it', toasts.length === 0);
     vm.runtime.emit('PROJECT_STOP_ALL');
     ok('stop closes the game socket', ws.closed === 1000 && net.inGame === false);
+    const putsAfterStop = rulesPuts.length;
+    editRules();
+    await new Promise(resolve => setTimeout(resolve, 700));
+    ok('a rules edit outside a game puts nothing', rulesPuts.length === putsAfterStop, rulesPuts.length - putsAfterStop);
     emit('game-started', {type: 'game-started', name: 'Pal'});
     ok('otherwise it says how to join', toasts.length === 1 && /Pal started a test game/.test(toasts[0]), toasts);
     emit('game-ended', {type: 'game-ended'});
@@ -613,6 +648,96 @@ section('room settings and appearance go over HTTP');
     ok('and are kept with a PATCH on /api/me', await waitFor(() => calls.some(c => c.method === 'PATCH' &&
         c.url === 'https://sq.test/api/me' && JSON.parse(c.body).cursor === 'star')));
     ok('no moved frame goes out', !sent.slice(before).some(m => m && /^(appearance|set-room-title)$/.test(m.type)));
+}
+
+section('a first join answered with a replay loads the room');
+{
+    const remote = JSON.parse(vm.toJSON());
+    remote.targets.push(sprite('Owl'));
+    const text = JSON.stringify(remote);
+    const sha = await sha256Hex(text);
+    pages.set(sha, await gzip(text));
+    client.freshJoin = true;
+    client.rs = 5;
+    emit('welcome', welcome({proto: 2, replay: true, rs: 8, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}],
+        version: 12, snap: {sha, size: text.length, version: 12, atSeq: 5, hashes: {}}}));
+    ok('the room project loads', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Owl')));
+    client.freshJoin = false;
+    client.rs = 8;
+    const frames = snapshots().length;
+    const owl = vm.runtime.targets.find(t => t.getName && t.getName() === 'Owl');
+    vm.renameSprite(owl.id, 'Barn Owl');
+    emit('server-restarting', {});
+    ok('a frame goes out', await waitFor(() => snapshots().length > frames), snapshots().length);
+    const frame = snapshots()[snapshots().length - 1];
+    ok('it is based on the head version', frame && frame.basedOn === 12, frame);
+}
+
+section('a green flag while the room project loads does nothing');
+{
+    const remote = JSON.parse(vm.toJSON());
+    remote.targets.push(sprite('Eel'));
+    const text = JSON.stringify(remote);
+    const sha = await sha256Hex(text);
+    pages.set(sha, await gzip(text));
+    let release = null;
+    hold = {match: new RegExp(`/pj/${sha}$`), wait: new Promise(resolve => {
+        release = resolve;
+    })};
+    const socketsBefore = gameSockets.length;
+    const putsBefore = rulesPuts.length;
+    emit('welcome', welcome({proto: 2, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version: 13,
+        snap: {sha, size: text.length, version: 13, atSeq: 8, hashes: {}}}));
+    await waitFor(() => gets().some(c => hold.match.test(c.url)));
+    rulesTarget().blocks.createBlock({id: 'loading', opcode: 'event_whenflagclicked', next: null, parent: null,
+        inputs: {}, fields: {}, shadow: false, topLevel: true, x: 0, y: 100});
+    vm.runtime.emit('PROJECT_START');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    ok('no game socket opens', gameSockets.length === socketsBefore, gameSockets.length - socketsBefore);
+    ok('no rules go up', rulesPuts.length === putsBefore);
+    release();
+    ok('the project still loads', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Eel')));
+    hold = null;
+    vm.runtime.emit('PROJECT_STOP_ALL');
+}
+
+section('a refused rules PUT or game socket at the green flag is caught');
+{
+    const rejections = [];
+    const onRejection = reason => rejections.push(reason);
+    process.on('unhandledRejection', onRejection);
+    status['/api/rooms/blue%20fox/rules'] = 500;
+    const target = rulesTarget();
+    target.blocks.createBlock({id: 'refused', opcode: 'event_whenflagclicked', next: null, parent: null,
+        inputs: {}, fields: {}, shadow: false, topLevel: true, x: 0, y: 200});
+    const putsBefore = calls.filter(c => /\/rules$/.test(c.url)).length;
+    vm.runtime.emit('PROJECT_START');
+    ok('the PUT is tried', await waitFor(() => calls.filter(c => /\/rules$/.test(c.url)).length > putsBefore));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    ok('no unhandled rejection', rejections.length === 0, rejections.map(String));
+    vm.runtime.emit('PROJECT_STOP_ALL');
+    socketRefused = true;
+    vm.runtime.emit('PROJECT_START');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    socketRefused = false;
+    ok('a game socket that will not open raises no unhandled rejection', rejections.length === 0,
+        rejections.map(String));
+    process.off('unhandledRejection', onRejection);
+    delete status['/api/rooms/blue%20fox/rules'];
+    vm.runtime.emit('PROJECT_STOP_ALL');
+}
+
+section('a project too wide for hashes still saves');
+{
+    const names = [];
+    for (let i = 0; i < 320; i++) names.push(`${i}`.padStart(128, 'w'));
+    await vm.loadProject(project(names));
+    const frames = snapshots().length;
+    emit('server-restarting', {});
+    ok('a frame goes out', await waitFor(() => snapshots().length > frames, 10000), snapshots().length);
+    const frame = snapshots()[snapshots().length - 1];
+    ok('it carries a sha and no hashes', frame && typeof frame.sha === 'string' && !frame.hashes,
+        frame && Object.keys(frame));
 }
 
 section('a 4010 close ends the session with a reload message');

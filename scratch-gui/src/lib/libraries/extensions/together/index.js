@@ -6,6 +6,8 @@ import {installRuleMethods, ruleBlocks, ruleMenus, rulesMark, setupButton} from 
 import {installRulesGuard} from '../../../rules/guard.js';
 import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
 import {openGameSetup} from '../../../rules/open-setup.js';
+import {gameServerReady} from '../../../rules/flags.js';
+import {MAX_OP_NAME, MAX_OP_VALUE} from '../../../together2/net.js';
 import {
     applyTick,
     createGameState,
@@ -39,7 +41,6 @@ const getNet = () => (typeof window === 'undefined' ? null : window.SquiggleNet)
  * latest value, which is what the receiving side would have ended up with
  * anyway.
  */
-const GAME_SERVER_READY = false;
 const OUT_PER_SEC = 25;
 const VAR_FLUSH_MS = 50;
 // Beyond this the sender is in a runaway loop and dropping is kinder than an
@@ -526,12 +527,12 @@ class TogetherBlocks {
                 },
                 {
                     blockType: 'label',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     text: 'Game server'
                 },
                 {
                     opcode: 'tellGame',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'command',
                     text: 'tell the game [NAME] with [VALUE]',
                     arguments: {
@@ -547,7 +548,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'whenGameSays',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'event',
                     text: 'when the game says [EVENT]',
                     isEdgeActivated: false,
@@ -561,7 +562,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'gameValue',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'reporter',
                     text: 'game value [NAME]',
                     arguments: {
@@ -574,7 +575,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'myPlayerValue',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'reporter',
                     text: 'my player value [NAME]',
                     arguments: {
@@ -587,19 +588,19 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'gameRound',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'reporter',
                     text: 'round'
                 },
                 {
                     opcode: 'myTeam',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'reporter',
                     text: 'my team'
                 },
                 {
                     opcode: 'timeLeft',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'reporter',
                     text: 'time left on [TIMER]',
                     arguments: {
@@ -612,7 +613,7 @@ class TogetherBlocks {
                 },
                 {
                     opcode: 'inGame',
-                    hideFromPalette: !GAME_SERVER_READY,
+                    hideFromPalette: !gameServerReady(),
                     blockType: 'Boolean',
                     text: 'in a game?'
                 },
@@ -657,11 +658,11 @@ class TogetherBlocks {
 
     tellGame (args) {
         this._ensureBound();
-        const name = str(args.NAME);
+        const name = str(args.NAME).slice(0, MAX_OP_NAME);
         if (!name) return;
         const net = getNet();
         if (!net || !net.inGame || typeof net.sendInput !== 'function') return;
-        net.sendInput({g: {action: 'input', name, value: str(args.VALUE)}});
+        net.sendInput({g: {action: 'input', name, value: str(args.VALUE).slice(0, MAX_OP_VALUE)}});
     }
 
     gameValue (args) {
@@ -699,9 +700,9 @@ class TogetherBlocks {
 
     broadcastGameMessage (args) {
         this._ensureBound();
-        const name = str(args.NAME);
+        const name = str(args.NAME).slice(0, MAX_OP_NAME);
         if (!name) return;
-        const value = str(args.VALUE);
+        const value = str(args.VALUE).slice(0, MAX_OP_VALUE);
 
         /*
          * The sender hears its own broadcast, through the same queue as
