@@ -1,4 +1,5 @@
 import {BLOCKS_THREE} from '.';
+import {RULES_COLORS} from './tokens.js';
 
 const getBlockIconURI = extensionIcons => {
     if (!extensionIcons) return null;
@@ -16,6 +17,9 @@ const getCategoryIconURI = extensionIcons => {
 const getExtensionColors = theme => theme.getBlockColors().pen;
 
 const DEFAULT_EXTENSION_PRIMARY = '#0fbd8c';
+
+const keepsRulesEdge = json => typeof json.colourTertiary === 'string' &&
+    json.colourTertiary.toLowerCase() === RULES_COLORS.color3;
 
 /**
  * Applies extension color theme to categories.
@@ -104,7 +108,9 @@ const injectExtensionBlockTheme = (blockInfoJson, theme) => {
             ...blockInfoJson,
             colour: converters.primary(blockInfoJson.colour),
             colourSecondary: converters.secondary(blockInfoJson.colour),
-            colourTertiary: converters.tertiary(blockInfoJson.colour),
+            colourTertiary: keepsRulesEdge(blockInfoJson) ?
+                RULES_COLORS.color3 :
+                converters.tertiary(blockInfoJson.colour),
             colourQuaternary: converters.quaternary(blockInfoJson.colour)
         };
     }
