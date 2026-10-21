@@ -8,6 +8,7 @@ const KID_TEXT = Object.freeze({
     'too-big': 'This is more than the server allows. Make it smaller.',
     'screened': 'Some words here aren\'t allowed. Try different words.',
     'opcode-set': 'Reload the editor to get the newest blocks.',
+    'upload-failed': 'Game Rules did not reach the server. Try again in a moment.',
     'too-much': 'A rule did too much at once and was stopped.',
     'cut': 'A rule did too much at once and was stopped.',
     'loop-cap': 'A rule did too much at once and was stopped.',
@@ -24,6 +25,10 @@ const messageId = code => `sq.rules.err.${code}`;
 
 const kidText = code => KID_TEXT[code] || FALLBACK_TEXT;
 
+const withStatus = (text, detail) => (detail && Number.isInteger(detail.status) && detail.status > 0 ?
+    `${text} (${detail.status})` :
+    text);
+
 const normalizeError = error => {
     const code = error && typeof error.code === 'string' ? error.code : 'unknown';
     return {
@@ -32,7 +37,7 @@ const normalizeError = error => {
         detail: error && typeof error.detail !== 'undefined' ? error.detail : null,
         n: error && Number.isFinite(error.n) ? error.n : 1,
         id: messageId(code),
-        text: kidText(code)
+        text: withStatus(kidText(code), error && error.detail)
     };
 };
 

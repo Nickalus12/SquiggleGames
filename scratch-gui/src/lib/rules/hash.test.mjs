@@ -55,6 +55,11 @@ ok('top-level block x is part of the hash', await hashRules(edited) !== base);
 const marked = JSON.parse(JSON.stringify(fixture.sprite));
 marked.extensionStorage.together.teams.push('Green');
 ok('the rules mark is part of the hash', await hashRules(marked) !== base);
+const level = [{id: 'l1', cols: 4, rows: 3, tile: 32, origin: [0, 0]}];
+ok('levels are part of the hash', await hashRules(fixture.sprite, 1, level) !== base);
+ok('no levels hashes as an empty list', await hashRules(fixture.sprite, 1, []) === base);
+ok('the opcodeSet is part of the hash', await hashRules(fixture.sprite, 2, []) !== base);
+ok('the opcodeSet defaults to the mark', rulesPayload(fixture.sprite).opcodeSet === 1);
 ok('hasRuleBlocks sees blocks', hasRuleBlocks(fixture.sprite) && !hasRuleBlocks({blocks: {}}));
 
 ok('rules-schema.json matches rules-schema.js', canonical(schemaJSON) === canonical(schemaModule));

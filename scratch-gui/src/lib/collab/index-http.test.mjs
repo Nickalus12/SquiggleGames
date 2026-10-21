@@ -71,12 +71,17 @@ const overlay = noopObject({
 const pages = new Map();
 const calls = [];
 const status = {};
+const rulesPuts = [];
 globalThis.fetch = async (url, init) => {
     calls.push({url, method: init.method, headers: init.headers});
     const path = url.replace('https://sq.test', '');
     if (status[path]) return new Response('', {status: status[path]});
     if (path === '/api/assets/have') return Response.json({missing: JSON.parse(init.body).md5ext});
     if (/^\/api\/assets\//.test(path)) return Response.json({ok: true});
+    if (/\/rules$/.test(path) && init.method === 'PUT') {
+        rulesPuts.push(JSON.parse(init.body));
+        return Response.json({hash: JSON.parse(init.body).hash, ok: true, errors: []});
+    }
     if (/\/pj$/.test(path) && init.method === 'PUT') {
         const text = await gunzipText(init.body);
         const sha = await sha256Hex(text);
@@ -410,6 +415,48 @@ section('with no room seq the snapshot still claims atSeq 0');
     ok('a frame goes out', await waitFor(() => snapshots().length > frames), snapshots().length);
     const frame = snapshots()[snapshots().length - 1];
     ok('it carries atSeq 0', frame && frame.atSeq === 0, frame);
+}
+
+section('the green flag puts the rules');
+{
+    const rules = sprite('Game Rules');
+    rules.extensionStorage = {together: {role: 'rules', v: 1}};
+    rules.blocks = {hat: {
+        opcode: 'event_whenflagclicked', next: null, parent: null, inputs: {}, fields: {},
+        shadow: false, topLevel: true, x: 0, y: 0
+    }};
+    await vm.addSprite(JSON.stringify(rules)).catch(() => null);
+    vm.runtime.emit('PROJECT_START');
+    ok('a rules PUT goes to the room', await waitFor(() => rulesPuts.length === 1), rulesPuts.length);
+    const put = rulesPuts[0] || {};
+    ok('it carries an integer opcodeSet matching the mark', put.opcodeSet === 1 &&
+        put.sprite && put.sprite.extensionStorage.together.opcodeSet === 1, put.opcodeSet);
+    ok('it hashes like the server', put.hash === await (await import('../rules/hash.js'))
+        .hashRules(put.sprite, put.opcodeSet, put.levels));
+    ok('the url names the room', calls.some(c => c.method === 'PUT' && c.url === 'https://sq.test/api/rooms/blue%20fox/rules'));
+    ok('the project is stamped after the PUT', await waitFor(() => vm.runtime.extensionStorage.together &&
+        vm.runtime.extensionStorage.together.rulesHash === put.hash));
+}
+
+section('game setup changes travel as kit-set');
+{
+    const {writeSetup} = await import('../rules/setup-model.js');
+    const rules = vm.runtime.targets.find(t => t.getName && t.getName() === 'Game Rules');
+    const before = sent.length;
+    writeSetup(vm, rules, {teams: ['Red', 'Blue']});
+    const kitSets = () => sent.slice(before).filter(m => m && m.type === 'kit-set');
+    const teams = kitSets().find(m => m.path.join() === 'teams');
+    ok('a changed mark key goes out as kit-set', teams && teams.scope === 'target' &&
+        teams.targetId === 'Game Rules' && teams.ext === 'together' && teams.value.join() === 'Red,Blue', kitSets());
+    ok('one frame per changed key', kitSets().every(m => m.path.length === 1) &&
+        new Set(kitSets().map(m => m.path[0])).size === kitSets().length);
+    const first = kitSets().length;
+    writeSetup(vm, rules, {teams: ['Red', 'Blue']});
+    ok('an unchanged mark sends nothing', kitSets().length === first);
+    emit('kit-set', {type: 'kit-set', scope: 'target', targetId: 'Game Rules', ext: 'together', path: ['teams'],
+        value: ['Green'], from: 'pal', rs: 30});
+    ok('an inbound kit-set lands on the mark', rules.extensionStorage.together.teams.join() === 'Green');
+    ok('and is not sent back', kitSets().length === first);
 }
 
 section('a 4010 close ends the session with a reload message');

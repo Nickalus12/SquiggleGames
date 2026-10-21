@@ -15,8 +15,8 @@ const {ensureRulesSprite, RULES_NAME} = await import('./ensure-sprite.js');
 const {installRulesGuard, settle} = await import('./guard.js');
 const {ruleOpcodeSet, menuItems} = await import('./rule-blocks.js');
 const {filterCategories, tokenize, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
-const {createRulesStatus, kidText, parseRulesStatus} = await import('./status.js');
-const {buildRulesUpload, createRulesUploader, putRules} = await import('./package.js');
+const {createRulesStatus, kidText, parseRulesStatus, rulesStatus} = await import('./status.js');
+const {buildRulesUpload, createRulesUploader, putRules, uploadRules, OPCODE_SET} = await import('./package.js');
 const TogetherBlocks = (await import('../libraries/extensions/together/index.js')).default;
 const expansions = {
     squigglescores: (await import('../libraries/extensions/squigglescores/index.js')).default,
@@ -133,10 +133,13 @@ target.blocks.createBlock({
     inputs: {}, fields: {}, shadow: false, topLevel: true, x: 10, y: 20
 });
 const body = await buildRulesUpload(vm);
-ok('upload carries format, opcodeSet, hash and sprite', body && body.format === 1 &&
-    body.opcodeSet === 'sq-rules-1' && /^[0-9a-f]{64}$/.test(body.hash) && body.sprite.blocks.hat);
-ok('project stamp records the hash', vm.runtime.extensionStorage[RULES_KEY].rulesHash === body.hash);
-ok('the stamp stays off the rules sprite', !target.extensionStorage[RULES_KEY].rulesHash);
+ok('upload carries an integer opcodeSet, hash, sprite and levels', body && Number.isInteger(body.opcodeSet) &&
+    body.opcodeSet === OPCODE_SET && /^[0-9a-f]{64}$/.test(body.hash) && body.sprite.blocks.hat &&
+    Array.isArray(body.levels) && body.levels.length === 0, body && Object.keys(body));
+ok('no format field travels', body && !('format' in body));
+ok('the sprite mark carries the same opcodeSet', body.sprite.extensionStorage[RULES_KEY].opcodeSet === body.opcodeSet &&
+    body.sprite.extensionStorage[RULES_KEY].role === 'rules');
+ok('nothing is stamped before the PUT', !(vm.runtime.extensionStorage[RULES_KEY] || {}).rulesHash);
 ok('a rebuild hashes the same', (await buildRulesUpload(vm)).hash === body.hash);
 const calls = [];
 const fakeFetch = (url, init) => {
@@ -146,10 +149,38 @@ const fakeFetch = (url, init) => {
 await putRules({slug: 'cat-maze', body, fetchImpl: fakeFetch});
 ok('PUT /api/rooms/<slug>/rules with JSON', calls[0].url === '/api/rooms/cat-maze/rules' &&
     calls[0].init.method === 'PUT' && JSON.parse(calls[0].init.body).hash === body.hash);
+const sentKeys = Object.keys(JSON.parse(calls[0].init.body)).sort()
+    .join();
+ok('the body is opcodeSet, hash, sprite and levels', sentKeys === 'hash,levels,opcodeSet,sprite', sentKeys);
+
+const failing = () => Promise.resolve({ok: false, status: 403, json: () => Promise.resolve({error: 'forbidden'})});
+const refused = await uploadRules({vm, slug: 'cat-maze', fetchImpl: failing}).then(() => null, e => e.status);
+ok('a failed PUT rejects with its status', refused === 403, refused);
+ok('a failed PUT shows its status', rulesStatus.get().compile.errors[0].code === 'upload-failed' &&
+    /\(403\)/.test(rulesStatus.get().compile.errors[0].text), rulesStatus.get().compile);
+ok('a failed PUT stamps nothing', !(vm.runtime.extensionStorage[RULES_KEY] || {}).rulesHash);
+await uploadRules({vm, slug: 'cat-maze', fetchImpl: fakeFetch});
+ok('a good PUT stamps the project with the hash', vm.runtime.extensionStorage[RULES_KEY].rulesHash === body.hash &&
+    vm.runtime.extensionStorage[RULES_KEY].opcodeSet === OPCODE_SET);
+ok('the stamp stays off the rules sprite', !target.extensionStorage[RULES_KEY].rulesHash);
+calls.length = 1;
+
+target.extensionStorage[RULES_KEY] = Object.assign({}, target.extensionStorage[RULES_KEY], {opcodeSet: OPCODE_SET + 1});
+const callsBefore = calls.length;
+const newer = await uploadRules({vm, slug: 'cat-maze', fetchImpl: fakeFetch, raise: true});
+ok('a mark newer than the tab is not uploaded', newer && newer.newer === true && calls.length === callsBefore);
+ok('it shows the opcode-set text at once', rulesStatus.get().compile.errors[0].code === 'opcode-set');
+ok('an edit never lowers the mark', target.extensionStorage[RULES_KEY].opcodeSet === OPCODE_SET + 1);
+target.extensionStorage[RULES_KEY] = Object.assign({}, target.extensionStorage[RULES_KEY], {opcodeSet: 0});
+const raised = await buildRulesUpload(vm, {raise: true});
+ok('an edit raises an older mark to the newest set', raised.opcodeSet === OPCODE_SET &&
+    target.extensionStorage[RULES_KEY].opcodeSet === OPCODE_SET);
+ok('the hash covers the raised mark', raised.hash === body.hash);
 let clock = 0;
 const timers = [];
+let editRights = true;
 const uploader = createRulesUploader({
-    vm, slug: 'cat-maze', fetchImpl: fakeFetch,
+    vm, slug: 'cat-maze', fetchImpl: fakeFetch, canEdit: () => editRights,
     now: () => clock,
     setTimer: (fn, ms) => {
         timers.push({fn, at: clock + ms});
@@ -169,6 +200,25 @@ uploader.edited();
 clock = 1000;
 await timers[2].fn();
 ok('an unchanged hash is not uploaded again', calls.length === 2);
+target.blocks.createBlock({
+    id: 'hat2', opcode: 'together_ruleWhenGameStarts', next: null, parent: null,
+    inputs: {}, fields: {}, shadow: false, topLevel: true, x: 10, y: 120
+});
+editRights = false;
+uploader.edited();
+clock = 1500;
+await timers[timers.length - 1].fn();
+ok('without edit rights nothing goes up', calls.length === 2);
+editRights = true;
+uploader.edited();
+clock = 1700;
+const gapTimer = timers[timers.length - 1];
+await gapTimer.fn();
+ok('a changed hash goes up', calls.length === 3, calls.length);
+uploader.sendNow();
+await Promise.resolve();
+ok('a second send inside 500 ms waits its turn', calls.length === 3 && timers[timers.length - 1].at === 2200,
+    timers[timers.length - 1]);
 
 section('rules-status');
 const status = createRulesStatus();

@@ -1,6 +1,6 @@
 export default {
     v: 1,
-    opcodeSet: 'sq-rules-1',
+    opcodeSet: 1,
     limits: {
         spriteBytes: 262144,
         programBytes: 262144,

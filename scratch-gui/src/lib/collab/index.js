@@ -17,7 +17,9 @@ import showLogin from './login';
 import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
-import {installProjectSeam} from './project-seam.js';
+import {installProjectSeam, isRulesTarget} from './project-seam.js';
+import {createRulesUploader} from '../rules/package.js';
+import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes} from './hash.js';
 import {showPortabilityNote} from '../../components/squiggle-only-notice';
@@ -655,6 +657,31 @@ const useHttpSnapshots = (on, room) => {
     if (state.vm && state.vm.runtime) attachAssetStore(state.vm.runtime.storage, state.snapshotHttp);
 };
 
+const rulesUploader = () => {
+    if (!state.httpSnapshots || !state.snapshotHttpRoom || !state.vm) return null;
+    if (!state.rulesUploader || state.rulesUploaderRoom !== state.snapshotHttpRoom) {
+        if (state.rulesUploader) state.rulesUploader.dispose();
+        state.rulesUploader = createRulesUploader({
+            vm: state.vm,
+            slug: state.snapshotHttpRoom,
+            base: showLogin.apiBase(),
+            canEdit: canWrite
+        });
+        state.rulesUploaderRoom = state.snapshotHttpRoom;
+    }
+    return state.rulesUploader;
+};
+
+const rulesEdited = () => {
+    const uploader = canWrite() && rulesUploader();
+    if (uploader) uploader.edited();
+};
+
+const rulesGameStart = () => {
+    const uploader = canWrite() && rulesUploader();
+    if (uploader) uploader.sendNow();
+};
+
 const zipProject = async () => {
     try {
         return await state.vm.saveProjectSb3('base64');
@@ -1154,7 +1181,10 @@ const applySnapshot = async msg => {
     // loaded (do this even if another snapshot is pending / paint-deferred).
     const queued = state.queuedBlockEvents.splice(0);
     const orphans = state.orphanBlockEvents.splice(0);
-    for (let i = 0; i < queued.length; i++) applyBlockEvent(queued[i]);
+    for (let i = 0; i < queued.length; i++) {
+        if (queued[i].type === 'kit-set') applyRemoteKitSet(queued[i]);
+        else applyBlockEvent(queued[i]);
+    }
     for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
 
     // A newer snapshot arrived while we were loading — apply it next (or
@@ -1624,6 +1654,8 @@ const wrapVm = vm => {
         return result;
     };
 
+    vm.runtime.on('PROJECT_START', rulesGameStart);
+    vm.runtime.on(KIT_SET_EVENT, sendKitSet);
     vm.runtime.on('PROJECT_RUN_START', () => {
         state.projectRunning = true;
         if (state.active && !state.applyingRemote) sendPresence({status: '▶ playing'});
@@ -1714,6 +1746,7 @@ const onWorkspaceEvent = e => {
     } catch (err) {
         return;
     }
+    if (isRulesTarget(state.vm.editingTarget)) rulesEdited();
     // Dragging a stack fires dozens of move events — keep only the latest per block.
     if (e.type === 'move' && json.blockId) {
         state.pendingBlockMoves.set(json.blockId, {type: 'block-event', target, event: json});
@@ -1905,6 +1938,7 @@ const endSession = text => {
     }
     clearTimeout(state.snapshotTimer);
     state.snapshotTimer = null;
+    if (state.rulesUploader) state.rulesUploader.dispose();
     overlay.setConnected(false);
     applyEditability();
 };
@@ -1923,6 +1957,40 @@ const nameClash = (kind, name, fromPeer) => {
             requestResync(`${kind} name clash: ${name}`);
         }
     }, 3000);
+};
+
+const kitSetTarget = (name, ext) => {
+    const named = findTargetByName(name);
+    if (named || ext !== 'together' || !state.vm) return named;
+    return state.vm.runtime.targets.find(t => t.isOriginal && isRulesTarget(t)) || null;
+};
+
+const applyRemoteKitSet = msg => {
+    if (state.snapshotLoading) {
+        if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
+        else requestResync('kit-set replay queue full');
+        return;
+    }
+    if (!applyKitSet(state.vm.runtime, msg, kitSetTarget)) {
+        log.warn('[collab] kit-set not applied', msg && msg.scope, msg && msg.ext);
+    }
+};
+
+const sendKitSet = change => {
+    if (!canWrite() || !state.httpSnapshots || !change) return;
+    const frame = kitSetFrame({
+        scope: change.scope,
+        targetId: change.target && typeof change.target.getName === 'function' ? change.target.getName() : null,
+        ext: change.ext,
+        path: change.path,
+        value: change.value
+    });
+    if (!frame || !fitsKitSet(frame)) {
+        scheduleSnapshot(false);
+        return;
+    }
+    client.send(frame);
+    scheduleSnapshot(true);
 };
 
 const applyBlockEvent = msg => {
@@ -2891,6 +2959,7 @@ const wireSocket = () => {
     client.on('block-event', applyBlockEvent);
     client.on('sprite-info', applySpriteInfo);
     client.on('vm-action', applyVmAction);
+    client.on('kit-set', applyRemoteKitSet);
     client.on('presence', msg => overlay.setPeerPresence(msg.from, msg));
     client.on('cursor', msg => overlay.setPeerCursor(
         msg.from,

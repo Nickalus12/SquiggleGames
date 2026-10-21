@@ -1,4 +1,5 @@
 import {RULES_KEY, RULES_ROLE, RULES_VERSION} from '../collab/project-seam.js';
+import {announceKitSet} from '../collab/kit-set.js';
 import {schema} from './rule-blocks.js';
 
 const LIMITS = Object.freeze({
@@ -87,12 +88,16 @@ const readSetup = target => {
 
 const writeSetup = (vm, target, setup) => {
     const clean = normalizeSetup(setup, setupVariables(target));
-    const mark = Object.assign({}, target.extensionStorage[RULES_KEY], clean, {
+    const before = target.extensionStorage[RULES_KEY];
+    const mark = Object.assign({}, before, clean, {
         role: RULES_ROLE,
         v: RULES_VERSION
     });
     target.extensionStorage[RULES_KEY] = mark;
-    if (vm && vm.runtime && typeof vm.runtime.emitProjectChanged === 'function') vm.runtime.emitProjectChanged();
+    if (vm && vm.runtime) {
+        announceKitSet(vm.runtime, {scope: 'target', target, ext: RULES_KEY, before, after: mark});
+        if (typeof vm.runtime.emitProjectChanged === 'function') vm.runtime.emitProjectChanged();
+    }
     return mark;
 };
 
