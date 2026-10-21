@@ -176,13 +176,13 @@ const createScenes = runtime => {
         }
     };
 
-    const swap = scene => {
+    const swap = (scene, quiet) => {
         const stage = runtime.getTargetForStage();
         if (stage && scene.backdrop) {
             const at = stage.getCostumeIndexByName(scene.backdrop);
             if (at !== -1 && at !== stage.currentCostume) {
                 stage.setCostume(at);
-                runtime.startHats('event_whenbackdropswitchesto', {BACKDROP: stage.getCostumes()[at].name});
+                if (!quiet) runtime.startHats('event_whenbackdropswitchesto', {BACKDROP: stage.getCostumes()[at].name});
             }
         }
         let world = peekWorld(runtime);
@@ -281,6 +281,27 @@ const createScenes = runtime => {
             if (!scenes.length) return Promise.resolve(null);
             const at = current().index;
             return switchTo((at + 1) % scenes.length, options);
+        },
+        preview (key) {
+            const at = indexOf(key);
+            if (at === -1) return null;
+            const scenes = data();
+            const scene = scenes.scenes[at];
+            state.currentId = scene.id;
+            const world = swap(scene, true);
+            resetCamera(scene, world);
+            applySpawns(scene, scenes.allScenes);
+            emitter.emit('current', {index: at, scene});
+            return scene;
+        },
+        thumbnail (scene) {
+            const stage = runtime.getTargetForStage();
+            if (!stage || !scene) return '';
+            const want = lower(scene.backdrop);
+            const costume = stage.getCostumes().find(c => lower(c.name) === want) ||
+                stage.getCostumes()[stage.currentCostume];
+            if (!costume || !costume.asset || typeof costume.asset.encodeDataURI !== 'function') return '';
+            return costume.asset.encodeDataURI();
         },
         resetToSpawns () {
             const scene = current().scene;

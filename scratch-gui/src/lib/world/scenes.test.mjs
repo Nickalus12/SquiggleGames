@@ -248,6 +248,16 @@ ok('scenes save in runtime extension storage', saved.extensionStorage.squigglesc
     saved.extensionStorage.squigglescenes.allScenes.length === 2);
 ok('a scene for a name that does not exist does nothing', (await runUntil(scenes.switchTo('Nope'))).value === null);
 
+section('editor preview');
+const hatsBefore = log().length;
+phases.length = 0;
+named('Hero').setXY(1, 1);
+ok('preview applies a scene with no hats or phases', scenes.preview('Two').name === 'Two' && phases.length === 0 &&
+    named('Hero').x === 10 && stage.currentCostume === 1);
+runtime._step();
+ok('preview starts no hat scripts', log().length === hatsBefore);
+ok('a scene without a costume asset has no thumbnail', scenes.thumbnail(scenes.list()[0]) === '');
+
 section('project load resets the current scene');
 await vm.loadProject(JSON.stringify(project()));
 ok('current scene clears on load', getScenes(vm.runtime).current().index === -1);
