@@ -2,6 +2,16 @@
  * Runs as a builtin (main thread) so it can reach window.SquiggleNet.
  * Talks only to that bridge; never opens its own socket. */
 
+import {installRuleMethods, ruleBlocks, ruleMenus} from '../../../rules/rule-blocks.js';
+import {installRulesGuard} from '../../../rules/guard.js';
+import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
+import {
+    applyTick,
+    createGameState,
+    gameValue as readGameValue,
+    playerValue as readPlayerValue
+} from '../../../together2/game-state.js';
+
 // eslint-disable-next-line max-len
 const menuIconURI = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI4IiBmaWxsPSIjOTk2NmZmIi8+PGNpcmNsZSBjeD0iMTMiIGN5PSIxNCIgcj0iNSIgZmlsbD0iI2ZmZiIvPjxjaXJjbGUgY3g9IjI3IiBjeT0iMTQiIHI9IjUiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNNS41IDMxYzAtNC4yIDMuNC03LjUgNy41LTcuNWgwYzEuNCAwIDIuNy40IDMuOCAxLjFDMTggMjIuOSAxOS45IDIyIDIyIDIyaDBjNC4xIDAgNy41IDMuMyA3LjUgNy41VjMzSDUuNXYtMnoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
 
@@ -57,6 +67,10 @@ class TogetherBlocks {
         this._lastLeaver = '';
         this._unsubs = [];
         this._bound = false;
+        this._game = createGameState();
+        installRuleMethods(this, 'together');
+        const vm = runtime.extensionManager && runtime.extensionManager.vm;
+        if (vm) installRulesGuard(vm);
 
         /*
          * Incoming messages wait here and are handed to hats one per frame.
@@ -85,6 +99,8 @@ class TogetherBlocks {
         this._onGameState = this._onGameState.bind(this);
         this._onPeerJoined = this._onPeerJoined.bind(this);
         this._onPeerLeft = this._onPeerLeft.bind(this);
+        this._onTick = this._onTick.bind(this);
+        this._onGameEnded = this._onGameEnded.bind(this);
         this._onBridgeReady = this._onBridgeReady.bind(this);
         this._onStep = this._onStep.bind(this);
         this._onDisposed = this._onDisposed.bind(this);
@@ -217,6 +233,8 @@ class TogetherBlocks {
         this._unsubs.push(net.on('game-state', this._onGameState));
         this._unsubs.push(net.on('peer-joined', this._onPeerJoined));
         this._unsubs.push(net.on('peer-left', this._onPeerLeft));
+        if (typeof net.onTick === 'function') this._unsubs.push(net.onTick(this._onTick));
+        this._unsubs.push(net.on('game-ended', this._onGameEnded));
         // Seed from bridge cache in case game-state replay already fired.
         const vars = net.sharedVars;
         if (vars) {
@@ -275,6 +293,27 @@ class TogetherBlocks {
         this._lastMessageValue = '';
         this._lastJoiner = '';
         this._lastLeaver = '';
+        this._game = createGameState();
+    }
+
+    _onTick (tick) {
+        const result = applyTick(this._game, tick);
+        for (const event of result.events) {
+            const name = str(event.n);
+            if (name && event.f === 0) this._deliverGame(name, str(event.v));
+        }
+        return result;
+    }
+
+    _onGameEnded () {
+        this._game = createGameState();
+    }
+
+    _deliverGame (name, value) {
+        const m = {name, value};
+        this._lastMessageName = name;
+        this._lastMessageValue = value;
+        this._tagThreads(this.runtime.startHats('together_whenGameSays', {TEXT: name}), m);
     }
 
     _onGame (msg) {
@@ -324,9 +363,13 @@ class TogetherBlocks {
             blockIconURI: menuIconURI,
             blocks: [
                 {
+                    blockType: 'label',
+                    text: 'Messages'
+                },
+                {
                     opcode: 'broadcastGameMessage',
                     blockType: 'command',
-                    text: 'broadcast game message [NAME] with [VALUE]',
+                    text: 'send [NAME] to everyone with [VALUE]',
                     arguments: {
                         NAME: {
                             type: 'string',
@@ -341,7 +384,7 @@ class TogetherBlocks {
                 {
                     opcode: 'whenGameMessage',
                     blockType: 'event',
-                    text: 'when I receive game message [NAME]',
+                    text: 'when someone sends [NAME]',
                     isEdgeActivated: false,
                     shouldRestartExistingThreads: true,
                     arguments: {
@@ -365,23 +408,26 @@ class TogetherBlocks {
                 {
                     opcode: 'whenAnyGameMessage',
                     blockType: 'event',
-                    text: 'when I receive any game message',
+                    text: 'when someone sends anything',
                     isEdgeActivated: false,
                     shouldRestartExistingThreads: true
                 },
                 {
                     opcode: 'gameMessageName',
                     blockType: 'reporter',
-                    text: 'game message name',
+                    text: 'message name',
                     disableMonitor: true
                 },
                 {
                     opcode: 'gameMessageValue',
                     blockType: 'reporter',
-                    text: 'game message value',
+                    text: 'message value',
                     disableMonitor: false
                 },
-                '---',
+                {
+                    blockType: 'label',
+                    text: 'Shared variables'
+                },
                 {
                     opcode: 'setSharedVariable',
                     blockType: 'command',
@@ -423,7 +469,10 @@ class TogetherBlocks {
                         }
                     }
                 },
-                '---',
+                {
+                    blockType: 'label',
+                    text: 'Room'
+                },
                 {
                     opcode: 'myPlayerName',
                     blockType: 'reporter',
@@ -469,9 +518,153 @@ class TogetherBlocks {
                     opcode: 'connected',
                     blockType: 'Boolean',
                     text: 'connected to room?'
+                },
+                {
+                    blockType: 'label',
+                    text: 'Game server'
+                },
+                {
+                    opcode: 'tellGame',
+                    blockType: 'command',
+                    text: 'tell the game [NAME] with [VALUE]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            defaultValue: 'jump'
+                        },
+                        VALUE: {
+                            type: 'string',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'whenGameSays',
+                    blockType: 'event',
+                    text: 'when the game says [EVENT]',
+                    isEdgeActivated: false,
+                    shouldRestartExistingThreads: true,
+                    arguments: {
+                        EVENT: {
+                            type: 'string',
+                            defaultValue: 'hello'
+                        }
+                    }
+                },
+                {
+                    opcode: 'gameValue',
+                    blockType: 'reporter',
+                    text: 'game value [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            menu: 'gameValues',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'myPlayerValue',
+                    blockType: 'reporter',
+                    text: 'my player value [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: 'string',
+                            menu: 'playerValues',
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'gameRound',
+                    blockType: 'reporter',
+                    text: 'round'
+                },
+                {
+                    opcode: 'myTeam',
+                    blockType: 'reporter',
+                    text: 'my team'
+                },
+                {
+                    opcode: 'timeLeft',
+                    blockType: 'reporter',
+                    text: 'time left on [TIMER]',
+                    arguments: {
+                        TIMER: {
+                            type: 'string',
+                            menu: 'timers',
+                            defaultValue: 'timer'
+                        }
+                    }
+                },
+                {
+                    opcode: 'inGame',
+                    blockType: 'Boolean',
+                    text: 'in a game?'
+                },
+                {
+                    blockType: 'button',
+                    text: 'Open Game Rules',
+                    func: 'openGameRules'
+                },
+                {
+                    blockType: 'label',
+                    text: 'Game Rules'
                 }
-            ]
+            ].concat(ruleBlocks('together')),
+            menus: ruleMenus('together')
         };
+    }
+
+    openGameRules () {
+        const vm = this.runtime.extensionManager && this.runtime.extensionManager.vm;
+        if (!vm) return Promise.resolve(null);
+        return ensureRulesSprite(vm).then(target => {
+            vm.setEditingTarget(target.id);
+            return target;
+        });
+    }
+
+    tellGame (args) {
+        this._ensureBound();
+        const name = str(args.NAME);
+        if (!name) return;
+        const net = getNet();
+        if (!net || !net.inGame || typeof net.sendInput !== 'function') return;
+        net.sendInput({g: {action: 'input', name, value: str(args.VALUE)}});
+    }
+
+    gameValue (args) {
+        return readGameValue(this._game, str(args.NAME));
+    }
+
+    myPlayerValue (args) {
+        const net = getNet();
+        const slot = net && net.slot;
+        if (slot === null || typeof slot === 'undefined') return '';
+        return readPlayerValue(this._game, slot, str(args.NAME));
+    }
+
+    gameRound () {
+        return this._game.round;
+    }
+
+    myTeam () {
+        const net = getNet();
+        const slot = net && net.slot;
+        if (slot === null || typeof slot === 'undefined') return '';
+        return str(this._game.teams[String(slot)]);
+    }
+
+    timeLeft (args) {
+        const left = Number(this._game.timers[str(args.TIMER)]);
+        return Number.isFinite(left) ? Math.max(0, left) : 0;
+    }
+
+    inGame () {
+        this._ensureBound();
+        const net = getNet();
+        return !!(net && net.inGame);
     }
 
     broadcastGameMessage (args) {
