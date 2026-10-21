@@ -22,6 +22,7 @@ import {createRulesUploader} from '../rules/package.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes} from './hash.js';
+import {DRIFT_REPAIR_MAX, planDriftRepair, replaceBlocks} from './drift.js';
 import {showPortabilityNote} from '../../components/squiggle-only-notice';
 import {
     MD5EXT,
@@ -1840,11 +1841,81 @@ const requestResync = why => {
     console.warn('[collab] dropped relayed edits, resyncing:', why);
 };
 
+const spritesBelow = target => {
+    if (typeof target.getLayerOrder !== 'function') return null;
+    const layer = target.getLayerOrder();
+    if (typeof layer !== 'number') return null;
+    return state.vm.runtime.targets.filter(t => t !== target && t.isOriginal && !t.isStage &&
+        typeof t.getLayerOrder === 'function' && t.getLayerOrder() < layer).length;
+};
+
+const replaceDriftedTarget = async (local, remote) => {
+    const vm = state.vm;
+    const id = local.id;
+    const index = vm.runtime.targets.indexOf(local);
+    const below = spritesBelow(local);
+    const prevEditing = vm.editingTarget;
+    const before = new Set(vm.runtime.targets.map(t => t.id));
+    let adding;
+    state.applyingRemote++;
+    state.installingRemote++;
+    try {
+        vm.deleteSprite(id);
+        adding = vm.addSprite(JSON.stringify(remote));
+    } finally {
+        state.applyingRemote--;
+    }
+    try {
+        await adding;
+    } finally {
+        state.installingRemote--;
+    }
+    const added = vm.runtime.targets.find(t => t.isOriginal && !t.isStage && !before.has(t.id));
+    if (!added) throw new Error('drift repair lost the target');
+    added.id = id;
+    rebuildTargetIndex();
+    state.applyingRemote++;
+    try {
+        const at = vm.runtime.targets.indexOf(added);
+        if (index >= 0 && at !== index && typeof vm.reorderTarget === 'function') vm.reorderTarget(at, index);
+        if (below !== null && typeof added.goToBack === 'function') {
+            added.goToBack();
+            added.goForwardLayers(below);
+        }
+        const editing = prevEditing === local ? added : prevEditing;
+        if (editing && vm.runtime.targets.includes(editing)) vm.setEditingTarget(editing.id);
+    } finally {
+        state.applyingRemote--;
+    }
+};
+
+const repairDrift = async (pointer, off) => {
+    const text = await state.snapshotHttp.fetchProject(pointer.sha);
+    const steps = planDriftRepair(off, JSON.parse(state.vm.toJSON()), JSON.parse(text));
+    if (!steps) throw new Error('drift too wide to repair');
+    for (const step of steps) {
+        const local = findTargetByName(step.name);
+        if (!local) throw new Error('drift target gone');
+        if (step.kind === 'blocks') replaceBlocks(local, step.remote.blocks);
+        else await replaceDriftedTarget(local, step.remote);
+    }
+    if (steps.some(step => step.kind === 'blocks')) state.vm.refreshWorkspace();
+    return steps.length;
+};
+
 const checkDrift = pointer => {
-    if (!state.vm || !pointer.hashes || typeof pointer.hashes !== 'object') return;
-    projectHashes(state.vm.toJSON()).then(local => {
+    if (!state.vm || !pointer.hashes || typeof pointer.hashes !== 'object') return Promise.resolve();
+    return projectHashes(state.vm.toJSON()).then(local => {
         const off = driftedTargets(local, pointer.hashes);
-        if (off.length) requestResync(`drift in ${off.length} of ${Object.keys(local).length}`);
+        if (!off.length) return null;
+        if (off.length > DRIFT_REPAIR_MAX || !state.snapshotHttp) {
+            requestResync(`drift in ${off.length} of ${Object.keys(local).length}`);
+            return null;
+        }
+        return repairDrift(pointer, off).catch(e => {
+            log.warn('[collab] drift repair failed', off.length, e && e.message);
+            requestResync('drift repair failed');
+        });
     }, () => requestResync('drift check failed'));
 };
 

@@ -402,7 +402,64 @@ section('a replay welcome keeps the local project and checks drift');
     ok('a drifted target asks the room for a resync', resynced);
     ok('matching hashes asked for nothing before it',
         sent.slice(sentBefore).filter(m => m && m.type === 'resync').length === 1);
-    ok('the head is not fetched when the ring replays', gets().length === getsBefore, gets().slice(getsBefore));
+    ok('the head is fetched once to repair the drift', gets().length === getsBefore + 1, gets().slice(getsBefore));
+}
+
+const foxOf = json => json.targets.find(t => t.name === 'Fox');
+
+const driftWelcome = async (remote, label) => {
+    const text = JSON.stringify(remote);
+    const sha = await sha256Hex(text);
+    pages.set(sha, await gzip(text));
+    const {projectHashes} = await import('./hash.js');
+    const hashes = await projectHashes(text);
+    const sentBefore = sent.length;
+    const realNow = Date.now;
+    Date.now = () => realNow() + 600000;
+    client.rs = 30;
+    emit('welcome', welcome({proto: 2, replay: true, rs: 30, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}],
+        version: 11, snap: {sha, size: text.length, version: 11, atSeq: 30, hashes}}));
+    const local = async () => (await projectHashes(vm.toJSON())).Fox;
+    let repaired = false;
+    const end = realNow() + 3000;
+    while (!repaired && realNow() < end) {
+        repaired = await local() === hashes.Fox;
+        if (!repaired) await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    await tick();
+    Date.now = realNow;
+    ok(`${label}: the drifted target matches the head`, repaired);
+    const after = sent.slice(sentBefore).filter(m => m && m.type !== 'presence');
+    ok(`${label}: nothing is relayed and no resync is asked`, after.length === 0, after);
+};
+
+
+section('a replay welcome repairs a target whose blocks drifted');
+{
+    const remote = JSON.parse(vm.toJSON());
+    foxOf(remote).blocks = {
+        a: {opcode: 'motion_movesteps', next: null, parent: null, inputs: {STEPS: [1, [4, '10']]}, fields: {},
+            shadow: false, topLevel: true, x: 0, y: 0}
+    };
+    const foxId = vm.runtime.targets.find(t => t.getName && t.getName() === 'Fox').id;
+    await driftWelcome(remote, 'blocks');
+    const fox = vm.runtime.targets.find(t => t.getName && t.getName() === 'Fox');
+    ok('the target keeps its id', fox.id === foxId);
+    ok('the block is on the target', Object.values(fox.blocks._blocks).some(b => b.opcode === 'motion_movesteps'));
+}
+
+section('a replay welcome replaces a target that drifted beyond its blocks');
+{
+    const remote = JSON.parse(vm.toJSON());
+    foxOf(remote).variables = {score: ['score', 3]};
+    const foxId = vm.runtime.targets.find(t => t.getName && t.getName() === 'Fox').id;
+    const count = vm.runtime.targets.length;
+    await driftWelcome(remote, 'target');
+    const fox = vm.runtime.targets.find(t => t.getName && t.getName() === 'Fox');
+    ok('the replaced target keeps its id', fox && fox.id === foxId, fox && fox.id);
+    ok('the head variable is on it', fox && fox.variables.score && fox.variables.score.value === 3);
+    ok('no target is added or lost', vm.runtime.targets.length === count, vm.runtime.targets.length);
+    ok('the blocks came across too', Object.values(fox.blocks._blocks).some(b => b.opcode === 'motion_movesteps'));
 }
 
 section('with no room seq the snapshot still claims atSeq 0');
