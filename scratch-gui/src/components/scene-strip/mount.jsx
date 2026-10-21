@@ -9,6 +9,7 @@ import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode, watchLayoutMode} from '../..
 import SqIcon from '../sq-icon';
 import {addTopBarItem, closeSheet, openSheet} from '../phone-shell/phone-slots';
 import SceneStrip from './scene-strip.jsx';
+import ScenesButton from './scenes-button.jsx';
 import styles from './scene-strip.css';
 
 const SLOT_ID = 'sq-stage-header-slot';
@@ -102,7 +103,7 @@ const installSceneStrip = ({runtime, controller, win = window}) => {
             if (!rendered) {
                 ReactDOM.render(
                     <IntlProvider locale="en">
-                        <SceneStrip controller={controller} />
+                        <ScenesButton controller={controller} />
                     </IntlProvider>,
                     container
                 );
