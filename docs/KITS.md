@@ -57,3 +57,21 @@ The Game Rules sprite is marked with `target.extensionStorage.together = {role: 
 ## Tests
 
 From `scratch-gui/`: `node src/lib/world/world-seams.test.mjs`, `node src/lib/kits/registry.test.mjs`, `node src/lib/collab/project-seam.test.mjs`. The world contract test fails if a scratch-vm or scratch-render bump moves anything a seam wraps. CI also fails if the gzipped editor grows more than 150 KB, or the player more than 60 KB, over `scratch-gui/size-baseline.json` (`node size-check.mjs` after a production build).
+
+## Kits
+
+| Kit | Reads | Writes |
+|---|---|---|
+| Animate (`squiggleanimate`) | `onBeforeExecute` for its clock, `camera()` to offer camera properties | sprite x, y, size, direction, ghost, costume; world `camera.set` and `setZoom` |
+| VFX (`thunderboltvfx`) | `camera()`, `onAfterExecute` | world `camera.shake` and `setZoom` (zoom punch) when a camera is active, else a CSS transform on the stage canvas; flash and vignette stay screen space |
+| Particles (`thunderboltparticlesystem`) | `toView`, `onAfterExecute` | its overlay canvas; screen shake goes to world `camera.shake` when a camera is active |
+| Text (`thunderbolttext`) | `toView`, `onAfterExecute` | its overlay canvas |
+| Health bars (`thunderbolthealthbars`) | `toView`, `onAfterExecute` | its overlay canvas |
+
+- The four overlay kits share `extensions/vfx/overlay.js`. It mounts one canvas over the stage and redraws in a microtask after `onAfterExecute`, so `toView` reads the view the stage has just drawn. With nothing live it sleeps and draws nothing.
+- Particles live in world units. Text and bars start pinned to the screen as in 1.8; `stick text|bar [ID] to me` follows a sprite through the camera and scales with the zoom. `pin ... to screen` and `set position` detach them.
+- The kits read the camera through `peekWorld(runtime).camera` and never call `getWorld`, so a project without the World kit gets no world state.
+- None of these kits writes `extensionStorage`. A 1.8 project saves byte for byte. Co-play snapshots carry project JSON, so tween, overlay and font state stays local to each player and never enters sync.
+- Text fonts ship as latin woff2 under `static/fonts/textengine` with their licences and load through `FontFace` when a project picks one.
+- Known gap: with interpolation on, overlays redraw at step rate against the view from the last stage draw.
+- Tests: `node src/lib/libraries/extensions/squiggleanimate/animate.test.mjs` and `overlays.test.mjs` in the same folder.
