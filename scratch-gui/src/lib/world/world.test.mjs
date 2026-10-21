@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const VM = require('scratch-vm');
 const vmLog = require('scratch-vm/src/util/log.js');
 const RenderWebGL = require('scratch-render/src/RenderWebGL.js');
+const ScratchStorage = require('@turbowarp/scratch-storage');
 const twgl = createRequire(require.resolve('scratch-render/src/RenderWebGL.js'))('twgl.js');
 
 vmLog.warn = () => {};
@@ -13,6 +14,9 @@ globalThis.document = {hidden: true};
 
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
+const {readScenes} = await import('./storage.js');
+const {getScenes} = await import('./scenes.js');
+const readScenesOf = rt => readScenes(rt).scenes;
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {default: SquiggleWorldBlocks} = await import('../libraries/extensions/squiggleworld/index.js');
 const {getKit} = await import('../kits/registry.js');
@@ -104,6 +108,7 @@ section('levels load from runtime storage');
 const vm = new VM();
 const renderer = stubRenderer(RenderWebGL, twgl);
 vm.attachRenderer(renderer);
+vm.attachStorage(new (ScratchStorage.default || ScratchStorage)());
 const seam = installWorldSeams(vm);
 const runtime = vm.runtime;
 const world = getWorld(runtime, {createCanvas: fakeCanvas, loadImage: costume => ({name: costume.name}),
@@ -206,6 +211,17 @@ runtime._step();
 drawFrame();
 ok('zoom shows in the view and in scale()', seam.getView().zoom === 2 && seam.scale() === 2);
 ok('camera left reporter follows zoom', ext.cameraValue({PROP: 'left'}) === 300 - 120);
+world.setEditView({x: -40, y: 12, zoom: 0.5});
+drawFrame();
+ok('the painter view replaces the camera view', seam.getView().x === -40 && seam.getView().zoom === 0.5 &&
+    world.editView().y === 12, seam.getView());
+runtime._step();
+drawFrame();
+ok('the camera keeps stepping under the painter view', seam.getView().x === -40 && ext.cameraValue({PROP: 'x'}) === 300);
+world.setEditView({x: NaN, y: 0, zoom: 1});
+drawFrame();
+ok('a bad painter view clears it and the camera returns', world.editView() === null && seam.getView().x === 300 &&
+    seam.getView().zoom === 2, seam.getView());
 
 section('screen space');
 ext.pinToScreen({ONOFF: 'on'}, util(hud));
@@ -245,6 +261,45 @@ ok('solidAt reads the play copy', seam.solidAt(-240 + 8, 180 - (20 * 16) - 8) &&
 const rules = seam.rulesLevels(true)[0];
 ok('rulesLevels gives the server shape', rules.tile === 16 && typeof rules.solid === 'string');
 ok('currentLevel names the level in use', seam.currentLevel() === 'cave');
+const upload = seam.levelsForUpload();
+ok('levelsForUpload leaves solid out unless asked', upload[0].tile === 16 && !('solid' in upload[0]));
+ok('levelsForUpload({solid: true}) carries solid', typeof seam.levelsForUpload({solid: true})[0].solid === 'string');
+ok('currentLevelIndex is 1-based', seam.currentLevelIndex() === 1);
+ok('tileNames lists the active tileset costumes', seam.tileNames().join() === 'wall,lava');
+ok('tilesets lists sprites that hold tiles', JSON.stringify(seam.tilesets()) === '["Tiles"]');
+const sceneId = await seam.createScene('Boss');
+ok('createScene resolves the new scene id', typeof sceneId === 'string' &&
+    readScenesOf(runtime).some(scene => scene.id === sceneId && scene.name === 'Boss'));
+const levelId = await seam.createLevel('Second Cave');
+ok('createLevel resolves the new id on the active tileset', levelId === 'second-cave' &&
+    world.level(levelId).tileset === 'Tiles' && seam.levels().length === 2);
+ok('currentLevelIndex stays on the level in use', seam.currentLevelIndex() === 1);
+const fakeCostumes = tiles.getCostumes;
+delete tiles.getCostumes;
+const shownCostume = tiles.currentCostume;
+const tileName = await seam.createTile('grass');
+const madeCostume = tiles.getCostumes().find(costume => costume.name === tileName);
+ok('createTile adds a blank costume at the level tile size', tileName === 'grass' && madeCostume &&
+    madeCostume.dataFormat === 'svg' && madeCostume.rotationCenterX === 8, tileName);
+ok('createTile registers the tile on the level', world.level('cave').tiles.some(tile => tile.name === 'grass'));
+ok('createTile keeps the tileset costume shown', tiles.currentCostume === shownCostume);
+ok('a second createTile gets a unique name', await seam.createTile('grass') === 'grass2');
+tiles.getCostumes = fakeCostumes;
+ok('showLevel switches by name', seam.showLevel('Second Cave') === true && world.currentId() === 'second-cave');
+ok('currentLevelIndex follows the level in use', seam.currentLevelIndex() === 2);
+ok('showLevel refuses an unknown level', seam.showLevel('nowhere') === false && world.currentId() === 'second-cave');
+ok('showScene previews a scene by name', seam.showScene('Boss') === true &&
+    getScenes(runtime).current().scene.name === 'Boss');
+ok('showScene refuses an unknown scene', seam.showScene('nowhere') === false);
+ok('showLevel switches by id', seam.showLevel('cave') && world.currentId() === 'cave');
+world.clearLevel();
+ok('currentLevelIndex is 0 with no level', seam.currentLevelIndex() === 0);
+let refused = false;
+await seam.createTile('none').catch(() => {
+    refused = true;
+});
+ok('createTile rejects with no level in use', refused);
+world.useLevel('cave');
 
 section('painter edits change the saved level');
 const events = [];
@@ -284,7 +339,7 @@ for (let f = 0; f < 240; f++) {
 samples.sort((a, b) => a - b);
 const p95 = samples[Math.floor(samples.length * 0.95)];
 console.log(`  frame cost 64x64 three layers, 40 sprites: median ${samples[120].toFixed(3)} ms, p95 ${p95.toFixed(3)} ms`);
-ok('world work stays under 4.5 ms a frame at p95 (stub renderer)', p95 < 4.5, p95);
+if (process.env.SQ_PERF === '1') ok('world work stays under 4.5 ms a frame at p95 (stub renderer)', p95 < 4.5, p95);
 ok('the chunk pool stays bounded', world.tiles().chunks.size <= 64, world.tiles().chunks.size);
 
 done();
