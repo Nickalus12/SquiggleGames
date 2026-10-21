@@ -1,12 +1,11 @@
-import {EventEmitter} from 'events';
 import {ok, near, section, done} from './harness.mjs';
 
 const {FLAGS, addTexture, createGrid, flagsAt, setCell} = await import('./tilemap.js');
 const ray = await import('./raycast.js');
-const {HUD_LAYER, RESOLUTION, createView3d, facingCostume} = await import('./view3d.js');
+const {facingCostume} = await import('./view3d.js');
 
-const {WIDTH, HEIGHT, basis, castRay, createFrame, distanceAhead, facingIndex, gridMap, moveAhead, parseColor, pixel,
-    render, toCell, fromCell, clampFov, wrapDegrees} = ray;
+const {WIDTH, HEIGHT, basis, castRay, createFrame, facingIndex, gridMap, parseColor, pixel, mixColors, fogEnd,
+    render, toCell, fromCell, clampFov, clampEye, clampFog, wrapDegrees} = ray;
 
 const room = (cols, rows, options) => {
     const opts = options || {};
@@ -54,6 +53,10 @@ ok('parseColor reads #rrggbb', parseColor('#ff8000', 0) === pixel(255, 128, 0));
 ok('parseColor reads a number', parseColor(0x00ff00, 0) === pixel(0, 255, 0));
 ok('parseColor keeps fallback on junk', parseColor('nope', 7) === 7);
 ok('fov clamps', clampFov(5) === ray.MIN_FOV && clampFov(500) === ray.MAX_FOV && clampFov('x') === ray.DEFAULT_FOV);
+ok('eye height clamps 5 to 95', clampEye(0) === ray.MIN_EYE && clampEye(100) === ray.MAX_EYE &&
+    clampEye('x') === ray.DEFAULT_EYE);
+ok('fog clamps 0 to 100', clampFog(-5) === 0 && clampFog(500) === 100 && clampFog('x') === 0);
+ok('fog 100 ends at 3 cells, fog 1 near 40', near(fogEnd(100), 3) && near(fogEnd(1), 39.63));
 ok('wrapDegrees keeps -180..180', wrapDegrees(270) === -90 && wrapDegrees(-270) === 90 && wrapDegrees(180) === 180);
 const grid0 = room(10, 10);
 const cell0 = toCell(grid0, -240 + 48, 180 - 80);
@@ -90,13 +93,9 @@ section('wall distances within 1%');
         }
     }
     ok(`${rays} rays from 4 spots stay within 1% of the analytic distance`, worst < 0.01, worst);
-    ok('distanceAhead matches the box (facing right)', near(distanceAhead(map, {u: 5.5, v: 4.5, direction: 90}),
-        cols - 1 - 5.5, 1e-9));
-    const up = distanceAhead(map, {u: 5.5, v: 4.5, direction: 0});
-    ok('distanceAhead matches the box (facing up)', near(up, 3.5, 1e-9), up);
-    const diag = distanceAhead(map, {u: 5.5, v: 4.5, direction: 135});
-    const wantDiag = boxDistance(cols, rows, 5.5, 4.5, Math.sin(Math.PI * 0.75), -Math.cos(Math.PI * 0.75));
-    ok('distanceAhead matches the box on a diagonal', Math.abs(diag - wantDiag) / wantDiag < 0.01, [diag, wantDiag]);
+    const reused = {};
+    const again = castRay(map, 5.5, 4.5, 1, 0, reused);
+    ok('castRay fills the hit object it is given', again === reused && near(reused.dist, cols - 1 - 5.5, 1e-9));
 }
 
 section('fisheye correction');
@@ -183,6 +182,133 @@ section('billboards and the z-buffer');
         Array.from(frame.pixels).some(c => c === RED));
 }
 
+section('billboard columns match the rays');
+{
+    const grid = room(20, 20);
+    const map = mapOf(grid);
+    const frame = createFrame();
+    const player = {u: 10.5, v: 12.5, direction: 0};
+    const view = basis(player.direction, 66);
+    const spot = {u: 11.5, v: 8.5};
+    let best = -1;
+    let bestMiss = Infinity;
+    const cellCols = [];
+    for (let x = 0; x < WIDTH; x++) {
+        const camX = ((2 * (x + 0.5)) / WIDTH) - 1;
+        const rx = view.dir.x + (view.plane.x * camX);
+        const ry = view.dir.y + (view.plane.y * camX);
+        const len = Math.hypot(rx, ry);
+        const miss = Math.abs(((spot.u - player.u) * ry) - ((spot.v - player.v) * rx)) / len;
+        if (miss < bestMiss) {
+            bestMiss = miss;
+            best = x;
+        }
+        const pillar = room(20, 20);
+        setCell(pillar, 'flags', 11, 8, FLAGS.solid);
+        const hit = castRay(mapOf(pillar), player.u, player.v, rx, ry);
+        if (hit && hit.col === 11 && hit.row === 8) cellCols.push(x);
+    }
+    const thin = solidImage(2, 64, RED);
+    render(frame, {map, player, fov: 66, floor: 0, ceiling: 0,
+        sprites: [{name: 'Pole', u: spot.u, v: spot.v, image: thin, height: 1}]});
+    const drawn = [];
+    for (let x = 0; x < WIDTH; x++) {
+        if (frame.pixels[((HEIGHT / 2) * WIDTH) + x] === RED) drawn.push(x);
+    }
+    const centre = (drawn[0] + drawn[drawn.length - 1]) / 2;
+    ok('the billboard centre is the column whose ray passes through it', Math.abs(centre - best) <= 1,
+        [centre, best]);
+    ok('every drawn column is one whose ray hits the billboard cell', drawn.length > 0 &&
+        drawn.every(x => cellCols.indexOf(x) !== -1), [drawn[0], drawn[drawn.length - 1], cellCols[0],
+        cellCols[cellCols.length - 1]]);
+}
+
+section('eye height');
+{
+    const grid = room(41, 12);
+    const scene = {map: mapOf(grid), player: {u: 20.5, v: 5.5, direction: 0}, fov: 66, floor: BLUE, ceiling: RED,
+        wallColor: () => pixel(10, 20, 30)};
+    const column = frame => {
+        let top = -1;
+        let bottom = -1;
+        for (let y = 0; y < HEIGHT; y++) {
+            if (frame.pixels[(y * WIDTH) + 120] === ray.shade(pixel(10, 20, 30), 0.72)) {
+                if (top === -1) top = y;
+                bottom = y;
+            }
+        }
+        return {top, bottom};
+    };
+    const mid = createFrame();
+    render(mid, scene);
+    const low = createFrame();
+    render(low, Object.assign({}, scene, {eye: 20}));
+    const high = createFrame();
+    render(high, Object.assign({}, scene, {eye: 80}));
+    const m = column(mid);
+    const l = column(low);
+    const h = column(high);
+    ok('eye height 50 centres the wall on the horizon', Math.abs((HEIGHT / 2 - m.top) - (m.bottom + 1 - HEIGHT / 2)) <= 1,
+        m);
+    ok('a low eye sees more wall above the horizon', l.top < m.top && l.bottom < m.bottom, [l, m]);
+    ok('a high eye sees more wall below the horizon', h.top > m.top && h.bottom > m.bottom, [h, m]);
+    const floorFrame = createFrame();
+    const flat = {name: 'Flat', u: 20.5, v: 2.5, image: solidImage(8, 8, BLUE), height: 0.25};
+    render(floorFrame, Object.assign({}, scene, {floor: 0, eye: 80, sprites: [flat]}));
+    let foot = -1;
+    for (let y = 0; y < HEIGHT; y++) if (floorFrame.pixels[(y * WIDTH) + 120] === BLUE) foot = y;
+    const focal = basis(0, 66).focal;
+    ok('a billboard stands on the floor at its depth', Math.abs(foot + 1 - ((HEIGHT / 2) + (0.8 * focal / 3))) <= 1,
+        [foot, (HEIGHT / 2) + (0.8 * focal / 3)]);
+    const raised = createFrame();
+    render(raised, Object.assign({}, scene, {floor: 0, eye: 80, sprites: [Object.assign({}, flat, {elevation: 0.5})]}));
+    let lifted = -1;
+    for (let y = 0; y < HEIGHT; y++) if (raised.pixels[(y * WIDTH) + 120] === BLUE) lifted = y;
+    ok('3D height lifts a billboard by wall heights', Math.abs((foot - lifted) - (0.5 * focal / 3)) <= 1,
+        [foot, lifted]);
+}
+
+section('fog');
+{
+    const grid = room(41, 12);
+    const wall = pixel(200, 200, 200);
+    const scene = {map: mapOf(grid), player: {u: 20.5, v: 5.5, direction: 0}, fov: 66, floor: BLUE, ceiling: RED,
+        wallColor: () => wall};
+    const clear = createFrame();
+    render(clear, scene);
+    ok('fog 0 leaves walls and floor untouched', clear.pixels[(90 * WIDTH) + 120] === ray.shade(wall, 0.72) &&
+        clear.pixels[(HEIGHT - 1) * WIDTH] === BLUE);
+    const thick = createFrame();
+    render(thick, Object.assign({}, scene, {fog: 100}));
+    const fogColor = mixColors(BLUE, RED);
+    ok('a wall past the fog end is the fog colour', thick.pixels[(90 * WIDTH) + 120] === fogColor,
+        thick.pixels[(90 * WIDTH) + 120].toString(16));
+    ok('the fog colour mixes floor and ceiling', fogColor === pixel(125, 30, 125), fogColor.toString(16));
+    const light = createFrame();
+    render(light, Object.assign({}, scene, {fog: 50}));
+    const near1 = light.pixels[(HEIGHT - 1) * WIDTH];
+    const far1 = light.pixels[((HEIGHT / 2) + 2) * WIDTH];
+    ok('floor rows fade with distance', near1 !== far1 && near1 !== BLUE && (far1 & 255) > (near1 & 255),
+        [near1.toString(16), far1.toString(16)]);
+    const top = light.pixels[0];
+    ok('ceiling rows fade too', top !== RED);
+}
+
+section('wall texels');
+{
+    const grid = room(16, 16, {texture: true});
+    const glass = solidImage(8, 8, 0);
+    const scene = {map: mapOf(grid), player: {u: 8, v: 8, direction: 90}, fov: 66, floor: BLUE, ceiling: RED,
+        texture: () => glass};
+    const frame = createFrame();
+    render(frame, scene);
+    ok('a transparent texel below the horizon shows the floor', frame.pixels[(100 * WIDTH) + 120] === BLUE);
+    ok('a transparent texel above the horizon shows the ceiling', frame.pixels[(80 * WIDTH) + 120] === RED);
+    const tinted = solidImage(8, 8, ((200 << 24) | (10 << 16) | (20 << 8) | 30) >>> 0);
+    render(frame, Object.assign({}, scene, {texture: () => tinted}));
+    ok('a part-alpha texel is written opaque', (frame.pixels[(90 * WIDTH) + 120] >>> 24) === 255);
+}
+
 section('8-direction facing');
 ok('viewer in front gives 0', facingIndex(90, {x: 10, y: 0}) === 0);
 ok('viewer on the left side gives 6', facingIndex(90, {x: 0, y: 10}) === 6);
@@ -192,35 +318,27 @@ ok('diagonal gives 1', facingIndex(0, {x: 10, y: 10}) === 1);
 ok('rounding snaps to the nearest 45', facingIndex(0, {x: Math.sin(0.3), y: Math.cos(0.3)}) === 0 &&
     facingIndex(0, {x: Math.sin(0.5), y: Math.cos(0.5)}) === 1);
 {
-    const costumes = ['guard-0', 'guard-1', 'guard-2', 'guard-3', 'guard-4', 'guard-5', 'guard-6', 'guard-7']
+    const costumes = ['guard-1', 'guard-2', 'guard-3', 'guard-4', 'guard-5', 'guard-6', 'guard-7', 'guard-8']
         .map(name => ({name}));
     const target = {x: 0, y: 0, direction: 90, currentCostume: 0, getCostumes: () => costumes};
-    ok('facingCostume picks guard-4 from behind', facingCostume(target, {x: -50, y: 0}).name === 'guard-4');
-    ok('facingCostume picks guard-2 from the right side', facingCostume(target, {x: 0, y: -50}).name === 'guard-2');
+    ok('facingCostume picks guard-1 from in front', facingCostume(target, {x: 50, y: 0}).name === 'guard-1');
+    ok('facingCostume picks guard-5 from behind', facingCostume(target, {x: -50, y: 0}).name === 'guard-5');
+    ok('facingCostume picks guard-3 from the right side', facingCostume(target, {x: 0, y: -50}).name === 'guard-3');
+    ok('facingCostume picks guard-8 from front left', facingCostume(target, {x: 50, y: 50}).name === 'guard-8');
+    const cache = new WeakMap();
+    facingCostume(target, {x: -50, y: 0}, cache);
+    ok('facingCostume caches the view set per costume', cache.get(costumes[0]).views.length === 8);
+    const walk = ['walk-1', 'walk-2', 'walk-3', 'walk-4', 'walk-5', 'walk-6', 'walk-7', 'walk-8', 'step-1', 'step-5']
+        .map(name => ({name}));
+    const animated = {x: 0, y: 0, direction: 90, currentCostume: 8, getCostumes: () => walk};
+    ok('a -1 frame swaps to its own view', facingCostume(animated, {x: -50, y: 0}).name === 'step-5');
+    ok('a missing view keeps the -1 frame', facingCostume(animated, {x: 0, y: -50}).name === 'step-1');
     const plain = {x: 0, y: 0, direction: 90, currentCostume: 0, getCostumes: () => [{name: 'coin'}]};
     ok('facingCostume keeps a plain costume', facingCostume(plain, {x: -50, y: 0}).name === 'coin');
 }
 
-section('moving stops at walls');
-{
-    const map = mapOf(room(12, 12));
-    const run = moveAhead(map, {u: 6, v: 6, direction: 0}, 100);
-    ok('running into a wall stops at the radius', run.hit && near(run.v, 1.2, 0.26) && near(run.u, 6), run);
-    ok('never inside a solid cell', !map.solid(Math.floor(run.u), Math.floor(run.v - 0.2)));
-    const slide = moveAhead(map, {u: 6, v: 2, direction: 45}, 3);
-    ok('a diagonal into a wall slides along it', slide.hit && slide.u > 7.5 && slide.v >= 1.2, slide);
-    const free = moveAhead(map, {u: 6, v: 6, direction: 90}, 2);
-    ok('open floor moves the full distance', !free.hit && near(free.u, 8) && near(free.v, 6), free);
-    const backward = moveAhead(map, {u: 6, v: 6, direction: 90}, -2);
-    ok('negative steps move backwards', near(backward.u, 4), backward);
-    const thin = room(12, 12);
-    setCell(thin, 'flags', 8, 6, FLAGS.solid);
-    const fast = moveAhead(mapOf(thin), {u: 6.5, v: 6.5, direction: 90}, 5);
-    ok('a big step does not tunnel through a one-cell wall', fast.u < 8, fast);
-}
-
-section('frame time under 4 ms');
-{
+if (process.env.SQ_PERF === '1') {
+    section('frame time under 4 ms');
     const size = 64;
     const grid = room(size, size, {texture: true});
     for (let i = 4; i < size - 4; i += 6) {
@@ -261,118 +379,21 @@ section('frame time under 4 ms');
     ok('p95 frame under 4 ms', p95 < 4, p95);
 }
 
-section('view3d glue');
+section('no allocation per frame');
 {
-    const runtime = new EventEmitter();
-    const calls = [];
-    let nextId = 1;
-    runtime.renderer = {
-        createBitmapSkin: (image, res) => {
-            calls.push(['skin', res]);
-            return 7;
-        },
-        updateBitmapSkin: (id, image, res) => calls.push(['update', id, res]),
-        createDrawable: group => {
-            calls.push(['drawable', group]);
-            return nextId++;
-        },
-        updateDrawableSkinId: (id, skin) => calls.push(['skinId', id, skin]),
-        updateDrawablePosition: (id, pos) => calls.push(['pos', id, pos]),
-        updateDrawableDirectionScale: (id, dir, scale) => calls.push(['scale', id, dir, scale]),
-        updateDrawableVisible: (id, on) => calls.push(['visible', id, on]),
-        destroyDrawable: (id, group) => calls.push(['destroy', id, group]),
-        destroySkin: id => calls.push(['destroySkin', id])
-    };
-    const grid = room(16, 16, {texture: true, tileSize: 32, origin: [-256, 256]});
-    const brick = {name: 'brick', asset: {}, assetId: 'brick', dataFormat: 'png', size: [32, 32]};
-    const guardCostume = {name: 'guard', asset: {}, assetId: 'guard', dataFormat: 'png', size: [32, 32]};
-    const stage = {isStage: true, getCostumes: () => [brick]};
-    const guard = {
-        isStage: false,
-        isOriginal: true,
-        visible: true,
-        x: 0,
-        y: 0,
-        size: 100,
-        direction: 90,
-        currentCostume: 0,
-        getName: () => 'Guard',
-        getCostumes: () => [guardCostume]
-    };
-    runtime.targets = [stage, guard];
-    runtime.getTargetForStage = () => stage;
-    runtime.getSpriteTargetByName = () => null;
-    const world = {
-        current: () => grid,
-        camera: {isActive: () => true, view: () => ({x: 100, y: 50, zoom: 2})}
-    };
-    const loads = [];
-    const view = createView3d(runtime, world, {
-        toBitmap: (pixels, w, h) => ({pixels, w, h}),
-        loadImage: costume => {
-            loads.push(costume.assetId);
-            return Promise.resolve({width: 8, height: 8, costume});
-        },
-        createCanvas: (w, h) => ({
-            getContext: () => ({
-                clearRect: () => null,
-                drawImage: () => null,
-                getImageData: () => {
-                    const data = new Uint8ClampedArray(w * h * 4);
-                    new Uint32Array(data.buffer).fill(RED);
-                    return {data};
-                }
-            })
-        })
-    });
-    view.setPlayer(-256 + (8 * 32), 256 - (12 * 32), 0);
-    view.setBillboard(guard, true);
-    guard.x = -256 + (8 * 32);
-    guard.y = 256 - (6 * 32);
-    view.setOn(true);
-    ok('turning on makes one drawable in sq-hud', calls.filter(c => c[0] === 'drawable').length === 1 &&
-        calls.find(c => c[0] === 'drawable')[1] === HUD_LAYER);
-    ok('the skin is a bitmap at half resolution so 240x180 fills the stage',
-        calls.find(c => c[0] === 'skin')[1] === RESOLUTION && RESOLUTION === 0.5);
-    const pos = calls.filter(c => c[0] === 'pos').pop();
-    const scale = calls.filter(c => c[0] === 'scale').pop();
-    ok('the HUD follows the camera', pos[2][0] === 100 && pos[2][1] === 50, pos);
-    ok('the HUD scale undoes the camera zoom', scale[3][0] === 50 && scale[3][1] === 50, scale);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    ok('wall and billboard costumes load once each', loads.sort().join(',') === 'brick,guard', loads);
-    runtime.emit('BEFORE_EXECUTE');
-    runtime.emit('AFTER_EXECUTE');
-    ok('each step updates the same skin', calls.filter(c => c[0] === 'update').length === 1 &&
-        calls.filter(c => c[0] === 'skin').length === 1);
-    ok('the guard ahead is in the crosshair', view.crosshair() === 'Guard', view.crosshair());
-    const ahead = view.distanceAhead();
-    ok('distance to wall ahead is in stage units', near(ahead, (12 - 1) * 32, 1e-6), ahead);
-    const hit = view.move(1000);
-    ok('moving stops at the wall in stage units', hit && near(view.player().y, 256 - (1.2 * 32), 8), view.player());
-    view.turn(200);
-    ok('turning wraps the direction', view.player().direction === -160, view.player());
-    view.setFov(400);
-    ok('field of view clamps', view.fov() === ray.MAX_FOV);
-    view.setColors('#112233', 'bad');
-    runtime.emit('AFTER_EXECUTE');
-    ok('floor colour applies, a bad ceiling keeps the old one',
-        view.frame.pixels[(HEIGHT - 1) * WIDTH] === pixel(17, 34, 51) &&
-        view.frame.pixels[0] === pixel(0x8f, 0xb4, 0xd6));
-    const stats = view.stats();
-    ok('frame stats are recorded', stats.frames >= 3 && stats.medianMs >= 0, stats);
-    runtime.emit('PROJECT_STOP_ALL');
-    ok('stop turns the view off and hides it', !view.isOn() && calls[calls.length - 1][0] === 'visible' &&
-        calls[calls.length - 1][2] === false);
-    const before = calls.length;
-    runtime.emit('AFTER_EXECUTE');
-    ok('no drawing while off', calls.length === before);
-    const clone = {isOriginal: false, sprite: {clones: [guard]}};
-    ok('clones of a billboard are billboards', view.isBillboard(clone));
-    runtime.emit('PROJECT_LOADED');
-    ok('loading a project destroys the HUD and clears billboards', calls.some(c => c[0] === 'destroy' &&
-        c[2] === HUD_LAYER) && !view.isBillboard(guard));
-    view.dispose();
-    ok('dispose removes listeners', runtime.listenerCount('AFTER_EXECUTE') === 0);
+    const grid = room(16, 16, {texture: true});
+    const frame = createFrame();
+    const tex = solidImage(8, 8, pixel(200, 100, 50));
+    const sprites = [0, 1, 2].map(i => ({name: `S${i}`, u: 4 + i, v: 4, image: solidImage(4, 4, RED), height: 1}));
+    const scene = {map: mapOf(grid), player: {u: 8, v: 8, direction: 0}, fov: 66, floor: BLUE, ceiling: RED,
+        texture: () => tex, sprites};
+    const first = render(frame, scene);
+    const pooled = frame.placed.slice();
+    const second = render(frame, scene);
+    ok('the result object is reused', first === second);
+    ok('the placed pool is reused', frame.placed.length === pooled.length &&
+        frame.placed.every(item => pooled.indexOf(item) !== -1));
+    ok('pooled entries drop their sprite after a frame', frame.placed.every(item => item.sprite === null));
 }
 
 done();

@@ -13,14 +13,9 @@ const ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" vie
     `<circle cx="20" cy="20" r="2" fill="${COLORS.color3}"/></svg>`;
 const ICON_URI = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(ICON)}`;
 
-const num = value => {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
-};
+const MYSELF = '_myself_';
 
 const str = value => (value === null || typeof value === 'undefined' ? '' : String(value));
-
-const round = value => (Number.isFinite(value) ? Math.round(value * 100) / 100 : value);
 
 class Squiggle3dBlocks {
     constructor (runtime) {
@@ -28,6 +23,7 @@ class Squiggle3dBlocks {
         this.world = getWorld(runtime);
         attachWhenReady(this.world);
         this.view = getView3d(runtime, this.world);
+        attachWhenReady(this.view);
     }
 
     getInfo () {
@@ -40,121 +36,141 @@ class Squiggle3dBlocks {
             menuIconURI: ICON_URI,
             blocks: [
                 {
-                    opcode: 'setView',
+                    opcode: 'showView',
                     blockType: 'command',
-                    text: '3D view [ONOFF]',
-                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                    text: 'show 3D view from [VIEWER]',
+                    arguments: {VIEWER: {type: 'string', menu: 'viewers', defaultValue: MYSELF}}
                 },
                 {
-                    opcode: 'setPlayer',
+                    opcode: 'hideView',
                     blockType: 'command',
-                    text: '3D player at x [X] y [Y] facing [D]',
+                    text: 'hide 3D view'
+                },
+                {
+                    opcode: 'viewOn',
+                    blockType: 'Boolean',
+                    text: '3D view on?'
+                },
+                '---',
+                {
+                    opcode: 'setViewSetting',
+                    blockType: 'command',
+                    text: 'set 3D [SETTING] to [N]',
                     arguments: {
-                        X: {type: 'number', defaultValue: 0},
-                        Y: {type: 'number', defaultValue: 0},
-                        D: {type: 'angle', defaultValue: 90}
+                        SETTING: {type: 'string', menu: 'settings', defaultValue: 'fov'},
+                        N: {type: 'number', defaultValue: 66}
                     }
                 },
                 {
-                    opcode: 'movePlayer',
+                    opcode: 'setSurfaceColor',
                     blockType: 'command',
-                    text: 'move 3D player [N] steps stopping at walls',
-                    arguments: {N: {type: 'number', defaultValue: 4}}
-                },
-                {
-                    opcode: 'turnPlayer',
-                    blockType: 'command',
-                    text: 'turn 3D player [D] degrees',
-                    arguments: {D: {type: 'number', defaultValue: 5}}
-                },
-                {
-                    opcode: 'setFov',
-                    blockType: 'command',
-                    text: 'set field of view [F]',
-                    arguments: {F: {type: 'number', defaultValue: 66}}
-                },
-                {
-                    opcode: 'setColors',
-                    blockType: 'command',
-                    text: 'set 3D floor [FLOOR] ceiling [CEILING]',
+                    text: 'set 3D [SURFACE] color to [COLOR]',
                     arguments: {
-                        FLOOR: {type: 'color', defaultValue: '#5b4b3d'},
-                        CEILING: {type: 'color', defaultValue: '#8fb4d6'}
+                        SURFACE: {type: 'string', menu: 'surfaces', defaultValue: 'floor'},
+                        COLOR: {type: 'color', defaultValue: '#5b4b3d'}
                     }
                 },
                 '---',
                 {
-                    opcode: 'billboard',
+                    opcode: 'showMeAs',
                     blockType: 'command',
-                    text: 'show me as billboard [ONOFF]',
+                    text: 'show me in 3D as [LOOK]',
                     filter: ['sprite'],
-                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                    arguments: {LOOK: {type: 'string', menu: 'looks', defaultValue: 'picture'}}
+                },
+                {
+                    opcode: 'setMyHeight',
+                    blockType: 'command',
+                    text: 'set my 3D height to [N]',
+                    filter: ['sprite'],
+                    arguments: {N: {type: 'number', defaultValue: 0}}
                 },
                 '---',
-                {opcode: 'playerX', blockType: 'reporter', text: '3D x'},
-                {opcode: 'playerY', blockType: 'reporter', text: '3D y'},
-                {opcode: 'playerDirection', blockType: 'reporter', text: '3D direction'},
-                {opcode: 'wallAhead', blockType: 'reporter', text: 'distance to wall ahead'},
-                {opcode: 'crosshair', blockType: 'reporter', text: 'sprite in crosshair'}
+                {
+                    opcode: 'mouseTurn',
+                    blockType: 'command',
+                    text: 'turn with the mouse in 3D [ONOFF]',
+                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                },
+                {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'}
             ],
             menus: {
+                viewers: {acceptReporters: true, items: 'viewerMenu'},
+                settings: {
+                    acceptReporters: false,
+                    items: [
+                        {text: 'field of view', value: 'fov'},
+                        {text: 'fog', value: 'fog'},
+                        {text: 'eye height', value: 'eye'}
+                    ]
+                },
+                surfaces: {
+                    acceptReporters: false,
+                    items: [{text: 'floor', value: 'floor'}, {text: 'ceiling', value: 'ceiling'}]
+                },
+                looks: {
+                    acceptReporters: false,
+                    items: [
+                        {text: 'a picture', value: 'picture'},
+                        {text: '8 views', value: 'views'},
+                        {text: 'nothing', value: 'nothing'}
+                    ]
+                },
                 onOff: {acceptReporters: false, items: ['on', 'off']}
             }
         };
     }
 
-    setView (args) {
-        this.view.setOn(str(args.ONOFF) !== 'off');
+    viewerMenu () {
+        const names = this.runtime.targets
+            .filter(target => target.isOriginal && !target.isStage)
+            .map(target => target.getName());
+        return [{text: 'me', value: MYSELF}].concat(names);
     }
 
-    setPlayer (args) {
-        this.view.setPlayer(num(args.X), num(args.Y), num(args.D));
+    showView (args, util) {
+        const choice = str(args.VIEWER);
+        const viewer = choice === MYSELF ? util.target : this.runtime.getSpriteTargetByName(choice);
+        if (!viewer || viewer.isStage) return;
+        this.view.show(viewer);
     }
 
-    movePlayer (args) {
-        this.view.move(num(args.N));
+    hideView () {
+        this.view.hide();
     }
 
-    turnPlayer (args) {
-        this.view.turn(num(args.D));
+    viewOn () {
+        return this.view.isOn();
     }
 
-    setFov (args) {
-        this.view.setFov(num(args.F));
+    setViewSetting (args) {
+        this.view.setSetting(str(args.SETTING), args.N);
     }
 
-    setColors (args) {
-        this.view.setColors(str(args.FLOOR), str(args.CEILING));
+    setSurfaceColor (args) {
+        this.view.setSurfaceColor(str(args.SURFACE), str(args.COLOR));
     }
 
-    billboard (args, util) {
-        this.view.setBillboard(util.target, str(args.ONOFF) !== 'off');
+    showMeAs (args, util) {
+        this.view.setLook(util.target, str(args.LOOK));
     }
 
-    playerX () {
-        return round(this.view.player().x);
+    setMyHeight (args, util) {
+        this.view.setElevation(util.target, args.N);
     }
 
-    playerY () {
-        return round(this.view.player().y);
+    mouseTurn (args) {
+        this.view.setMouseTurn(str(args.ONOFF) !== 'off');
     }
 
-    playerDirection () {
-        return round(this.view.player().direction);
-    }
-
-    wallAhead () {
-        return round(this.view.distanceAhead());
-    }
-
-    crosshair () {
+    spriteInSights () {
         return this.view.crosshair();
     }
 }
 
 registerKit({
     id: ID,
-    layers: ['sq-hud'],
+    layers: ['sq-tiles-back'],
     provides: ['world'],
     extension: Squiggle3dBlocks
 });

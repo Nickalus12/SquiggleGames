@@ -3,20 +3,27 @@ const HEIGHT = 180;
 const DEFAULT_FOV = 66;
 const MIN_FOV = 20;
 const MAX_FOV = 140;
+const DEFAULT_EYE = 50;
+const MIN_EYE = 5;
+const MAX_EYE = 95;
 const MAX_STEPS = 512;
-const RADIUS = 0.2;
 const SIDE_SHADE = 0.72;
 const ALPHA_MIN = 128;
+const OPAQUE = 0xff000000;
 const FACINGS = 8;
+const FOG_FAR = 40;
+const FOG_SLOPE = 0.37;
 
 const rad = deg => deg * Math.PI / 180;
+
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 const wrapDegrees = deg => {
     const d = ((deg % 360) + 360) % 360;
     return d > 180 ? d - 360 : d;
 };
 
-const pixel = (r, g, b) => (((255 << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255)) >>> 0);
+const pixel = (r, g, b) => ((OPAQUE | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255)) >>> 0);
 
 const shade = (value, k) => {
     const r = (value & 255) * k;
@@ -24,6 +31,16 @@ const shade = (value, k) => {
     const b = ((value >>> 16) & 255) * k;
     return pixel(r, g, b);
 };
+
+const tint = (value, k, f, fog) => {
+    const keep = k * (1 - f);
+    const r = ((value & 255) * keep) + ((fog & 255) * f);
+    const g = (((value >>> 8) & 255) * keep) + (((fog >>> 8) & 255) * f);
+    const b = (((value >>> 16) & 255) * keep) + (((fog >>> 16) & 255) * f);
+    return pixel(r, g, b);
+};
+
+const mixColors = (a, b) => tint(a, 1, 0.5, b);
 
 const parseColor = (value, fallback) => {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -38,8 +55,24 @@ const parseColor = (value, fallback) => {
 const clampFov = fov => {
     const n = Number(fov);
     if (!Number.isFinite(n)) return DEFAULT_FOV;
-    return Math.max(MIN_FOV, Math.min(MAX_FOV, n));
+    return clamp(n, MIN_FOV, MAX_FOV);
 };
+
+const clampEye = eye => {
+    const n = Number(eye);
+    if (!Number.isFinite(n)) return DEFAULT_EYE;
+    return clamp(n, MIN_EYE, MAX_EYE);
+};
+
+const clampFog = fog => {
+    const n = Number(fog);
+    if (!Number.isFinite(n)) return 0;
+    return clamp(n, 0, 100);
+};
+
+const fogEnd = fog => FOG_FAR - (FOG_SLOPE * fog);
+
+const fogFactor = (fog, dist) => (fog > 0 ? Math.min(1, dist / fogEnd(fog)) : 0);
 
 const basis = (direction, fov) => {
     const a = rad(direction);
@@ -48,7 +81,7 @@ const basis = (direction, fov) => {
     return {dir, plane: {x: Math.cos(a) * k, y: Math.sin(a) * k}, focal: (WIDTH / 2) / k};
 };
 
-const castRay = (map, u, v, rx, ry) => {
+const castRay = (map, u, v, rx, ry, out) => {
     let col = Math.floor(u);
     let row = Math.floor(v);
     const dx = rx === 0 ? Infinity : Math.abs(1 / rx);
@@ -69,45 +102,19 @@ const castRay = (map, u, v, rx, ry) => {
             side = 1;
         }
         if (map.solid(col, row)) {
+            const hit = out || {};
             const dist = side === 0 ? sideX - dx : sideY - dy;
-            let wallX = side === 0 ? v + (dist * ry) : u + (dist * rx);
-            wallX -= Math.floor(wallX);
-            return {dist, side, col, row, wallX, value: map.wallValue(col, row)};
+            const along = side === 0 ? v + (dist * ry) : u + (dist * rx);
+            hit.dist = dist;
+            hit.side = side;
+            hit.col = col;
+            hit.row = row;
+            hit.wallX = along - Math.floor(along);
+            hit.value = map.wallValue(col, row);
+            return hit;
         }
     }
     return null;
-};
-
-const distanceAhead = (map, player) => {
-    const {dir} = basis(player.direction, DEFAULT_FOV);
-    const hit = castRay(map, player.u, player.v, dir.x, dir.y);
-    return hit ? hit.dist : Infinity;
-};
-
-const blocked = (map, u, v, radius) => (
-    map.solid(Math.floor(u - radius), Math.floor(v - radius)) ||
-    map.solid(Math.floor(u + radius), Math.floor(v - radius)) ||
-    map.solid(Math.floor(u - radius), Math.floor(v + radius)) ||
-    map.solid(Math.floor(u + radius), Math.floor(v + radius))
-);
-
-const moveAhead = (map, player, cells, radius) => {
-    const r = typeof radius === 'number' ? radius : RADIUS;
-    const a = rad(player.direction);
-    const total = Number(cells) || 0;
-    const parts = Math.max(1, Math.ceil(Math.abs(total) / 0.25));
-    const du = (Math.sin(a) * total) / parts;
-    const dv = (-Math.cos(a) * total) / parts;
-    let u = player.u;
-    let v = player.v;
-    let hit = false;
-    for (let i = 0; i < parts; i++) {
-        if (blocked(map, u + du, v, r)) hit = true;
-        else u += du;
-        if (blocked(map, u, v + dv, r)) hit = true;
-        else v += dv;
-    }
-    return {u, v, hit};
 };
 
 const facingIndex = (spriteDirection, fromSprite) => {
@@ -121,10 +128,31 @@ const createFrame = () => ({
     height: HEIGHT,
     pixels: new Uint32Array(WIDTH * HEIGHT),
     zbuffer: new Float32Array(WIDTH),
-    heights: new Float32Array(WIDTH)
+    heights: new Float32Array(WIDTH),
+    hit: {dist: 0, side: 0, col: 0, row: 0, wallX: 0, value: 0},
+    placed: [],
+    result: {crosshair: '', target: null, ahead: Infinity}
 });
 
-const drawWalls = (frame, scene, view) => {
+const eyeOf = scene => clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100;
+
+const drawSurfaces = (frame, scene, view, eye, fog, fogColor) => {
+    const {pixels} = frame;
+    const half = HEIGHT / 2;
+    for (let y = 0; y < HEIGHT; y++) {
+        let color;
+        if (fog <= 0) {
+            color = y < half ? scene.ceiling : scene.floor;
+        } else if (y < half) {
+            color = tint(scene.ceiling, 1, fogFactor(fog, ((1 - eye) * view.focal) / (half - y - 0.5)), fogColor);
+        } else {
+            color = tint(scene.floor, 1, fogFactor(fog, (eye * view.focal) / (y + 0.5 - half)), fogColor);
+        }
+        pixels.fill(color, y * WIDTH, (y + 1) * WIDTH);
+    }
+};
+
+const drawWalls = (frame, scene, view, eye, fog, fogColor) => {
     const {pixels, zbuffer, heights} = frame;
     const {dir, plane, focal} = view;
     const half = HEIGHT / 2;
@@ -132,7 +160,7 @@ const drawWalls = (frame, scene, view) => {
         const camX = ((2 * (x + 0.5)) / WIDTH) - 1;
         const rx = dir.x + (plane.x * camX);
         const ry = dir.y + (plane.y * camX);
-        const hit = castRay(scene.map, scene.player.u, scene.player.v, rx, ry);
+        const hit = castRay(scene.map, scene.player.u, scene.player.v, rx, ry, frame.hit);
         if (!hit) {
             zbuffer[x] = Infinity;
             heights[x] = 0;
@@ -142,13 +170,14 @@ const drawWalls = (frame, scene, view) => {
         const lineH = focal / dist;
         zbuffer[x] = dist;
         heights[x] = lineH;
-        const top = half - (lineH / 2);
+        const top = half - ((1 - eye) * lineH);
         const y0 = Math.max(0, Math.floor(top));
-        const y1 = Math.min(HEIGHT, Math.ceil(half + (lineH / 2)));
+        const y1 = Math.min(HEIGHT, Math.ceil(half + (eye * lineH)));
         const tex = scene.texture ? scene.texture(hit.value) : null;
         const k = hit.side === 1 ? SIDE_SHADE : 1;
+        const f = fogFactor(fog, dist);
         if (!tex) {
-            const flat = shade(scene.wallColor ? scene.wallColor(hit.value) : pixel(160, 160, 170), k);
+            const flat = tint(scene.wallColor ? scene.wallColor(hit.value) : pixel(160, 160, 170), k, f, fogColor);
             for (let y = y0; y < y1; y++) pixels[(y * WIDTH) + x] = flat;
             continue;
         }
@@ -156,79 +185,114 @@ const drawWalls = (frame, scene, view) => {
         if ((hit.side === 0 && rx < 0) || (hit.side === 1 && ry > 0)) {
             tx = tex.width - tx - 1;
         }
-        tx = Math.max(0, Math.min(tex.width - 1, tx));
+        tx = clamp(tx, 0, tex.width - 1);
         const step = tex.height / lineH;
         let ty = (y0 - top) * step;
+        const plain = k === 1 && f === 0;
         for (let y = y0; y < y1; y++) {
-            const ti = Math.min(tex.height - 1, Math.max(0, Math.floor(ty)));
+            const ti = clamp(Math.floor(ty), 0, tex.height - 1);
             ty += step;
             const c = tex.data[(ti * tex.width) + tx];
-            pixels[(y * WIDTH) + x] = (c >>> 24) < ALPHA_MIN ? shade(scene.ceiling, 1) : (k === 1 ? c : shade(c, k));
+            if ((c >>> 24) < ALPHA_MIN) continue;
+            pixels[(y * WIDTH) + x] = plain ? (c | OPAQUE) >>> 0 : tint(c, k, f, fogColor);
         }
     }
 };
 
-const drawSprites = (frame, scene, view) => {
-    const {pixels, zbuffer} = frame;
+const place = (frame, count, sprite, tx, depth) => {
+    let item = frame.placed[count];
+    if (!item) {
+        item = {sprite: null, tx: 0, depth: 0};
+        frame.placed[count] = item;
+    }
+    item.sprite = sprite;
+    item.tx = tx;
+    item.depth = depth;
+};
+
+const sortFarToNear = (placed, count) => {
+    for (let i = 1; i < count; i++) {
+        const item = placed[i];
+        let j = i - 1;
+        while (j >= 0 && placed[j].depth < item.depth) {
+            placed[j + 1] = placed[j];
+            j--;
+        }
+        placed[j + 1] = item;
+    }
+};
+
+const drawSprites = (frame, scene, view, eye, fog, fogColor) => {
+    const {pixels, zbuffer, placed, result} = frame;
     const {dir, plane, focal} = view;
     const det = (plane.x * dir.y) - (dir.x * plane.y);
     const inv = 1 / det;
     const half = HEIGHT / 2;
     const centre = WIDTH >> 1;
-    const placed = [];
-    for (const sprite of scene.sprites || []) {
-        if (!sprite.image) continue;
+    const sprites = scene.sprites || [];
+    const total = typeof scene.spriteCount === 'number' ? scene.spriteCount : sprites.length;
+    let count = 0;
+    for (let i = 0; i < total; i++) {
+        const sprite = sprites[i];
+        if (!sprite || !sprite.image) continue;
         const rx = sprite.u - scene.player.u;
         const ry = sprite.v - scene.player.v;
         const tx = inv * ((dir.y * rx) - (dir.x * ry));
         const depth = inv * ((-plane.y * rx) + (plane.x * ry));
         if (depth <= 0.05) continue;
-        placed.push({sprite, tx, depth});
+        place(frame, count, sprite, tx, depth);
+        count++;
     }
-    placed.sort((a, b) => b.depth - a.depth);
-    let crosshair = '';
+    sortFarToNear(placed, count);
     let crosshairDepth = zbuffer[centre];
-    for (const item of placed) {
-        const {sprite, depth} = item;
+    for (let i = 0; i < count; i++) {
+        const {sprite, depth} = placed[i];
         const img = sprite.image;
-        const screenX = (WIDTH / 2) + ((item.tx / depth) * focal);
+        const screenX = (WIDTH / 2) * (1 + (placed[i].tx / depth));
         const h = (focal * (sprite.height || 1)) / depth;
         const w = h * (img.width / img.height);
-        const bottom = half + ((focal * 0.5) / depth);
+        const bottom = half + (((eye - (sprite.elevation || 0)) * focal) / depth);
         const top = bottom - h;
         const left = screenX - (w / 2);
         const x0 = Math.max(0, Math.floor(left));
         const x1 = Math.min(WIDTH, Math.ceil(left + w));
         const y0 = Math.max(0, Math.floor(top));
         const y1 = Math.min(HEIGHT, Math.ceil(bottom));
+        const f = fogFactor(fog, depth);
         for (let x = x0; x < x1; x++) {
             if (depth >= zbuffer[x]) continue;
-            const sx = Math.min(img.width - 1, Math.floor(((x + 0.5 - left) / w) * img.width));
+            const sx = clamp(Math.floor(((x + 0.5 - left) / w) * img.width), 0, img.width - 1);
             let drew = false;
             for (let y = y0; y < y1; y++) {
-                const sy = Math.min(img.height - 1, Math.floor(((y + 0.5 - top) / h) * img.height));
+                const sy = clamp(Math.floor(((y + 0.5 - top) / h) * img.height), 0, img.height - 1);
                 const c = img.data[(sy * img.width) + sx];
                 if ((c >>> 24) < ALPHA_MIN) continue;
-                pixels[(y * WIDTH) + x] = c;
+                pixels[(y * WIDTH) + x] = f === 0 ? (c | OPAQUE) >>> 0 : tint(c, 1, f, fogColor);
                 drew = true;
             }
             if (drew && x === centre && depth < crosshairDepth) {
-                crosshair = sprite.name;
+                result.crosshair = sprite.name;
+                result.target = sprite.target || null;
                 crosshairDepth = depth;
             }
         }
     }
-    return crosshair;
+    for (let i = 0; i < count; i++) placed[i].sprite = null;
 };
 
 const render = (frame, scene) => {
     const view = basis(scene.player.direction, scene.fov);
-    const half = (WIDTH * HEIGHT) / 2;
-    frame.pixels.fill(scene.ceiling, 0, half);
-    frame.pixels.fill(scene.floor, half);
-    drawWalls(frame, scene, view);
-    const crosshair = drawSprites(frame, scene, view);
-    return {crosshair, ahead: frame.zbuffer[WIDTH >> 1]};
+    const eye = eyeOf(scene);
+    const fog = clampFog(scene.fog);
+    const fogColor = mixColors(scene.floor, scene.ceiling);
+    const result = frame.result;
+    result.crosshair = '';
+    result.target = null;
+    drawSurfaces(frame, scene, view, eye, fog, fogColor);
+    drawWalls(frame, scene, view, eye, fog, fogColor);
+    drawSprites(frame, scene, view, eye, fog, fogColor);
+    result.ahead = frame.zbuffer[WIDTH >> 1];
+    return result;
 };
 
 const gridMap = (grid, flagsAt, solidBit) => ({
@@ -258,16 +322,23 @@ export {
     DEFAULT_FOV,
     MIN_FOV,
     MAX_FOV,
+    DEFAULT_EYE,
+    MIN_EYE,
+    MAX_EYE,
     FACINGS,
     pixel,
     shade,
+    tint,
+    mixColors,
     parseColor,
     clampFov,
+    clampEye,
+    clampFog,
+    fogEnd,
+    fogFactor,
     wrapDegrees,
     basis,
     castRay,
-    distanceAhead,
-    moveAhead,
     facingIndex,
     createFrame,
     render,
