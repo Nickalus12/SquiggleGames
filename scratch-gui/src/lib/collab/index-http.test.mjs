@@ -906,7 +906,7 @@ await section('a project too wide for hashes still saves', async () => {
     const {snapshots} = fx;
     await welcome2(fx);
     const names = [];
-    for (let i = 0; i < 360; i++) names.push(`${i}`.padStart(128, '€'));
+    for (let i = 0; i < 360; i++) names.push(`${i}`.padStart(128, '\u0001'));
     await pump(fx.vm.loadProject(project(names)));
     const frames = snapshots().length;
     fx.emit('server-restarting', {});
@@ -925,9 +925,159 @@ await section('a 4010 close ends the session with a reload message', async () =>
     const ended = banners.find(b => /Reload the page/.test(b.text || ''));
     ok('the banner asks for a reload', Boolean(ended), banners);
     ok('and offers a copy to keep', ended && typeof ended.opts.onAction === 'function');
-    vm.saveProjectSb3 = () => Promise.resolve(new Blob(['x']));
+    vm.saveProjectSb3 = () => new Promise(noop);
     if (ended) ended.opts.onAction();
     ok('saving the copy shows the portability note first', notes.length === 1 && notes[0] === vm, notes.length);
+});
+
+await section('a bad-frame close says reload and stays closed', async () => {
+    const fx = await fixture();
+    const {banners, sent} = fx;
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    await welcome2(fx);
+    fx.emit('bad-frame', {code: 1007, reason: 'bad-frame', count: 1});
+    const ended = banners.find(b => /could not read something this editor sent/.test(b.text || ''));
+    ok('the banner says the room could not read it and a reload fixes it',
+        Boolean(ended) && /Reload the page/.test(ended.text), banners.map(b => b.text));
+    ok('and a toast says the same', toasts.some(t => /could not read something this editor sent/.test(t)), toasts);
+    const before = sent.length;
+    fx.vm.runtime.emit('PROJECT_CHANGED');
+    await settle(50);
+    ok('nothing more goes out after it', sent.slice(before).every(m => !m || m.type !== 'block-event'), sent.slice(before));
+});
+
+await section('a bad-frame close on the game socket says reload and does not reconnect', async () => {
+    const fx = await fixture();
+    const {vm, gameSockets} = fx;
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    await welcome2(fx);
+    await addRules(fx);
+    gameFlags.serverReady = true;
+    vm.runtime.emit('PROJECT_START');
+    await waitFor(() => gameSockets.length === 1);
+    const ws = gameSockets[0];
+    ws.onopen();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0, mode: 'rules', tickHz: 20});
+    ws.onclose({code: 1007, reason: 'bad-frame'});
+    await settle(200);
+    ok('the toast says reload', toasts.some(t => /could not read something this editor sent/.test(t)), toasts);
+    ok('the game socket is not opened again', gameSockets.length === 1, gameSockets.length);
+    ok('and the bridge is out of the game', globalThis.window.SquiggleNet.inGame === false);
+});
+
+await section('a locked game message says what the lock allows', async () => {
+    const fx = await fixture();
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    await welcome2(fx);
+    fx.emit('moderated', {type: 'moderated', of: 'game', reason: 'locked', category: null,
+        message: 'That was not sent because it looked like contact details or words that are not allowed here.'});
+    ok('the toast names the 32 letters and the 5 numbers',
+        toasts.some(t => /32 letters or fewer/.test(t) && /5 numbers in a row/.test(t)), toasts);
+});
+
+await section('a game name the lock refuses is flagged at edit time', async () => {
+    const fx = await fixture();
+    const toasts = [];
+    fx.overlay.toast = text => toasts.push(text);
+    await welcome2(fx);
+    const cat = fx.named('Cat');
+    const say = (id, value) => {
+        cat.blocks.createBlock({id: `${id}t`, opcode: 'text', shadow: true, topLevel: false, parent: id, next: null,
+            inputs: {}, fields: {TEXT: {name: 'TEXT', value}}});
+        cat.blocks.createBlock({id, opcode: 'together_setSharedVariable', shadow: false, topLevel: true, parent: null,
+            next: null, x: 0, y: 0, fields: {}, inputs: {NAME: {name: 'NAME', block: `${id}t`, shadow: `${id}t`}}});
+        fx.vm.runtime.emit('PROJECT_CHANGED');
+    };
+    const flagged = () => toasts.filter(t => /the room will not send it/.test(t));
+    say('a1', 'q'.repeat(40));
+    await settle(800);
+    ok('nothing is flagged while no guest or younger player is here', flagged().length === 0, toasts);
+    fx.emit('room-chat-config', {type: 'room-chat-config', mode: 'quick', on: true, phrases: []});
+    await settle(800);
+    ok('the long name is flagged once the room is locked',
+        flagged().length === 1 && /longer than 32 letters/.test(flagged()[0]), toasts);
+    say('a2', 'lap 123456');
+    await settle(800);
+    ok('a run of digits is flagged', flagged().length === 2 && /5 numbers in a row/.test(flagged()[1]), toasts);
+    fx.vm.runtime.emit('PROJECT_CHANGED');
+    await settle(800);
+    ok('each name is flagged once', flagged().length === 2, toasts);
+});
+
+await section('typed field text goes out with the block-event at once', async () => {
+    const fx = await fixture();
+    const {sent} = fx;
+    await welcome2(fx);
+    const changes = [];
+    fx.collab.attachWorkspace(noopObject({
+        addChangeListener: fn => changes.push(fn),
+        getParentSvg: () => null
+    }), {});
+    fx.vm.setEditingTarget(fx.named('Cat').id);
+    const before = sent.length;
+    const json = {type: 'change', element: 'field', blockId: 'b1', name: 'TEXT', oldValue: 'hi', newValue: 'hello'};
+    changes.forEach(fn => fn({type: 'change', toJson: () => json}));
+    const out = sent.slice(before);
+    ok('the change is sent in the same call', out.some(m => m && m.type === 'block-event' &&
+        m.event.element === 'field' && m.event.newValue === 'hello'), out);
+    ok('and no field frame goes out', !out.some(m => m && m.type === 'field'), out);
+});
+
+await section('a masked spriteAdd from the room loads', async () => {
+    const fx = await fixture();
+    await welcome2(fx);
+    const masked = sprite('*****');
+    masked.variables = {v1: ['*****', 0], v2: ['*****', 'x']};
+    masked.lists = {l1: ['****', []]};
+    masked.broadcasts = {b1: '***'};
+    masked.comments = {c1: {blockId: null, x: 0, y: 0, width: 200, height: 200, minimized: false, text: '*******'}};
+    masked.costumes = [{name: '****', assetId: 'cd21514d0531fdffb22204e0ec5ed84a', md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg',
+        dataFormat: 'svg', rotationCenterX: 0, rotationCenterY: 0}];
+    masked.blocks = {
+        hat: Object.assign(flagHat(0, 0), {next: 'say'}),
+        say: {opcode: 'looks_say', next: 'set', parent: 'hat', inputs: {MESSAGE: [1, [10, '*****']]}, fields: {},
+            shadow: false, topLevel: false},
+        set: {opcode: 'data_setvariableto', next: 'call', parent: 'say', inputs: {VALUE: [1, [10, '***']]},
+            fields: {VARIABLE: ['*****', 'v1']}, shadow: false, topLevel: false},
+        call: {opcode: 'procedures_call', next: null, parent: 'set', inputs: {a1: [1, [10, '***']]}, fields: {},
+            shadow: false, topLevel: false,
+            mutation: {tagName: 'mutation', children: [], proccode: '*****', argumentids: '["a1"]', warp: 'false'}},
+        def: {opcode: 'procedures_definition', next: 'think', parent: null, inputs: {custom_block: [1, 'proto']},
+            fields: {}, shadow: false, topLevel: true, x: 300, y: 0},
+        proto: {opcode: 'procedures_prototype', next: null, parent: 'def', inputs: {a1: [1, 'arg']}, fields: {},
+            shadow: true, topLevel: false,
+            mutation: {tagName: 'mutation', children: [], proccode: '*****', argumentids: '["a1"]',
+                argumentnames: '["***"]', argumentdefaults: '[""]', warp: 'false'}},
+        arg: {opcode: 'argument_reporter_string_number', next: null, parent: 'proto', inputs: {},
+            fields: {VALUE: ['***', null]}, shadow: true, topLevel: false},
+        think: {opcode: 'looks_think', next: null, parent: 'def', inputs: {MESSAGE: [3, 'argUse', [10, '*****']]},
+            fields: {}, shadow: false, topLevel: false},
+        argUse: {opcode: 'argument_reporter_string_number', next: null, parent: 'think', inputs: {},
+            fields: {VALUE: ['***', null]}, shadow: false, topLevel: false}
+    };
+    fx.emit('vm-action', {type: 'vm-action', action: 'spriteAdd', format: 'json', sprite: JSON.stringify(masked),
+        name: '*****', from: 'pal', fromName: 'Pal'});
+    ok('the masked sprite installs', await waitFor(() => fx.has('*****')));
+    const target = fx.named('*****');
+    const blocks = target ? target.blocks._blocks : {};
+    ok('its blocks are all there', ['hat', 'say', 'set', 'call', 'def', 'proto', 'arg', 'think', 'argUse']
+        .every(id => blocks[id]), Object.keys(blocks));
+    ok('the masked call still finds its definition',
+        target && target.blocks.getProcedureDefinition('*****') === 'def');
+    ok('the variable keeps its id', target && target.variables.v1 && target.variables.v1.name === '*****');
+    ok('the costume keeps its md5ext', target && target.getCostumes()[0].md5 === 'cd21514d0531fdffb22204e0ec5ed84a.svg',
+        target && target.getCostumes()[0]);
+    let threw = null;
+    try {
+        fx.vm.runtime.startHats('event_whenflagclicked');
+        for (let i = 0; i < 5; i++) fx.vm.runtime._step();
+    } catch (e) {
+        threw = e.message;
+    }
+    ok('running it does not throw', threw === null, threw);
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

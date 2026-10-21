@@ -145,6 +145,34 @@ section('the game link follows the welcome tick rate');
     link.stop();
 }
 
+section('a bad-frame close on the game socket is counted and stays closed');
+{
+    const clock = fakeClock();
+    const sockets = [];
+    class FakeSocket {
+        constructor (url) {
+            this.url = url;
+            sockets.push(this);
+        }
+        send () {}
+        close (code) {
+            this.onclose({code});
+        }
+    }
+    const closed = [];
+    const runtime = {targets: [], renderer: null, on: () => {}, off: () => {}};
+    const link = createGameLink({vm: {runtime}, base: 'wss://sq.test', slug: 'blue', WebSocketImpl: FakeSocket,
+        now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer, onClosed: msg => closed.push(msg)});
+    link.start();
+    sockets[0].onopen();
+    sockets[0].onmessage({data: JSON.stringify({type: 'welcome', slot: 1, ack: 0})});
+    sockets[0].onclose({code: 1007, reason: 'bad-frame'});
+    clock.advance(60000);
+    ok('the link says bad-frame', closed.length === 1 && closed[0].reason === 'bad-frame', closed);
+    ok('and counts it', link.badFrames === 1, link.badFrames);
+    ok('and does not reconnect', sockets.length === 1 && !link.inGame, sockets.length);
+}
+
 section('own game messages and input after stop');
 {
     const clock = fakeClock();

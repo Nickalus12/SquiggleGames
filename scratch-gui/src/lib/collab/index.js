@@ -22,6 +22,8 @@ import {createRulesUploader} from '../rules/package.js';
 import {rulesStatus} from '../rules/status.js';
 import {gameServerReady} from '../rules/flags.js';
 import {createGameLink} from '../together2/session.js';
+import {VOCAB_LOCK} from '../together2/net.js';
+import {lockedNames} from '../together2/vocab-lock.js';
 import {KIT_SET_EVENT, applyKitSet, fitsKitSet, kitSetFrame} from './kit-set.js';
 import log from '../log';
 import {driftedTargets, projectHashes, sendableHashes} from './hash.js';
@@ -159,7 +161,10 @@ const state = {
     // Smooth motion is the default, but it is the person's call — some
     // projects (pen art, 3D, anything that teleports sprites) look worse for
     // it, and a laggy one gets slower without looking smoother.
-    wantInterpolation: readPref(INTERPOLATION_KEY, true)
+    wantInterpolation: readPref(INTERPOLATION_KEY, true),
+    lockedRoom: false,
+    lockWarned: new Set(),
+    lockScanTimer: null
 };
 
 // Set by gui.jsx so collab can drive the project title box and the settings UI.
@@ -706,7 +711,10 @@ const gameLink = () => {
             onClosed: msg => {
                 netEmit('game-ended', msg);
                 if (msg && msg.reason === 'reload') overlay.toast(`🔄 ${RELOAD_TEXT}`, '#f0912b');
-                else if (msg && msg.reason !== 'stopped') log.warn('[collab] game socket closed', msg.code);
+                else if (msg && msg.reason === 'bad-frame') {
+                    log.warn('[collab] game socket bad-frame close', state.gameLink && state.gameLink.badFrames);
+                    overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
+                } else if (msg && msg.reason !== 'stopped') log.warn('[collab] game socket closed', msg.code);
             }
         });
         state.gameLink.onTick(tick => netEmit('tick', tick));
@@ -1723,6 +1731,7 @@ const wrapVm = vm => {
     });
 
     vm.runtime.on('PROJECT_LOADED', rebuildTargetIndex);
+    vm.runtime.on('PROJECT_CHANGED', scheduleLockScan);
     vm.runtime.on('EXTENSION_ADDED', info => {
         if (!canWrite() || state.installingRemote || state.snapshotLoading) return;
         const id = info && info.id;
@@ -2755,7 +2764,8 @@ const applyMaskedVmAction = m => {
 
 const applyModerated = msg => {
     if (!msg) return;
-    overlay.toast(`🧹 ${moderated.moderatedText(msg)}`, '#f0912b');
+    const locked = msg.of === 'game' && msg.reason === 'locked';
+    overlay.toast(`🧹 ${locked ? GAME_LOCKED_TEXT : moderated.moderatedText(msg)}`, '#f0912b');
     const m = msg.masked && typeof msg.masked === 'object' ? msg.masked : null;
     if (m && m.type === 'block-event') {
         for (const event of moderated.maskedBlockEvents(m)) applyBlockEvent(event);
@@ -2822,6 +2832,30 @@ const CLOSE_TEXT = {
     4008: 'The connection is running slow. Reconnecting…'
 };
 const RELOAD_TEXT = 'Squiggle has a new version. Reload the page to keep working together.';
+const BAD_FRAME_TEXT = 'The room could not read something this editor sent. Reload the page to fix it.';
+const GAME_LOCKED_TEXT = 'That game message was not sent. While a guest or younger player is here, ' +
+    `names and words must be ${VOCAB_LOCK.text} letters or fewer with no ${VOCAB_LOCK.digitRun} numbers in a row.`;
+const LOCK_SCAN_MS = 600;
+const lockNameText = found => {
+    const shown = found.name.length > 40 ? `${found.name.slice(0, 40)}…` : found.name;
+    const why = found.reason === 'long' ?
+        `is longer than ${VOCAB_LOCK.text} letters` :
+        `has ${VOCAB_LOCK.digitRun} numbers in a row`;
+    return `The game name "${shown}" ${why}, so the room will not send it while a guest or younger player is here.`;
+};
+const scanLockedNames = () => {
+    state.lockScanTimer = null;
+    if (!state.active || !state.lockedRoom || !state.vm) return;
+    for (const found of lockedNames(state.vm.runtime)) {
+        if (state.lockWarned.has(found.name)) continue;
+        state.lockWarned.add(found.name);
+        overlay.toast(`✋ ${lockNameText(found)}`, '#f0912b');
+    }
+};
+const scheduleLockScan = () => {
+    if (!state.active || state.lockScanTimer) return;
+    state.lockScanTimer = setTimeout(scanLockedNames, LOCK_SCAN_MS);
+};
 const GAME_REFUSED_TEXT = 'That game message has words that are not allowed here.';
 const TITLE_REFUSED_TEXT = 'That room name was not saved. Try a different name.';
 const TITLE_OWNER_TEXT = 'Only the room owner can rename this room.';
@@ -3008,6 +3042,15 @@ const wireSocket = () => {
     client.on('reload-needed', () => {
         endSession(RELOAD_TEXT);
         overlay.toast('🔄 Reload the page to get the new Squiggle', '#f0912b');
+    });
+    client.on('bad-frame', msg => {
+        log.warn('[collab] bad-frame close', msg && msg.count);
+        endSession(BAD_FRAME_TEXT);
+        overlay.toast(`🔄 ${BAD_FRAME_TEXT}`, '#f0912b');
+    });
+    client.on('room-chat-config', msg => {
+        state.lockedRoom = !!msg && msg.mode === 'quick';
+        scheduleLockScan();
     });
     client.on('error', msg => {
         if (msg.error === 'reload-needed') return;

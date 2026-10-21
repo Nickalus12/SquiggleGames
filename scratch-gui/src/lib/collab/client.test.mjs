@@ -154,7 +154,7 @@ const SNAPSHOT_BUDGET = Math.floor(0.6 * 128 * 1024 * 1024);
 const recordEvents = client => {
     const events = [];
     for (const type of ['block-event', 'vm-action', 'kit-set', 'tilemap-patch', 'error', 'frame-refused',
-        'reload-needed', 'disconnected']) {
+        'reload-needed', 'disconnected', 'bad-frame']) {
         client.on(type, m => events.push(Object.assign({on: type}, m)));
     }
     return events;
@@ -524,10 +524,10 @@ await section('v2 frame limits and the pointer budget', () => {
     const {client} = env;
     const events = recordEvents(client);
     v2Room(env);
-    ok('a v2 snapshot pointer with hashes up to 160 KiB goes out',
-        client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(150 * 1024)}) === true, events);
-    ok('a v2 snapshot pointer over 160 KiB is refused locally',
-        client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(161 * 1024)}) === false &&
+    ok('a v2 snapshot pointer with hashes up to 256 KiB goes out',
+        client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(255 * 1024)}) === true, events);
+    ok('a v2 snapshot pointer over 256 KiB, the server cap, is refused locally',
+        client.send({type: 'snapshot', sha: 'b'.repeat(64), size: 10, pad: 'x'.repeat(256 * 1024)}) === false &&
         events[0] && events[0].type === 'snapshot', events);
     ok('a tilemap-patch up to 256 KiB goes out',
         client.send({type: 'tilemap-patch', pad: 'x'.repeat(200 * 1024)}) === true);
@@ -625,6 +625,19 @@ await section('platform close codes', () => {
     ws.onclose({code: 4010, reason: 'please-reload'});
     ok('a 4010 close asks for a reload and stops', events.some(e => e.on === 'reload-needed') &&
         client._reconnectTimer === null && client._closedByUser === true, events);
+
+    ws = env.connect('v2room');
+    ws.open();
+    deliver(ws, v2Welcome({rs: 40}));
+    events.length = 0;
+    const opened = env.sockets.length;
+    ws.readyState = 3;
+    ws.onclose({code: 1007, reason: 'bad-frame'});
+    ok('a 1007 close says bad-frame and counts it', events.some(e => e.on === 'bad-frame' && e.count === 1) &&
+        client.badFrames === 1, events);
+    ok('and stays closed', client._reconnectTimer === null && client._closedByUser === true, events);
+    clock.advance(60000);
+    ok('with no reconnect loop', env.sockets.length === opened);
 
     ws = env.connect('another');
     ws.open();

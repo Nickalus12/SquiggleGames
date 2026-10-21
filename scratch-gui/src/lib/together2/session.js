@@ -161,6 +161,7 @@ const createGameLink = ({
     let ownCount = -1;
     let mineSlot = null;
     let mineKey = '';
+    let badFrames = 0;
 
     const forgetOwn = () => {
         ownTargets = null;
@@ -301,6 +302,7 @@ const createGameLink = ({
             }));
             unsubs.push(session.on('closed', msg => {
                 if (session !== current) return;
+                if (msg && msg.reason === 'bad-frame') badFrames += 1;
                 reset();
                 if (onClosed) onClosed(msg);
             }));
@@ -335,6 +337,9 @@ const createGameLink = ({
         },
         get slot () {
             return session ? session.slot : null;
+        },
+        get badFrames () {
+            return badFrames;
         },
         get rtt () {
             return session ? session.rtt : null;

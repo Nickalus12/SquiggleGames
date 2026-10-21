@@ -14,6 +14,8 @@ const OPS_KEY_BYTES = 7;
 const FRAME_HEAD_BYTES = 128;
 const MAX_OP_NAME = 100;
 const MAX_OP_VALUE = 4096;
+const VOCAB_LOCK = Object.freeze({text: 32, digitRun: 5});
+const BAD_FRAME_CODE = 1007;
 const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
@@ -234,6 +236,11 @@ const createGameSession = ({
             emit('closed', {code, reason: 'reload'});
             return;
         }
+        if (code === BAD_FRAME_CODE) {
+            closing = true;
+            emit('closed', {code, reason: 'bad-frame'});
+            return;
+        }
         if (STOP_CODES.has(code) || (code >= 4000 && code !== RELOAD_CODE)) {
             closing = true;
             emit('closed', {code, reason: (event && event.reason) || 'refused'});
@@ -381,6 +388,8 @@ export {
     MAX_OP_NAME,
     MAX_OP_VALUE,
     OUT_ACTIONS,
+    VOCAB_LOCK,
+    BAD_FRAME_CODE,
     cutOp,
     wireValue,
     gameSocketUrl,

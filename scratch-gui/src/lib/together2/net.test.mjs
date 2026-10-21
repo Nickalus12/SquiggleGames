@@ -258,6 +258,8 @@ section('close codes');
     ok('an app refusal stays closed', !refused.reconnected && !!refused.closed);
     ok('1009 frame-too-large stays closed', !run(1009).reconnected);
     ok('4009 not-started stays closed', !run(4009).reconnected);
+    const bad = run(1007);
+    ok('1007 bad-frame stays closed and says why', !bad.reconnected && bad.closed.msg.reason === 'bad-frame');
     ok('1012 reconnects', run(1012).reconnected);
     const env = make();
     env.ws.drop(1013);

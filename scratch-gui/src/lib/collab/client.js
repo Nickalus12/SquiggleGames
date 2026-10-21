@@ -22,7 +22,7 @@ const PROTO = 2;
 const V2_FRAME_LIMITS = new Map([
     ['block-event', 4 * 1024 * 1024],
     ['vm-action', 1024 * 1024],
-    ['snapshot', 160 * 1024],
+    ['snapshot', 256 * 1024],
     ['tilemap-patch', 256 * 1024],
     ['kit-set', 20 * 1024],
     ['game', 32 * 1024],
@@ -34,7 +34,8 @@ const V2_FRAME_LIMITS = new Map([
 ]);
 const V2_DEFAULT_FRAME_LIMIT = 4 * 1024;
 const RING_TYPES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-set']);
-const FINAL_CLOSE_CODES = new Set([4003, 4010]);
+const BAD_FRAME_CODE = 1007;
+const FINAL_CLOSE_CODES = new Set([BAD_FRAME_CODE, 4003, 4010]);
 const ACK_EVERY_MS = 1000;
 const RESTART_JITTER_MS = 2000;
 const TOO_SLOW_CODE = 1013;
@@ -99,6 +100,7 @@ class CollabClient {
         this.me = null; // {id, color}
         this._backoff = 1000;
         this._closedByUser = false;
+        this.badFrames = 0;
         this._reconnectTimer = null;
         this._queue = []; // reliable messages waiting for an open socket
         this._openGen = 0; // ignore stale socket callbacks after supersede
@@ -442,6 +444,10 @@ class CollabClient {
             }
             if (dropped) this._purgeOversized();
             if (code === 4010) this._emit('reload-needed', {code, reason});
+            if (code === BAD_FRAME_CODE) {
+                this.badFrames += 1;
+                this._emit('bad-frame', {code, reason, count: this.badFrames});
+            }
             if (FINAL_CLOSE_CODES.has(code)) this.disconnect();
             else if (!this._closedByUser) this._scheduleReconnect(code === 1012, code === TOO_SLOW_CODE);
         };
