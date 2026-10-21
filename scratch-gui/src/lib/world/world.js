@@ -56,12 +56,14 @@ const createWorldState = (runtime, options) => {
         tiles: null,
         textures: null,
         view: IDENTITY_VIEW,
+        edit: null,
         applied: null,
         pinned: new Set(),
         revision: 0,
         backdrop: {mode: 'scrolls', speed: 50},
         echo: null,
         echoSkin: null,
+        providers: new Set(),
         hitboxes: new WeakMap(),
         hits: new WeakMap(),
         disposers: [],
@@ -113,7 +115,10 @@ const createWorldState = (runtime, options) => {
         return {x: target.x, y: target.y};
     };
 
-    const currentView = progress => (camera.isActive() ? camera.view(progress) : IDENTITY_VIEW);
+    const currentView = progress => {
+        if (state.edit) return state.edit;
+        return camera.isActive() ? camera.view(progress) : IDENTITY_VIEW;
+    };
 
     const parallaxShift = view => {
         const speed = Math.max(0, Math.min(100, state.backdrop.speed)) / 100;
@@ -267,7 +272,7 @@ const createWorldState = (runtime, options) => {
                     const view = currentView(progress);
                     state.view = view;
                     applyScreenSpace(view);
-                    return camera.isActive() ? view : null;
+                    return state.edit || camera.isActive() ? view : null;
                 }),
                 chainHook(seam, 'drawablePosition', hookPosition),
                 chainHook(seam, 'drawableDirectionScale', hookScale),
@@ -282,6 +287,7 @@ const createWorldState = (runtime, options) => {
             state.seam = null;
         },
         isAttached: () => !!state.seam,
+        seam: () => state.seam,
         reload: loadFromStorage,
         resetPlay,
         levels: () => state.saved,
@@ -450,6 +456,33 @@ const createWorldState = (runtime, options) => {
         },
         isPinned: target => state.pinned.has(target),
         holdCamera: owner => camera.hold(owner),
+        setEditView (view) {
+            const next = view && Number.isFinite(view.x) && Number.isFinite(view.y) && view.zoom > 0 ?
+                {x: view.x, y: view.y, zoom: view.zoom} : null;
+            if (sameView(next, state.edit) || (!next && !state.edit)) return;
+            state.edit = next;
+            state.applied = null;
+            if (state.tiles) state.tiles.update(currentView(1));
+        },
+        editView: () => state.edit,
+        addDrawables (provider) {
+            state.providers.add(provider);
+            return () => state.providers.delete(provider);
+        },
+        ownDrawables () {
+            const ids = [];
+            if (state.tiles) {
+                state.tiles.chunks.forEach(chunk => {
+                    if (chunk.drawable !== null) ids.push(chunk.drawable);
+                });
+            }
+            if (state.echo !== null) ids.push(state.echo);
+            state.providers.forEach(provider => {
+                const id = provider();
+                if (typeof id === 'number') ids.push(id);
+            });
+            return ids;
+        },
         revision: () => state.revision,
         setTilesHidden (on) {
             if (state.tiles) state.tiles.setHidden(on);
@@ -499,6 +532,8 @@ const getWorld = (runtime, options) => {
 const peekWorld = runtime => (runtime && states.get(runtime)) || null;
 
 const seamFor = runtime => {
+    const own = runtime && states.get(runtime);
+    if (own && own.seam()) return own.seam();
     if (typeof window === 'undefined') return null;
     const seam = window.SquiggleWorld;
     return seam && seam.runtime === runtime ? seam : null;
@@ -629,6 +664,7 @@ export {
     getWorld,
     peekWorld,
     attachWhenReady,
+    seamFor,
     extendSeam,
     installWorldApi
 };

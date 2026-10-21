@@ -2,7 +2,8 @@ import {ok, near, section, done} from './harness.mjs';
 
 const {FLAGS, createGrid, addTexture, getCell, setCell} = await import('./tilemap.js');
 const {
-    TOOLS, MAX_UNDO, ORIGIN, toStage, toWorld, cellFromClient, cellToClient, line, floodCells, rectCells, createPainter
+    TOOLS, MAX_UNDO, ORIGIN, toStage, toWorld, cellFromClient, cellToClient, line, floodCells, rectCells, createPainter,
+    clampZoom, zoomAround, panBy, pinchView, revealCell
 } = await import('./painter.js');
 const {createTilemapSync, decodeSegments} = await import('./tilemap-sync.js');
 const worldUi = (await import('../../reducers/world-ui.js'));
@@ -70,6 +71,37 @@ section('coordinates');
     ok('round trip under a panned zoomed camera', back && back.col === 3 && back.row === 0, back);
 }
 
+section('painter view');
+{
+    const view = {x: 10, y: -20, zoom: 1};
+    const zoomed = zoomAround(view, {x: 60, y: 30}, 2);
+    const before = toWorld(view, {x: 60, y: 30});
+    const after = toWorld(zoomed, {x: 60, y: 30});
+    ok('zoom keeps the world point under the pointer', near(before.x, after.x) && near(before.y, after.y), zoomed);
+    ok('zoom clamps to the painter range', clampZoom(100) === 8 && clampZoom(0.01) === 0.25 && clampZoom('x') === 1);
+    const panned = panBy({x: 0, y: 0, zoom: 2}, 40, -20);
+    ok('drag moves the world with the finger', near(panned.x, -20) && near(panned.y, 10) && panned.zoom === 2, panned);
+    const from = {a: {x: -20, y: 0}, b: {x: 20, y: 0}};
+    const to = {a: {x: -30, y: 10}, b: {x: 50, y: 10}};
+    const pinched = pinchView(view, from, to);
+    const anchor = toWorld(view, {x: 0, y: 0});
+    const moved = toWorld(pinched, {x: 10, y: 10});
+    ok('pinch scales by the finger spread', near(pinched.zoom, 2), pinched);
+    ok('pinch keeps the world point between the fingers', near(anchor.x, moved.x) && near(anchor.y, moved.y), moved);
+    ok('pinch with touching fingers keeps the zoom', pinchView(view, {a: {x: 0, y: 0}, b: {x: 0, y: 0}}, to).zoom === 1);
+    const big = createGrid({id: 'big', name: 'Big', cols: 100, rows: 100, tileSize: 16, origin: [-240, 180]});
+    const home = {x: 0, y: 0, zoom: 1};
+    ok('a cell already in view keeps the view', revealCell(big, home, 2, 2) === home);
+    const right = revealCell(big, home, 40, 2);
+    const shown = cellToClient(big, right, {left: 0, top: 0, width: 480, height: 360}, 40, 2);
+    ok('a cell off the right edge pans it into view', shown.left >= 0 && near(shown.left + shown.width, 480), shown);
+    const down = revealCell(big, home, 2, 60);
+    const low = cellToClient(big, down, {left: 0, top: 0, width: 480, height: 360}, 2, 60);
+    ok('a cell below the view pans it into view', near(low.top + low.height, 360), low);
+    const far = cellFromClient(big, right, {left: 0, top: 0, width: 480, height: 360}, shown.left + 1, shown.top + 1);
+    ok('cells past the stage are reachable through the painter view', far && far.col === 40 && far.row === 2, far);
+}
+
 section('geometry');
 {
     const diag = line({col: 0, row: 0}, {col: 4, row: 2});
@@ -94,6 +126,12 @@ section('strokes go through the world');
     ok('paint drag fills the dragged row', count(world.grid, 'main', 2) === 5, count(world.grid, 'main', 2));
     ok('every write carries the painter origin', world.log.every(entry => entry.origin === ORIGIN), world.log);
     ok('a stroke is one undo step', painter.canUndo() && changes === 1);
+    const undos = painter.canUndo();
+    painter.begin('paint', settings, {col: 1, row: 4});
+    painter.move({col: 3, row: 4});
+    ok('discard drops a stroke a second finger interrupts', painter.discard() === true &&
+        getCell(world.grid, 'main', 1, 4) === 0 && getCell(world.grid, 'main', 3, 4) === 0 && !painter.stroking());
+    ok('a discarded stroke leaves no undo step', painter.canUndo() === undos && painter.discard() === false);
     painter.begin('erase', settings, {col: 3, row: 1});
     painter.end({col: 3, row: 1});
     ok('erase clears a cell', getCell(world.grid, 'main', 3, 1) === 0);

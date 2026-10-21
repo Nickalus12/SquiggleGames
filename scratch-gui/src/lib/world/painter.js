@@ -9,6 +9,8 @@ const ORIGIN = 'painter';
 const MAX_UNDO = 100;
 const STAGE_W = 480;
 const STAGE_H = 360;
+const MIN_VIEW_ZOOM = 0.25;
+const MAX_VIEW_ZOOM = 8;
 
 const keyOf = (col, row) => `${row}:${col}`;
 
@@ -39,6 +41,42 @@ const cellToClient = (grid, view, rect, col, row) => {
     const sx = rect.width / STAGE_W;
     const sy = rect.height / STAGE_H;
     return {left: left * sx, top: top * sy, width: size * sx, height: size * sy};
+};
+
+const clampZoom = zoom => Math.max(MIN_VIEW_ZOOM, Math.min(MAX_VIEW_ZOOM, Number(zoom) || 1));
+
+const zoomAround = (view, point, zoom) => {
+    const at = toWorld(view, point);
+    const next = clampZoom(zoom);
+    return {x: at.x - (point.x / next), y: at.y - (point.y / next), zoom: next};
+};
+
+const panBy = (view, dx, dy) => ({x: view.x - (dx / view.zoom), y: view.y - (dy / view.zoom), zoom: view.zoom});
+
+const midpoint = pair => ({x: (pair.a.x + pair.b.x) / 2, y: (pair.a.y + pair.b.y) / 2});
+
+const spread = pair => Math.hypot(pair.a.x - pair.b.x, pair.a.y - pair.b.y);
+
+const pinchView = (start, from, to) => {
+    const before = spread(from);
+    const zoom = clampZoom(start.zoom * (before > 0 ? spread(to) / before : 1));
+    const anchor = toWorld(start, midpoint(from));
+    const mid = midpoint(to);
+    return {x: anchor.x - (mid.x / zoom), y: anchor.y - (mid.y / zoom), zoom};
+};
+
+const revealCell = (grid, view, col, row) => {
+    const halfW = STAGE_W / 2 / view.zoom;
+    const halfH = STAGE_H / 2 / view.zoom;
+    const left = grid.origin[0] + (col * grid.tileSize);
+    const top = grid.origin[1] - (row * grid.tileSize);
+    let x = view.x;
+    let y = view.y;
+    if (left < x - halfW) x = left + halfW;
+    else if (left + grid.tileSize > x + halfW) x = left + grid.tileSize - halfW;
+    if (top > y + halfH) y = top - halfH;
+    else if (top - grid.tileSize < y - halfH) y = top - grid.tileSize + halfH;
+    return x === view.x && y === view.y ? view : {x, y, zoom: view.zoom};
 };
 
 const line = (from, to) => {
@@ -228,6 +266,17 @@ const createPainter = options => {
         if (world.level(entry.level)) world.paintCells(entry.level, entry.layer, cells, ORIGIN);
     };
 
+    const discard = () => {
+        if (!stroke) return false;
+        const done = stroke;
+        stroke = null;
+        if (done.entry.after.size) {
+            replay(done.entry, 'before');
+            onChange();
+        }
+        return true;
+    };
+
     const undo = () => {
         cancel();
         const entry = undoStack.pop();
@@ -260,6 +309,7 @@ const createPainter = options => {
         move,
         end,
         cancel,
+        discard,
         undo,
         redo,
         clear,
@@ -282,6 +332,11 @@ export {
     toWorld,
     cellFromClient,
     cellToClient,
+    clampZoom,
+    zoomAround,
+    panBy,
+    pinchView,
+    revealCell,
     line,
     floodCells,
     rectCells,

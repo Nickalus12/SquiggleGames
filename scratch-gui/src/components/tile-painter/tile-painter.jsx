@@ -2,12 +2,14 @@ import bindAll from 'lodash.bindall';
 import classNames from 'classnames';
 import PropTypes from 'prop-types';
 import React from 'react';
+import ReactDOM from 'react-dom';
 import {connect} from 'react-redux';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {FLAGS} from '../../lib/world/tilemap.js';
 import {
-    FLAG_NAMES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, createPainter
+    FLAG_NAMES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom, createPainter, panBy, pinchView,
+    revealCell, toStage, zoomAround
 } from '../../lib/world/painter.js';
 import {peekScenes} from '../../lib/world/scenes.js';
 import {
@@ -19,6 +21,8 @@ const SHORTCUTS = {b: 'paint', e: 'erase', g: 'fill', r: 'rect', i: 'pick', f: '
 const KEY_OF = Object.keys(SHORTCUTS).reduce((map, key) => Object.assign(map, {[SHORTCUTS[key]]: key}), {});
 const FLAG_COLORS = {solid: '#3a6ff0', oneway: '#2fa36b', hazard: '#e0483e', goal: '#e3a21a'};
 const HELP_ID = 'sq-tile-painter-help';
+const WHEEL_ZOOM = 0.0015;
+const KEY_ZOOM = 1.25;
 
 const messages = defineMessages({
     toolbar: {
@@ -35,6 +39,8 @@ const messages = defineMessages({
         id: 'sq.painter.help',
         defaultMessage: 'Arrow keys move the cursor. Enter uses the tool once. ' +
             'Hold Space and use the arrows to drag. ' +
+            'Plus and minus zoom, 0 goes back to the camera. ' +
+            'Drag with two fingers or the middle button to pan. ' +
             'Ctrl+Z undoes. Escape closes.',
         description: 'Keyboard help for the tile painter'
     },
@@ -138,15 +144,20 @@ class TilePainter extends React.Component {
             'handlePointerMove',
             'handlePointerUp',
             'handleRedo',
+            'handleWheel',
             'handleTile',
             'handleTool',
             'handleToggleGrid',
             'handleUndo',
             'handleWorldChange',
-            'setCanvas'
+            'setCanvas',
+            'setToolbar'
         ]);
         this.painter = createPainter({world: props.world, onChange: this.handleWorldChange});
         this.thumbs = new Map();
+        this.pointers = new Map();
+        this.gesture = null;
+        this.view = null;
         this.state = {
             rect: null,
             hover: null,
@@ -175,13 +186,24 @@ class TilePainter extends React.Component {
     }
     start () {
         this.refreshPalette();
-        this.dirty = true;
+        const seen = this.props.world.view() || {x: 0, y: 0, zoom: 1};
+        this.setView({x: seen.x, y: seen.y, zoom: clampZoom(seen.zoom)});
+        this.wantFocus = !this.props.docked;
         this.frame = this.props.win.requestAnimationFrame(this.handleFrame);
     }
     stop () {
         if (this.frame) this.props.win.cancelAnimationFrame(this.frame);
         this.frame = null;
         this.painter.cancel();
+        this.pointers.clear();
+        this.gesture = null;
+        this.view = null;
+        this.props.world.setEditView(null);
+    }
+    setView (view) {
+        this.view = view;
+        this.props.world.setEditView(view);
+        this.dirty = true;
     }
     grid () {
         return this.painter.grid();
@@ -201,20 +223,15 @@ class TilePainter extends React.Component {
         if (!source) return;
         const box = source.getBoundingClientRect();
         const rect = {left: box.left, top: box.top, width: box.width, height: box.height};
-        const view = this.props.world.view();
         if (!sameRect(rect, this.state.rect)) {
             this.dirty = true;
             this.setState({rect});
-        }
-        if (view !== this.lastView) {
-            this.lastView = view;
-            this.dirty = true;
         }
         if (this.paletteStale) {
             this.paletteStale = false;
             this.refreshPalette();
         }
-        if (this.dirty) this.draw(rect, view);
+        if (this.dirty && this.view) this.draw(rect, this.view);
     }
     draw (rect, view) {
         const canvas = this.canvas;
@@ -303,7 +320,42 @@ class TilePainter extends React.Component {
         return {layer: this.props.layer, tile: this.props.tile, flag: this.props.flag};
     }
     cellAt (event) {
-        return cellFromClient(this.grid(), this.props.world.view(), this.state.rect, event.clientX, event.clientY);
+        return cellFromClient(this.grid(), this.view, this.state.rect, event.clientX, event.clientY);
+    }
+    stagePoint (event) {
+        return toStage(this.state.rect, event.clientX, event.clientY);
+    }
+    startGesture (event) {
+        const ids = Array.from(this.pointers.keys());
+        if (event.button === 1) {
+            this.gesture = {kind: 'pan', id: event.pointerId, last: this.stagePoint(event)};
+        } else if (ids.length >= 2) {
+            this.painter.discard();
+            this.gesture = {
+                kind: 'pinch',
+                ids: ids.slice(0, 2),
+                view: this.view,
+                from: {a: this.pointers.get(ids[0]), b: this.pointers.get(ids[1])}
+            };
+        }
+        return !!this.gesture;
+    }
+    moveGesture (event) {
+        const gesture = this.gesture;
+        if (gesture.kind === 'pan') {
+            if (event.pointerId !== gesture.id) return;
+            const point = this.stagePoint(event);
+            this.setView(panBy(this.view, point.x - gesture.last.x, point.y - gesture.last.y));
+            gesture.last = point;
+            return;
+        }
+        const a = this.pointers.get(gesture.ids[0]);
+        const b = this.pointers.get(gesture.ids[1]);
+        if (a && b) this.setView(pinchView(gesture.view, gesture.from, {a, b}));
+    }
+    zoomBy (factor, point) {
+        if (!this.view) return;
+        this.setView(zoomAround(this.view, point || {x: 0, y: 0}, this.view.zoom * factor));
     }
     finish (result) {
         if (!result) return;
@@ -338,6 +390,14 @@ class TilePainter extends React.Component {
         this.setState({announce: text});
     }
     handlePointerDown (event) {
+        if (!this.state.rect || !this.view) return;
+        if (event.pointerType === 'touch') this.pointers.set(event.pointerId, this.stagePoint(event));
+        if (this.gesture || this.startGesture(event)) {
+            event.preventDefault();
+            if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
+            this.dirty = true;
+            return;
+        }
         if (event.button !== 0) return;
         const cell = this.cellAt(event);
         if (!cell) return;
@@ -348,6 +408,12 @@ class TilePainter extends React.Component {
         this.dirty = true;
     }
     handlePointerMove (event) {
+        if (!this.state.rect || !this.view) return;
+        if (this.pointers.has(event.pointerId)) this.pointers.set(event.pointerId, this.stagePoint(event));
+        if (this.gesture) {
+            this.moveGesture(event);
+            return;
+        }
         const cell = this.cellAt(event);
         const hover = this.state.hover;
         if (cell && hover && cell.col === hover.col && cell.row === hover.row) return;
@@ -356,8 +422,26 @@ class TilePainter extends React.Component {
         this.dirty = true;
     }
     handlePointerUp (event) {
-        if (!this.painter.stroking()) return;
+        this.pointers.delete(event.pointerId);
+        if (this.gesture) {
+            const gesture = this.gesture;
+            if (gesture.kind === 'pan' ? gesture.id === event.pointerId : gesture.ids.indexOf(event.pointerId) !== -1) {
+                this.gesture = null;
+            }
+            return;
+        }
+        if (!this.painter.stroking() || !this.view) return;
         this.finish(this.painter.end(this.cellAt(event)));
+    }
+    handleWheel (event) {
+        if (!this.state.rect || !this.view) return;
+        event.preventDefault();
+        const point = this.stagePoint(event);
+        if (event.shiftKey) {
+            this.setView(panBy(this.view, -(event.deltaY || event.deltaX), 0));
+            return;
+        }
+        this.zoomBy(Math.exp(-event.deltaY * WHEEL_ZOOM * (event.deltaMode === 1 ? 16 : 1)), point);
     }
     handlePointerLeave () {
         this.setState({hover: null});
@@ -372,6 +456,10 @@ class TilePainter extends React.Component {
             row: Math.max(0, Math.min(grid.rows - 1, from.row + dr))
         };
         const announce = this.props.intl.formatMessage(messages.at, {col: cursor.col + 1, row: cursor.row + 1});
+        if (this.view) {
+            const shown = revealCell(grid, this.view, cursor.col, cursor.row);
+            if (shown !== this.view) this.setView(shown);
+        }
         this.setState({cursor, announce});
         if (this.painter.stroking()) this.painter.move(cursor);
         this.dirty = true;
@@ -419,6 +507,17 @@ class TilePainter extends React.Component {
         if (key === '[' || key === ']') {
             event.preventDefault();
             this.cycleTile(key === '[' ? -1 : 1);
+            return;
+        }
+        if (key === '+' || key === '=' || key === '-') {
+            event.preventDefault();
+            this.zoomBy(key === '-' ? 1 / KEY_ZOOM : KEY_ZOOM);
+            return;
+        }
+        if (key === '0') {
+            event.preventDefault();
+            const camera = this.props.world.cameraInfo();
+            this.setView(camera ? {x: camera.x, y: camera.y, zoom: clampZoom(camera.zoom)} : {x: 0, y: 0, zoom: 1});
             return;
         }
         if (event.target !== this.canvas) return;
@@ -484,8 +583,17 @@ class TilePainter extends React.Component {
         this.props.onClose();
     }
     setCanvas (el) {
+        if (this.canvas) this.canvas.removeEventListener('wheel', this.handleWheel);
         this.canvas = el;
+        if (el) el.addEventListener('wheel', this.handleWheel, {passive: false});
         this.dirty = true;
+    }
+    setToolbar (el) {
+        this.toolbar = el;
+        if (!el || !this.wantFocus) return;
+        this.wantFocus = false;
+        const first = el.querySelector('button:not([disabled])');
+        if (first) first.focus();
     }
     thumbFor (item) {
         const costume = item.costume;
@@ -600,11 +708,69 @@ class TilePainter extends React.Component {
             </div>
         );
     }
+    renderToolbar (rect, grid) {
+        const {docked, intl, showGrid} = this.props;
+        return (
+            <div
+                aria-label={intl.formatMessage(messages.toolbar)}
+                className={classNames(styles.toolbar, {[styles.docked]: docked})}
+                ref={this.setToolbar}
+                role="toolbar"
+                style={docked ? null : {
+                    left: `${Math.max(8, rect.left)}px`,
+                    top: `${rect.top + rect.height + 8}px`,
+                    width: `${Math.max(320, rect.width)}px`
+                }}
+            >
+                {grid ? (
+                    <React.Fragment>
+                        <div className={styles.row}>
+                            {this.renderTools()}
+                        </div>
+                        <div className={styles.row}>
+                            {this.renderLayers()}
+                            <div className={styles.group}>
+                                <button
+                                    className={styles.button}
+                                    disabled={!this.painter.canUndo()}
+                                    onClick={this.handleUndo}
+                                >{intl.formatMessage(messages.undo)}</button>
+                                <button
+                                    className={styles.button}
+                                    disabled={!this.painter.canRedo()}
+                                    onClick={this.handleRedo}
+                                >{intl.formatMessage(messages.redo)}</button>
+                                <button
+                                    aria-pressed={showGrid}
+                                    className={classNames(styles.button, {[styles.pressed]: showGrid})}
+                                    onClick={this.handleToggleGrid}
+                                >{intl.formatMessage(messages.grid)}</button>
+                            </div>
+                        </div>
+                        {this.props.tool === 'flag' ? null : this.renderPalette()}
+                    </React.Fragment>
+                ) : <p className={styles.note}>{intl.formatMessage(messages.noLevel)}</p>}
+                <div className={styles.row}>
+                    <p
+                        className={styles.help}
+                        id={HELP_ID}
+                    >{intl.formatMessage(messages.help)}</p>
+                    <button
+                        className={classNames(styles.button, styles.done)}
+                        onClick={this.handleClose}
+                    >{intl.formatMessage(messages.done)}</button>
+                </div>
+            </div>
+        );
+    }
     render () {
-        const {intl, open, showGrid} = this.props;
+        const {docked, intl, open, toolbarHost} = this.props;
         if (!open || !this.state.rect) return null;
         const rect = this.state.rect;
         const grid = this.grid();
+        let toolbar = null;
+        if (!docked) toolbar = this.renderToolbar(rect, grid);
+        else if (toolbarHost) toolbar = ReactDOM.createPortal(this.renderToolbar(rect, grid), toolbarHost);
         return (
             <div
                 className={styles.root}
@@ -614,7 +780,10 @@ class TilePainter extends React.Component {
                 <canvas
                     aria-describedby={HELP_ID}
                     aria-label={intl.formatMessage(messages.canvas)}
-                    className={classNames(styles.overlay, {[styles.inactive]: !grid})}
+                    className={classNames(styles.overlay, {
+                        [styles.inactive]: !grid,
+                        [styles.underSheet]: docked
+                    })}
                     ref={this.setCanvas}
                     role="application"
                     style={{
@@ -625,60 +794,13 @@ class TilePainter extends React.Component {
                     }}
                     tabIndex={grid ? 0 : -1}
                     onBlur={this.handleBlur}
+                    onPointerCancel={this.handlePointerUp}
                     onPointerDown={this.handlePointerDown}
                     onPointerLeave={this.handlePointerLeave}
                     onPointerMove={this.handlePointerMove}
                     onPointerUp={this.handlePointerUp}
                 />
-                <div
-                    aria-label={intl.formatMessage(messages.toolbar)}
-                    className={styles.toolbar}
-                    role="toolbar"
-                    style={{
-                        left: `${Math.max(8, rect.left)}px`,
-                        top: `${rect.top + rect.height + 8}px`,
-                        width: `${Math.max(320, rect.width)}px`
-                    }}
-                >
-                    {grid ? (
-                        <React.Fragment>
-                            <div className={styles.row}>
-                                {this.renderTools()}
-                            </div>
-                            <div className={styles.row}>
-                                {this.renderLayers()}
-                                <div className={styles.group}>
-                                    <button
-                                        className={styles.button}
-                                        disabled={!this.painter.canUndo()}
-                                        onClick={this.handleUndo}
-                                    >{intl.formatMessage(messages.undo)}</button>
-                                    <button
-                                        className={styles.button}
-                                        disabled={!this.painter.canRedo()}
-                                        onClick={this.handleRedo}
-                                    >{intl.formatMessage(messages.redo)}</button>
-                                    <button
-                                        aria-pressed={showGrid}
-                                        className={classNames(styles.button, {[styles.pressed]: showGrid})}
-                                        onClick={this.handleToggleGrid}
-                                    >{intl.formatMessage(messages.grid)}</button>
-                                </div>
-                            </div>
-                            {this.props.tool === 'flag' ? null : this.renderPalette()}
-                        </React.Fragment>
-                    ) : <p className={styles.note}>{intl.formatMessage(messages.noLevel)}</p>}
-                    <div className={styles.row}>
-                        <p
-                            className={styles.help}
-                            id={HELP_ID}
-                        >{intl.formatMessage(messages.help)}</p>
-                        <button
-                            className={classNames(styles.button, styles.done)}
-                            onClick={this.handleClose}
-                        >{intl.formatMessage(messages.done)}</button>
-                    </div>
-                </div>
+                {toolbar}
                 <div
                     aria-live="polite"
                     className={styles.hidden}
@@ -690,6 +812,7 @@ class TilePainter extends React.Component {
 
 TilePainter.propTypes = {
     canvas: PropTypes.shape({getBoundingClientRect: PropTypes.func}),
+    docked: PropTypes.bool,
     flag: PropTypes.oneOf(FLAG_NAMES).isRequired,
     intl: intlShape.isRequired,
     layer: PropTypes.oneOf(PAINT_LAYERS).isRequired,
@@ -709,6 +832,7 @@ TilePainter.propTypes = {
     showGrid: PropTypes.bool.isRequired,
     tile: PropTypes.number.isRequired,
     tool: PropTypes.oneOf(TOOLS).isRequired,
+    toolbarHost: PropTypes.shape({appendChild: PropTypes.func}),
     win: PropTypes.shape({
         cancelAnimationFrame: PropTypes.func,
         devicePixelRatio: PropTypes.number,
@@ -717,9 +841,16 @@ TilePainter.propTypes = {
     world: PropTypes.shape({
         addTile: PropTypes.func,
         camera: PropTypes.shape({setBounds: PropTypes.func}),
+        cameraInfo: PropTypes.func,
         events: PropTypes.shape({on: PropTypes.func}),
+        setEditView: PropTypes.func,
         view: PropTypes.func
     }).isRequired
+};
+
+TilePainter.defaultProps = {
+    docked: false,
+    toolbarHost: null
 };
 
 const mapStateToProps = state => {

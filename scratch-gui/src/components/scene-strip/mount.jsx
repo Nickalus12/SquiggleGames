@@ -6,6 +6,7 @@ import {Provider, connect} from 'react-redux';
 import {IntlProvider, defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode, watchLayoutMode} from '../../lib/layout-mode';
+import kitLoaded from '../../lib/world/kit-loaded.js';
 import SqIcon from '../sq-icon';
 import {addTopBarItem, closeSheet, openSheet} from '../phone-shell/phone-slots';
 import SceneStrip from './scene-strip.jsx';
@@ -89,9 +90,6 @@ const withIntl = (store, child) => (store && store.getState().locales ? (
     </Provider>
 ) : <IntlProvider locale="en">{child}</IntlProvider>);
 
-const kitLoaded = runtime => Array.isArray(runtime._blockInfo) &&
-    runtime._blockInfo.some(info => info.id === KIT_ID);
-
 const installSceneStrip = ({runtime, controller, win = window, store = win.ReduxStore}) => {
     if (mounts.has(runtime)) return mounts.get(runtime);
     const doc = win.document;
@@ -106,7 +104,7 @@ const installSceneStrip = ({runtime, controller, win = window, store = win.Redux
     );
 
     const sync = () => {
-        const active = kitLoaded(runtime);
+        const active = kitLoaded(runtime, KIT_ID);
         const phone = mode === LAYOUT_MODES.phone;
         const slot = doc.getElementById(SLOT_ID);
         if (active && !phone && slot) {

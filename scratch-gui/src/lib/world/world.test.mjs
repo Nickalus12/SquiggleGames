@@ -211,6 +211,17 @@ runtime._step();
 drawFrame();
 ok('zoom shows in the view and in scale()', seam.getView().zoom === 2 && seam.scale() === 2);
 ok('camera left reporter follows zoom', ext.cameraValue({PROP: 'left'}) === 300 - 120);
+world.setEditView({x: -40, y: 12, zoom: 0.5});
+drawFrame();
+ok('the painter view replaces the camera view', seam.getView().x === -40 && seam.getView().zoom === 0.5 &&
+    world.editView().y === 12, seam.getView());
+runtime._step();
+drawFrame();
+ok('the camera keeps stepping under the painter view', seam.getView().x === -40 && ext.cameraValue({PROP: 'x'}) === 300);
+world.setEditView({x: NaN, y: 0, zoom: 1});
+drawFrame();
+ok('a bad painter view clears it and the camera returns', world.editView() === null && seam.getView().x === 300 &&
+    seam.getView().zoom === 2, seam.getView());
 
 section('screen space');
 ext.pinToScreen({ONOFF: 'on'}, util(hud));
