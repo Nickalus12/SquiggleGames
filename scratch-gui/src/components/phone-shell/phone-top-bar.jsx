@@ -29,7 +29,7 @@ const messages = defineMessages({
     findBlocks: {
         id: 'sq.phone.findBlocks',
         defaultMessage: 'Find blocks',
-        description: 'Top bar button on phones that shows or hides the block palette'
+        description: 'Top bar button on phones that opens or closes block search'
     },
     go: {
         id: 'gui.controls.go',
@@ -213,7 +213,8 @@ PhoneTopBar.propTypes = {
 const mapStateToProps = state => ({
     isStarted: state.scratchGui.vmStatus.started,
     menuOpen: state.scratchGui.layoutMode.phoneMenuOpen,
-    paletteOpen: state.scratchGui.layoutMode.phonePaletteOpen,
+    paletteOpen: !!(state.scratchGui.commandPalette && state.scratchGui.commandPalette.open) ||
+        state.scratchGui.layoutMode.phonePaletteOpen,
     phoneTab: state.scratchGui.layoutMode.phoneTab,
     projectRunning: state.scratchGui.vmStatus.running,
     projectTitle: state.scratchGui.projectTitle
