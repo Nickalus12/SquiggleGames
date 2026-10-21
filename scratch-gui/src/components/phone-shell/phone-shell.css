@@ -15,7 +15,7 @@
     background-color: $menu-bar-background;
     background-image: $menu-bar-background-image;
     color: $menu-bar-foreground;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
 }
 
 .icon-button {
@@ -109,7 +109,7 @@
     z-index: $z-index-menu-bar;
     background-color: $ui-white;
     border-top: 1px solid $ui-black-transparent;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
 }
 
 .tab-button {
@@ -207,7 +207,7 @@
     box-sizing: border-box;
     padding: 4px 0;
     color: $text-primary;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
 }
 
 .sprite-info {
