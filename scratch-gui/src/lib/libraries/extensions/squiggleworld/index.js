@@ -30,6 +30,13 @@ class SquiggleWorldBlocks {
         this.runtime = runtime;
         this.world = getWorld(runtime);
         attachWhenReady(this.world);
+        if (typeof window !== 'undefined' && typeof document !== 'undefined') this.mountPainter();
+    }
+
+    mountPainter () {
+        import('../../../../components/tile-painter/mount.jsx')
+            .then(mod => mod.installTilePainter({runtime: this.runtime, world: this.world}))
+            .catch(() => null);
     }
 
     getInfo () {

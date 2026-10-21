@@ -2,7 +2,7 @@ import bindAll from 'lodash.bindall';
 import PropTypes from 'prop-types';
 import React from 'react';
 import ReactDOM from 'react-dom';
-import {connect} from 'react-redux';
+import {Provider, connect} from 'react-redux';
 import {IntlProvider, defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import {LAYOUT_MODES, PHONE_TABS, detectLayoutMode, watchLayoutMode} from '../../lib/layout-mode';
@@ -78,10 +78,21 @@ const ConnectedPhoneScenesButton = connect(state => ({
     visible: state.scratchGui.layoutMode.phoneTab === PHONE_TABS.stage
 }))(injectIntl(PhoneScenesButton));
 
+const ConnectedIntl = connect(state => ({
+    locale: state.locales.locale,
+    messages: state.locales.messages
+}))(IntlProvider);
+
+const withIntl = (store, child) => (store && store.getState().locales ? (
+    <Provider store={store}>
+        <ConnectedIntl>{child}</ConnectedIntl>
+    </Provider>
+) : <IntlProvider locale="en">{child}</IntlProvider>);
+
 const kitLoaded = runtime => Array.isArray(runtime._blockInfo) &&
     runtime._blockInfo.some(info => info.id === KIT_ID);
 
-const installSceneStrip = ({runtime, controller, win = window}) => {
+const installSceneStrip = ({runtime, controller, win = window, store = win.ReduxStore}) => {
     if (mounts.has(runtime)) return mounts.get(runtime);
     const doc = win.document;
     const container = doc.createElement('div');
@@ -101,12 +112,7 @@ const installSceneStrip = ({runtime, controller, win = window}) => {
         if (active && !phone && slot) {
             if (container.parentNode !== slot) slot.appendChild(container);
             if (!rendered) {
-                ReactDOM.render(
-                    <IntlProvider locale="en">
-                        <ScenesButton controller={controller} />
-                    </IntlProvider>,
-                    container
-                );
+                ReactDOM.render(withIntl(store, <ScenesButton controller={controller} />), container);
                 rendered = true;
             }
         } else if (rendered) {
