@@ -92,6 +92,34 @@ console.log('room api');
         refused = e.message;
     });
     ok('a refusal rejects with the status', refused === 'http-403');
+    let told = null;
+    await api.request('/x', {fetcher: () => Promise.resolve({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({error: 'host-only', message: 'Only the room host can.'})
+    })}).catch(e => {
+        told = e;
+    });
+    ok('a refusal carries the server code and words', told && told.message === 'http-403' &&
+        told.code === 'host-only' && told.friendly === 'Only the room host can.');
+    let garbled = null;
+    await api.request('/x', {fetcher: () => Promise.resolve({ok: false, status: 502, json: () => Promise.reject(new Error('html'))})})
+        .catch(e => {
+            garbled = e;
+        });
+    ok('a refusal without json still rejects', garbled && garbled.message === 'http-502' && !garbled.friendly);
+    const posts = [];
+    const poster = (url, init) => {
+        posts.push({url, body: init.body, method: init.method});
+        return Promise.resolve({ok: true, json: () => Promise.resolve({ok: true})});
+    };
+    await api.restoreVersion('s', {v: 3, sha: 'x'}, poster);
+    await api.restoreVersion('s', {file: '2026-09-30T10-15-00-000Z.sb3'}, poster);
+    ok('restore posts a live version by v', posts[0].url === '/api/rooms/s/history/restore' &&
+        posts[0].method === 'POST' && posts[0].body === '{"v":3}');
+    ok('restore posts a 1.x stamp by file', posts[1].body === '{"file":"2026-09-30T10-15-00-000Z.sb3"}');
+    await api.roomHistory('a b', poster);
+    ok('history lists by slug', posts[2].url === '/api/rooms/a%20b/history');
     let none = null;
     await api.patchRoom('', {}, fetcher).catch(e => {
         none = e.message;
