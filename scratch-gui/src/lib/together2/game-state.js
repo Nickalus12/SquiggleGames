@@ -15,6 +15,7 @@ const createGameState = (tickSeconds = TICK_SECONDS) => ({
     names: {},
     teams: {},
     timers: {},
+    speed: 0,
     boards: [],
     places: {},
     lastHit: 0,
@@ -58,6 +59,7 @@ const applyY = (state, y, keyframe) => {
         state.names = {};
         state.teams = {};
         state.timers = {};
+        state.speed = 0;
         state.boards = [];
         state.places = {};
     }
@@ -65,7 +67,8 @@ const applyY = (state, y, keyframe) => {
     if (typeof y.round !== 'undefined') applyRound(state, y.round);
     if (isObject(y.names)) applyNames(state, y.names);
     if (isObject(y.teams)) mergeInto(state.teams, y.teams);
-    if (isObject(y.timers)) mergeInto(state.timers, y.timers);
+    if (isObject(y.timers)) state.timers = Object.assign({}, y.timers);
+    if (Number.isFinite(y.speed) && y.speed >= 0) state.speed = y.speed;
     if (Array.isArray(y.boards)) state.boards = y.boards.filter(isObject);
     if (isObject(y.places)) mergeInto(state.places, y.places);
 };
