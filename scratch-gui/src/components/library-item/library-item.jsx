@@ -3,12 +3,14 @@ import PropTypes from 'prop-types';
 import React from 'react';
 
 import Box from '../box/box.jsx';
+import SqIcon from '../sq-icon/sq-icon.jsx';
 import PlayButton from '../../containers/play-button.jsx';
 import styles from './library-item.css';
 import classNames from 'classnames';
 
 import bluetoothIconURL from './bluetooth.svg';
 import internetConnectionIconURL from './internet-connection.svg';
+import togetherRoomIconURL from './together-room.svg';
 import favoriteInactiveIcon from './favorite-inactive.svg';
 import favoriteActiveIcon from './favorite-active.svg';
 
@@ -22,10 +24,53 @@ const messages = defineMessages({
         defaultMessage: 'Unfavorite',
         description: 'Alt text of icon in costume, sound, and extension libraries to unmark an item as favorite.',
         id: 'tw.unfavorite'
+    },
+    togetherRoom: {
+        defaultMessage: 'Together Room',
+        description: 'Name of the badge on extension cards that need a Together room to play with other people',
+        id: 'sq.library.requires.togetherRoom'
+    },
+    bluetooth: {
+        defaultMessage: 'Bluetooth',
+        description: 'Name of the badge on extension cards that need Bluetooth',
+        id: 'sq.library.requires.bluetooth'
+    },
+    internet: {
+        defaultMessage: 'Internet',
+        description: 'Name of the badge on extension cards that need an internet connection',
+        id: 'sq.library.requires.internet'
+    },
+    added: {
+        defaultMessage: 'Added',
+        description: 'Shown on an extension card once the extension is in the project',
+        id: 'sq.library.added'
+    },
+    showBlocks: {
+        defaultMessage: 'Show blocks',
+        description: 'Button on an added extension card that scrolls the block list to its blocks',
+        id: 'sq.library.showBlocks'
     }
 });
 
 /* eslint-disable react/prefer-stateless-function */
+const RequirementIcon = ({label, src}) => (
+    <span
+        className={styles.requirementIcon}
+        role="img"
+        aria-label={label}
+        title={label}
+        style={{
+            WebkitMaskImage: `url("${src}")`,
+            maskImage: `url("${src}")`
+        }}
+    />
+);
+
+RequirementIcon.propTypes = {
+    label: PropTypes.string.isRequired,
+    src: PropTypes.string.isRequired
+};
+
 class LibraryItemComponent extends React.PureComponent {
     render () {
         const favoriteMessage = this.props.intl.formatMessage(
@@ -46,54 +91,103 @@ class LibraryItemComponent extends React.PureComponent {
             </button>
         );
 
+        const requirementsId = `sq-library-item-${this.props.id}-requires`;
+        const hasRequirement = this.props.bluetoothRequired ||
+            this.props.internetConnectionRequired ||
+            this.props.togetherRequired;
+        const intl = this.props.intl;
+        const tagChips = (this.props.tagChips || []).slice(0, 3);
+
         return this.props.featured ? (
             <div
                 className={classNames(
                     styles.libraryItem,
                     styles.featuredItem,
                     {
-                        [styles.disabled]: this.props.disabled
+                        [styles.disabled]: this.props.disabled,
+                        [styles.added]: this.props.added
                     },
                     typeof this.props.extensionId === 'string' ? styles.libraryItemExtension : null,
                     this.props.hidden ? styles.hidden : null
                 )}
-                onClick={this.props.onClick}
             >
-                <div className={styles.featuredImageContainer}>
-                    {this.props.disabled ? (
-                        <div className={styles.comingSoonText}>
-                            <FormattedMessage
-                                defaultMessage="Coming Soon"
-                                description="Label for extensions that are not yet implemented"
-                                id="gui.extensionLibrary.comingSoon"
-                            />
-                        </div>
-                    ) : null}
-                    <img
-                        className={styles.featuredImage}
-                        loading="lazy"
-                        draggable={false}
-                        src={this.props.iconURL}
-                    />
-                </div>
-                {this.props.insetIconURL ? (
-                    <div className={styles.libraryItemInsetImageContainer}>
-                        <img
-                            className={styles.libraryItemInsetImage}
-                            src={this.props.insetIconURL}
-                            draggable={false}
-                        />
-                    </div>
-                ) : null}
-                <div
-                    className={typeof this.props.extensionId === 'string' ?
-                        classNames(styles.featuredExtensionText, styles.featuredText) : styles.featuredText
-                    }
+                <button
+                    type="button"
+                    className={styles.featuredButton}
+                    aria-disabled={this.props.disabled ? 'true' : null}
+                    aria-describedby={hasRequirement ? requirementsId : null}
+                    onClick={this.props.onClick}
                 >
-                    <span className={styles.libraryItemName}>{this.props.name}</span>
-                    <br />
-                    <span className={styles.featuredDescription}>{this.props.description}</span>
-                </div>
+                    <span className={styles.featuredImageContainer}>
+                        {this.props.disabled ? (
+                            <span className={styles.comingSoonText}>
+                                <FormattedMessage
+                                    defaultMessage="Coming Soon"
+                                    description="Label for extensions that are not yet implemented"
+                                    id="gui.extensionLibrary.comingSoon"
+                                />
+                            </span>
+                        ) : null}
+                        <img
+                            className={styles.featuredImage}
+                            loading="lazy"
+                            draggable={false}
+                            alt=""
+                            src={this.props.iconURL}
+                        />
+                    </span>
+                    {this.props.insetIconURL ? (
+                        <span className={styles.libraryItemInsetImageContainer}>
+                            <img
+                                className={styles.libraryItemInsetImage}
+                                src={this.props.insetIconURL}
+                                draggable={false}
+                                alt=""
+                            />
+                        </span>
+                    ) : null}
+                    <span
+                        className={typeof this.props.extensionId === 'string' ?
+                            classNames(styles.featuredExtensionText, styles.featuredText) : styles.featuredText
+                        }
+                    >
+                        <span className={styles.libraryItemName}>{this.props.name}</span>
+                        <br />
+                        <span className={styles.featuredDescription}>{this.props.description}</span>
+                    </span>
+                    {tagChips.length > 0 && (
+                        <span className={styles.tagChips}>
+                            {tagChips.map(chip => (
+                                <span
+                                    className={styles.tagChip}
+                                    key={chip.tag}
+                                >
+                                    {typeof chip.label === 'string' ? chip.label : intl.formatMessage(chip.label)}
+                                </span>
+                            ))}
+                        </span>
+                    )}
+                </button>
+
+                {this.props.added && (
+                    <div className={styles.addedRow}>
+                        <span className={styles.addedLabel}>
+                            <SqIcon
+                                className={styles.addedIcon}
+                                name="check"
+                                size={16}
+                            />
+                            {intl.formatMessage(messages.added)}
+                        </span>
+                        <button
+                            type="button"
+                            className={styles.showBlocksButton}
+                            onClick={this.props.onShowBlocks}
+                        >
+                            {intl.formatMessage(messages.showBlocks)}
+                        </button>
+                    </div>
+                )}
 
                 {(this.props.docsURI || this.props.samples) && (
                     <div className={styles.extensionLinks}>
@@ -150,11 +244,11 @@ class LibraryItemComponent extends React.PureComponent {
                     </div>
                 )}
 
-                {this.props.bluetoothRequired || this.props.internetConnectionRequired || this.props.collaborator ? (
+                {hasRequirement || this.props.collaborator ? (
                     <div className={styles.featuredExtensionMetadata}>
                         <div className={styles.featuredExtensionRequirement}>
-                            {this.props.bluetoothRequired || this.props.internetConnectionRequired ? (
-                                <div>
+                            {hasRequirement ? (
+                                <div id={requirementsId}>
                                     <div>
                                         <FormattedMessage
                                             defaultMessage="Requires"
@@ -166,16 +260,27 @@ class LibraryItemComponent extends React.PureComponent {
                                         className={styles.featuredExtensionMetadataDetail}
                                     >
                                         {this.props.bluetoothRequired ? (
-                                            <img
+                                            <RequirementIcon
+                                                label={intl.formatMessage(messages.bluetooth)}
                                                 src={bluetoothIconURL}
-                                                draggable={false}
                                             />
                                         ) : null}
                                         {this.props.internetConnectionRequired ? (
-                                            <img
+                                            <RequirementIcon
+                                                label={intl.formatMessage(messages.internet)}
                                                 src={internetConnectionIconURL}
-                                                draggable={false}
                                             />
+                                        ) : null}
+                                        {this.props.togetherRequired ? (
+                                            <span className={styles.requirementNamed}>
+                                                <RequirementIcon
+                                                    label={intl.formatMessage(messages.togetherRoom)}
+                                                    src={togetherRoomIconURL}
+                                                />
+                                                <span aria-hidden="true">
+                                                    {intl.formatMessage(messages.togetherRoom)}
+                                                </span>
+                                            </span>
                                         ) : null}
                                     </div>
                                 </div>
@@ -254,6 +359,7 @@ class LibraryItemComponent extends React.PureComponent {
 
 LibraryItemComponent.propTypes = {
     intl: intlShape,
+    added: PropTypes.bool,
     bluetoothRequired: PropTypes.bool,
     collaborator: PropTypes.string,
     description: PropTypes.oneOfType([
@@ -265,6 +371,7 @@ LibraryItemComponent.propTypes = {
     featured: PropTypes.bool,
     hidden: PropTypes.bool,
     iconURL: PropTypes.string,
+    id: PropTypes.number,
     insetIconURL: PropTypes.string,
     internetConnectionRequired: PropTypes.bool,
     isPlaying: PropTypes.bool,
@@ -290,8 +397,21 @@ LibraryItemComponent.propTypes = {
     onMouseEnter: PropTypes.func.isRequired,
     onMouseLeave: PropTypes.func.isRequired,
     onPlay: PropTypes.func.isRequired,
+    onShowBlocks: PropTypes.func,
     onStop: PropTypes.func.isRequired,
-    showPlayButton: PropTypes.bool
+    showPlayButton: PropTypes.bool,
+    tagChips: PropTypes.arrayOf(PropTypes.shape({
+        tag: PropTypes.string,
+        label: PropTypes.oneOfType([
+            PropTypes.string,
+            PropTypes.shape({
+                defaultMessage: PropTypes.string,
+                description: PropTypes.string,
+                id: PropTypes.string
+            })
+        ])
+    })),
+    togetherRequired: PropTypes.bool
 };
 
 LibraryItemComponent.defaultProps = {

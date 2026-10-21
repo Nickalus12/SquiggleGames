@@ -26,6 +26,7 @@ class LibraryItem extends React.PureComponent {
             'handleMouseEnter',
             'handleMouseLeave',
             'handlePlay',
+            'handleShowBlocks',
             'handleStop',
             'rotateIcon',
             'startRotatingIcons',
@@ -108,6 +109,12 @@ class LibraryItem extends React.PureComponent {
     handlePlay () {
         this.props.onMouseEnter(this.props.id);
     }
+    handleShowBlocks (e) {
+        e.preventDefault();
+        if (this.props.onShowBlocks) {
+            this.props.onShowBlocks(this.props.id);
+        }
+    }
     handleStop () {
         this.props.onMouseLeave(this.props.id);
     }
@@ -144,6 +151,7 @@ class LibraryItem extends React.PureComponent {
         return (
             <LibraryItemComponent
                 intl={this.props.intl}
+                added={this.props.added}
                 bluetoothRequired={this.props.bluetoothRequired}
                 collaborator={this.props.collaborator}
                 description={this.props.description}
@@ -171,7 +179,10 @@ class LibraryItem extends React.PureComponent {
                 onMouseEnter={this.handleMouseEnter}
                 onMouseLeave={this.handleMouseLeave}
                 onPlay={this.handlePlay}
+                onShowBlocks={this.handleShowBlocks}
                 onStop={this.handleStop}
+                tagChips={this.props.tagChips}
+                togetherRequired={this.props.togetherRequired}
             />
         );
     }
@@ -179,6 +190,7 @@ class LibraryItem extends React.PureComponent {
 
 LibraryItem.propTypes = {
     intl: intlShape,
+    added: PropTypes.bool,
     bluetoothRequired: PropTypes.bool,
     collaborator: PropTypes.string,
     description: PropTypes.oneOfType([
@@ -221,7 +233,16 @@ LibraryItem.propTypes = {
     onMouseEnter: PropTypes.func.isRequired,
     onMouseLeave: PropTypes.func.isRequired,
     onSelect: PropTypes.func.isRequired,
-    showPlayButton: PropTypes.bool
+    onShowBlocks: PropTypes.func,
+    showPlayButton: PropTypes.bool,
+    tagChips: PropTypes.arrayOf(PropTypes.shape({
+        tag: PropTypes.string,
+        label: PropTypes.oneOfType([
+            PropTypes.string,
+            PropTypes.object
+        ])
+    })),
+    togetherRequired: PropTypes.bool
 };
 
 export default injectIntl(LibraryItem);

@@ -26,10 +26,38 @@ const messages = defineMessages({
         id: 'gui.library.allTag',
         defaultMessage: 'All',
         description: 'Label for library tag to revert to all items after filtering by tag.'
+    },
+    tagGroup: {
+        id: 'sq.library.tagGroup',
+        defaultMessage: 'Filters',
+        description: 'Accessible name of the row of filter buttons in a library'
     }
 });
 
 const ALL_TAG = {tag: 'all', intlLabel: messages.allTag};
+
+const readSessionItem = key => {
+    try {
+        return sessionStorage.getItem(key);
+    } catch (error) {
+        return null;
+    }
+};
+
+const writeSessionItem = (key, value) => {
+    try {
+        sessionStorage.setItem(key, value);
+        return true;
+    } catch (error) {
+        return false;
+    }
+};
+
+const withoutMatches = tagProps => {
+    const buttonProps = Object.assign({}, tagProps);
+    delete buttonProps.matches;
+    return buttonProps;
+};
 const tagListPrefix = [ALL_TAG];
 
 class LibraryComponent extends React.Component {
@@ -43,15 +71,17 @@ class LibraryComponent extends React.Component {
             'handleMouseLeave',
             'handlePlayingEnd',
             'handleSelect',
+            'handleShowBlocks',
             'handleFavorite',
             'handleTagClick',
+            'handleTagKeyDown',
             'setFilteredDataRef'
         ]);
         const favorites = this.readFavoritesFromStorage();
         this.state = {
             playingItem: null,
             filterQuery: '',
-            selectedTag: ALL_TAG.tag,
+            selectedTag: this.readRememberedTag(),
             canDisplay: false,
             favorites,
             initialFavorites: favorites
@@ -73,6 +103,10 @@ class LibraryComponent extends React.Component {
             this.scrollToTop();
         }
 
+        if (this.props.rememberTag && prevState.selectedTag !== this.state.selectedTag) {
+            writeSessionItem(this.getTagStorageKey(), this.state.selectedTag);
+        }
+
         if (this.state.favorites !== prevState.favorites) {
             try {
                 localStorage.setItem(this.getFavoriteStorageKey(), JSON.stringify(this.state.favorites));
@@ -84,6 +118,24 @@ class LibraryComponent extends React.Component {
     handleSelect (id) {
         this.handleClose();
         this.props.onItemSelected(this.getFilteredData()[id]);
+    }
+    handleShowBlocks (id) {
+        const item = this.getFilteredData()[id];
+        this.handleClose();
+        if (this.props.onItemShowBlocks) {
+            this.props.onItemShowBlocks(item);
+        } else {
+            this.props.onItemSelected(item);
+        }
+    }
+    getTagStorageKey () {
+        return `sq:library-tag:${this.props.id}`;
+    }
+    readRememberedTag () {
+        if (!this.props.rememberTag || !this.props.tags) return ALL_TAG.tag;
+        const tag = readSessionItem(this.getTagStorageKey());
+        const known = this.props.tags.some(tagProps => tagProps.tag.toLowerCase() === tag);
+        return known ? tag : ALL_TAG.tag;
     }
     readFavoritesFromStorage () {
         let data;
@@ -128,6 +180,20 @@ class LibraryComponent extends React.Component {
                 selectedTag: tag.toLowerCase()
             });
         }
+    }
+    handleTagKeyDown (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        const tag = event.currentTarget.getAttribute('data-tag');
+        if (tag) this.handleTagClick(tag);
+    }
+    getSelectedTagMatches () {
+        const selected = this.state.selectedTag;
+        const tagProps = (this.props.tags || []).find(item => item.tag.toLowerCase() === selected);
+        if (tagProps && Array.isArray(tagProps.matches)) {
+            return tagProps.matches.map(tag => tag.toLowerCase());
+        }
+        return [selected];
     }
     handleMouseEnter (id) {
         // don't restart if mouse over already playing item
@@ -209,9 +275,10 @@ class LibraryComponent extends React.Component {
         let filteredItems = favoriteItems.concat(nonFavoriteItems);
 
         if (this.state.selectedTag !== 'all') {
+            const wanted = this.getSelectedTagMatches();
             filteredItems = filteredItems.filter(dataItem => (
                 dataItem.tags &&
-                dataItem.tags.map(i => i.toLowerCase()).includes(this.state.selectedTag)
+                dataItem.tags.some(i => wanted.includes(i.toLowerCase()))
             ));
         }
 
@@ -280,20 +347,31 @@ class LibraryComponent extends React.Component {
                             <Divider className={classNames(styles.filterBarItem, styles.divider)} />
                         )}
                         {this.props.tags &&
-                            <div className={styles.tagWrapper}>
-                                {tagListPrefix.concat(this.props.tags).map((tagProps, id) => (
-                                    <TagButton
-                                        active={this.state.selectedTag === tagProps.tag.toLowerCase()}
-                                        className={classNames(
-                                            styles.filterBarItem,
-                                            styles.tagButton,
-                                            tagProps.className
-                                        )}
-                                        key={`tag-button-${id}`}
-                                        onClick={this.handleTagClick}
-                                        {...tagProps}
-                                    />
-                                ))}
+                            <div
+                                className={styles.tagWrapper}
+                                role="group"
+                                aria-label={this.props.intl.formatMessage(messages.tagGroup)}
+                            >
+                                {tagListPrefix.concat(this.props.tags.map(withoutMatches)).map((tagProps, id) => {
+                                    const active = this.state.selectedTag === tagProps.tag.toLowerCase();
+                                    return (
+                                        <TagButton
+                                            active={active}
+                                            aria-pressed={active}
+                                            className={classNames(
+                                                styles.filterBarItem,
+                                                styles.tagButton,
+                                                tagProps.className
+                                            )}
+                                            data-tag={tagProps.tag.toLowerCase()}
+                                            key={`tag-button-${id}`}
+                                            tabIndex={0}
+                                            onClick={this.handleTagClick}
+                                            onKeyDown={this.handleTagKeyDown}
+                                            {...tagProps}
+                                        />
+                                    );
+                                })}
                             </div>
                         }
                     </div>
@@ -309,6 +387,7 @@ class LibraryComponent extends React.Component {
                             <Separator key={index} />
                         ) : (
                             <LibraryItem
+                                added={dataItem.added}
                                 bluetoothRequired={dataItem.bluetoothRequired}
                                 collaborator={dataItem.collaborator}
                                 description={dataItem.description}
@@ -340,6 +419,9 @@ class LibraryComponent extends React.Component {
                                 onMouseEnter={this.handleMouseEnter}
                                 onMouseLeave={this.handleMouseLeave}
                                 onSelect={this.handleSelect}
+                                onShowBlocks={this.handleShowBlocks}
+                                tagChips={dataItem.tagChips}
+                                togetherRequired={dataItem.togetherRequired}
                             />
                         )
                     ))}
@@ -391,8 +473,10 @@ LibraryComponent.propTypes = {
     onItemMouseEnter: PropTypes.func,
     onItemMouseLeave: PropTypes.func,
     onItemSelected: PropTypes.func,
+    onItemShowBlocks: PropTypes.func,
     onRequestClose: PropTypes.func,
     setStopHandler: PropTypes.func,
+    rememberTag: PropTypes.bool,
     showPlayButton: PropTypes.bool,
     tags: PropTypes.arrayOf(PropTypes.shape(TagButton.propTypes)),
     title: PropTypes.string.isRequired,
