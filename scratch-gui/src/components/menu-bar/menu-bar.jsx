@@ -1052,6 +1052,7 @@ class MenuBar extends React.Component {
                 </div>
 
                 <div className={styles.accountInfoGroup}>
+                    {this.props.rightSlot}
                     <OutlinePanel />
                     <HistoryPanel />
                     <MessagesButton sheet={this.props.isPhoneSheet} />
@@ -1168,6 +1169,7 @@ MenuBar.propTypes = {
     projectId: PropTypes.string,
     projectTitle: PropTypes.string,
     renderLogin: PropTypes.func,
+    rightSlot: PropTypes.node,
     sessionExists: PropTypes.bool,
     settingsMenuOpen: PropTypes.bool,
     shouldSaveBeforeTransition: PropTypes.func,
