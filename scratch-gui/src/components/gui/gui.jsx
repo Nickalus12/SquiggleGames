@@ -408,7 +408,7 @@ const GUIComponent = props => {
                                         <SqIcon
                                             className={styles.tabIcon}
                                             name="code"
-                                            size={22}
+                                            size={24}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Code"
@@ -423,7 +423,7 @@ const GUIComponent = props => {
                                         <SqIcon
                                             className={styles.tabIcon}
                                             name="art"
-                                            size={22}
+                                            size={24}
                                         />
                                         {targetIsStage ? (
                                             <FormattedMessage
@@ -446,7 +446,7 @@ const GUIComponent = props => {
                                         <SqIcon
                                             className={styles.tabIcon}
                                             name="sounds"
-                                            size={22}
+                                            size={24}
                                         />
                                         <FormattedMessage
                                             defaultMessage="Sounds"
