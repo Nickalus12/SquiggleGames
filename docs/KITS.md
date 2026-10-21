@@ -37,6 +37,7 @@ The renderer draws layers in this order: `background, video, sq-tiles-back, pen,
 | `drawablePosition` | `drawableID, [x, y]` |
 | `drawableDirectionScale` | `drawableID, direction, [sx, sy]` |
 | `drawableProperties` | `drawableID, properties` |
+| `drawableEffect` | `drawableID, effectName, value` (`setEffect` and `clearEffects` on a target) |
 | `bubble` | `target` (the looks bubble placement) |
 | `touchingEdge` | `target` |
 | `edgeBounce` | `target` |
