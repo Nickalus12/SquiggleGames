@@ -4,6 +4,7 @@ const {MARGIN, clampPip, defaultPip, resolvePip, nudge, isFocusKey} = await impo
 const {
     default: reducer, focusModeInitialState, setFocusMode, enterFocusMode, exitFocusMode, toggleFocusMode, movePip
 } = await import('../../reducers/focus-mode.js');
+const {FOCUS_BUTTON, returnFocus} = await import('./focus-return.js');
 
 let pass = 0;
 let fail = 0;
@@ -50,6 +51,40 @@ ok('move rounds', same(reducer(initial, movePip(10.6, 20.2)).pip, {x: 11, y: 20}
 ok('move with NaN clears', reducer({active: true, pip: {x: 1, y: 1}}, movePip(NaN, 3)).pip === null);
 ok('toggle keeps pip', same(reducer({active: true, pip: {x: 5, y: 6}}, toggleFocusMode()).pip, {x: 5, y: 6}));
 ok('unknown action unchanged', reducer(initial, {type: 'other'}) === initial);
+
+console.log('focus return');
+const fakeDoc = (button, attached) => {
+    const doc = {body: {}, focused: [], querySelector: query => (query === FOCUS_BUTTON ? button : null)};
+    doc.activeElement = doc.body;
+    doc.contains = element => attached.indexOf(element) !== -1;
+    return doc;
+};
+const element = (doc, name) => ({focus: () => doc.focused.push(name)});
+const frames = [];
+const raf = fn => frames.push(fn);
+const docA = fakeDoc(null, []);
+const kept = element(docA, 'kept');
+docA.contains = node => node === kept;
+returnFocus(docA, kept, null, raf);
+ok('a saved element still on the page gets focus back at once', same(docA.focused, ['kept']) && frames.length === 0);
+const docB = fakeDoc(null, []);
+const header = element(docB, 'header');
+docB.querySelector = query => (query === FOCUS_BUTTON ? header : null);
+returnFocus(docB, element(docB, 'gone'), null, raf);
+ok('a detached saved element waits a frame', docB.focused.length === 0 && frames.length === 1);
+frames.shift()();
+ok('then the stage header focus button gets focus', same(docB.focused, ['header']));
+const docC = fakeDoc(null, []);
+returnFocus(docC, null, null, raf);
+frames.shift()();
+ok('no header button is a no-op', docC.focused.length === 0);
+const docD = fakeDoc(null, []);
+docD.activeElement = {};
+returnFocus(docD, element(docD, 'saved'), null, raf);
+ok('focus the child already moved is left alone', docD.focused.length === 0 && frames.length === 0);
+const docE = fakeDoc(null, []);
+returnFocus(docE, null, null, null);
+ok('without requestAnimationFrame it is a no-op', docE.focused.length === 0 && frames.length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -9,6 +9,7 @@ import SqIcon from '../sq-icon/sq-icon.jsx';
 import messages from './messages';
 import styles from './pip-stage.css';
 import {clampPip, isFocusKey, nudge, resolvePip} from './geometry.js';
+import {returnFocus} from './focus-return.js';
 import {LAYOUT_MODES} from '../../lib/layout-mode.js';
 import {exitFocusMode, movePip, toggleFocusMode} from '../../reducers/focus-mode.js';
 
@@ -67,11 +68,8 @@ class PipStage extends React.Component {
         const element = this.returnFocus;
         this.returnFocus = null;
         this.setState({drag: null, announce: ''});
-        const inside = this.panel && this.panel.contains(document.activeElement);
-        if ((inside || document.activeElement === document.body) && element && typeof element.focus === 'function' &&
-            document.contains(element)) {
-            element.focus();
-        }
+        const raf = typeof window.requestAnimationFrame === 'function' ? fn => window.requestAnimationFrame(fn) : null;
+        returnFocus(document, element, this.panel, raf);
     }
     relayout () {
         const fire = () => window.dispatchEvent(new Event('resize'));
