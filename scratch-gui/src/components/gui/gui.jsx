@@ -37,9 +37,23 @@ import TWRestorePointManager from '../../containers/tw-restore-point-manager.jsx
 import TWFontsModal from '../../containers/tw-fonts-modal.jsx';
 import TWUnknownPlatformModal from '../../containers/tw-unknown-platform-modal.jsx';
 import TWInvalidProjectModal from '../../containers/tw-invalid-project-modal.jsx';
+import TouchGameControls from '../../containers/touch-game-controls.jsx';
+import PhoneTopBar from '../phone-shell/phone-top-bar.jsx';
+import PhoneTabBar from '../phone-shell/phone-tab-bar.jsx';
+import PhoneSpriteRow from '../phone-shell/phone-sprite-row.jsx';
+import PhoneMiniStageButton from '../phone-shell/phone-mini-stage-button.jsx';
+import CollabPresence from '../menu-bar/collab-presence.jsx';
 
 import {STAGE_SIZE_MODES, FIXED_WIDTH, UNCONSTRAINED_NON_STAGE_WIDTH} from '../../lib/layout-constants';
 import {resolveStageSize} from '../../lib/screen-utils';
+import {
+    LAYOUT_MODES,
+    PHONE_FLYOUT_WIDTH,
+    PHONE_TABS,
+    isPhoneLandscape,
+    phoneStageWidth
+} from '../../lib/layout-mode';
+import {setPhoneMenuOpen, touchControlsVisible} from '../../reducers/layout-mode';
 import {Theme} from '../../lib/themes';
 
 import {isRendererSupported, isBrowserSupported} from '../../lib/tw-environment-support-prober';
@@ -111,6 +125,14 @@ const GUIComponent = props => {
         isShared,
         isWindowFullScreen,
         isTelemetryEnabled,
+        layoutMode,
+        miniStage,
+        onClosePhoneMenu,
+        phoneMenuOpen,
+        phoneTab,
+        touchControlsShown,
+        viewportHeight,
+        viewportWidth,
         isTotallyNormal,
         loading,
         logo,
@@ -195,6 +217,28 @@ const GUIComponent = props => {
             </React.Fragment>
         );
 
+        const isPhone = layoutMode === LAYOUT_MODES.phone;
+        const isTablet = layoutMode === LAYOUT_MODES.tablet;
+        const phoneLandscape = isPhone && isPhoneLandscape({viewportWidth, viewportHeight});
+        const phoneControls = isPhone && touchControlsShown && phoneTab === PHONE_TABS.stage;
+        const phoneFixedWidth = isPhone ? phoneStageWidth({
+            viewportWidth,
+            viewportHeight,
+            stageWidth: customStageSize.width,
+            stageHeight: customStageSize.height,
+            tab: phoneTab === PHONE_TABS.code ? PHONE_TABS.code : PHONE_TABS.stage,
+            controls: phoneControls
+        }) : null;
+        let pageWrapperStyle = {
+            minWidth: 1024 + Math.max(0, customStageSize.width - 480),
+            minHeight: 640 + Math.max(0, customStageSize.height - 360)
+        };
+        if (isPhone) pageWrapperStyle = null;
+        else if (isTablet) pageWrapperStyle = Object.assign({}, pageWrapperStyle, {minWidth: 0});
+        let touchControlsLayout = 'bottom';
+        if (isFullScreen) touchControlsLayout = 'overlay';
+        else if (phoneLandscape) touchControlsLayout = 'sides';
+
         return isPlayerOnly ? (
             <React.Fragment>
                 {/* TW: When the window is fullscreen, use an element to display the background color */}
@@ -225,12 +269,16 @@ const GUIComponent = props => {
             </React.Fragment>
         ) : (
             <Box
-                className={styles.pageWrapper}
+                className={classNames(styles.pageWrapper, {
+                    [styles.phone]: isPhone,
+                    [styles.tablet]: isTablet,
+                    [styles.phoneLandscape]: phoneLandscape,
+                    [styles.miniStageOpen]: isPhone && miniStage,
+                    [styles.withTouchControls]: phoneControls
+                })}
+                data-phone-tab={isPhone ? phoneTab : null}
                 dir={isRtl ? 'rtl' : 'ltr'}
-                style={{
-                    minWidth: 1024 + Math.max(0, customStageSize.width - 480),
-                    minHeight: 640 + Math.max(0, customStageSize.height - 360)
-                }}
+                style={pageWrapperStyle}
                 {...componentProps}
             >
                 {alwaysEnabledModals}
@@ -286,6 +334,19 @@ const GUIComponent = props => {
                         onRequestClose={onRequestCloseBackdropLibrary}
                     />
                 ) : null}
+                {isPhone ? (
+                    <PhoneTopBar
+                        canEditTitle={canEditTitle}
+                        vm={vm}
+                    />
+                ) : null}
+                {isPhone && phoneMenuOpen ? (
+                    <div
+                        aria-hidden="true"
+                        className={styles.phoneSheetBackdrop}
+                        onClick={onClosePhoneMenu}
+                    />
+                ) : null}
                 <MenuBar
                     accountNavOpen={accountNavOpen}
                     authorId={authorId}
@@ -300,8 +361,12 @@ const GUIComponent = props => {
                     canRemix={canRemix}
                     canSave={canSave}
                     canShare={canShare}
-                    className={styles.menuBarPosition}
+                    className={classNames(styles.menuBarPosition, {
+                        [styles.phoneSheet]: isPhone,
+                        [styles.phoneSheetOpen]: isPhone && phoneMenuOpen
+                    })}
                     enableCommunity={enableCommunity}
+                    isPhoneSheet={isPhone}
                     isShared={isShared}
                     isTotallyNormal={isTotallyNormal}
                     logo={logo}
@@ -328,6 +393,7 @@ const GUIComponent = props => {
                 <Box className={styles.bodyWrapper}>
                     <Box className={styles.flexWrapper}>
                         <Box className={styles.editorWrapper}>
+                            {isPhone && phoneTab === PHONE_TABS.code ? <PhoneMiniStageButton /> : null}
                             <Tabs
                                 forceRenderTabPanel
                                 className={tabClassNames.tabs}
@@ -388,10 +454,11 @@ const GUIComponent = props => {
                                 <TabPanel className={tabClassNames.tabPanel}>
                                     <Box className={styles.blocksWrapper}>
                                         <Blocks
-                                            key={`${blocksId}/${theme.id}`}
+                                            key={`${blocksId}/${theme.id}${isPhone ? '/phone' : ''}`}
                                             canUseCloud={canUseCloud}
+                                            flyoutWidth={isPhone ? PHONE_FLYOUT_WIDTH : null}
                                             grow={1}
-                                            isVisible={blocksTabVisible}
+                                            isVisible={blocksTabVisible && (!isPhone || phoneTab === PHONE_TABS.code)}
                                             options={{
                                                 media: `${basePath}static/${theme.getBlocksMediaFolder()}/`
                                             }}
@@ -434,21 +501,37 @@ const GUIComponent = props => {
 
                         <Box className={classNames(styles.stageAndTargetWrapper, styles[stageSize])}>
                             <StageWrapper
+                                fixedWidth={phoneFixedWidth}
                                 isFullScreen={isFullScreen}
                                 isRendererSupported={isRendererSupported()}
                                 isRtl={isRtl}
                                 stageSize={stageSize}
                                 vm={vm}
                             />
+                            {isPhone ? <PhoneSpriteRow /> : null}
+                            {isPhone ? (
+                                <TouchGameControls
+                                    className={styles.phoneTouchControls}
+                                    layout={touchControlsLayout}
+                                    show={isFullScreen || phoneTab === PHONE_TABS.stage}
+                                    vm={vm}
+                                />
+                            ) : null}
                             <Box className={styles.targetWrapper}>
                                 <TargetPane
-                                    stageSize={stageSize}
+                                    stageSize={isPhone ? STAGE_SIZE_MODES.small : stageSize}
                                     vm={vm}
                                 />
                             </Box>
                         </Box>
+                        {isPhone && phoneTab === PHONE_TABS.room ? (
+                            <Box className={styles.phoneRoomPane}>
+                                <CollabPresence variant="pane" />
+                            </Box>
+                        ) : null}
                     </Box>
                 </Box>
+                {isPhone ? <PhoneTabBar /> : null}
                 <DragLayer />
             </Box>
         );
@@ -495,12 +578,15 @@ GUIComponent.propTypes = {
     isShared: PropTypes.bool,
     isWindowFullScreen: PropTypes.bool,
     isTotallyNormal: PropTypes.bool,
+    layoutMode: PropTypes.oneOf(Object.keys(LAYOUT_MODES)),
     loading: PropTypes.bool,
     logo: PropTypes.string,
+    miniStage: PropTypes.bool,
     onActivateCostumesTab: PropTypes.func,
     onActivateSoundsTab: PropTypes.func,
     onActivateTab: PropTypes.func,
     onClickAccountNav: PropTypes.func,
+    onClosePhoneMenu: PropTypes.func,
     onClickAddonSettings: PropTypes.func,
     onClickDesktopSettings: PropTypes.func,
     onClickNewWindow: PropTypes.func,
@@ -523,6 +609,8 @@ GUIComponent.propTypes = {
     onTelemetryModalOptIn: PropTypes.func,
     onTelemetryModalOptOut: PropTypes.func,
     onToggleLoginOpen: PropTypes.func,
+    phoneMenuOpen: PropTypes.bool,
+    phoneTab: PropTypes.oneOf(Object.keys(PHONE_TABS)),
     renderLogin: PropTypes.func,
     securityManager: PropTypes.shape({}),
     showComingSoon: PropTypes.bool,
@@ -534,12 +622,15 @@ GUIComponent.propTypes = {
     telemetryModalVisible: PropTypes.bool,
     theme: PropTypes.instanceOf(Theme),
     tipsLibraryVisible: PropTypes.bool,
+    touchControlsShown: PropTypes.bool,
     usernameModalVisible: PropTypes.bool,
     settingsModalVisible: PropTypes.bool,
     customExtensionModalVisible: PropTypes.bool,
     fontsModalVisible: PropTypes.bool,
     unknownPlatformModalVisible: PropTypes.bool,
     invalidProjectModalVisible: PropTypes.bool,
+    viewportHeight: PropTypes.number,
+    viewportWidth: PropTypes.number,
     vm: PropTypes.instanceOf(VM).isRequired
 };
 GUIComponent.defaultProps = {
@@ -572,9 +663,21 @@ const mapStateToProps = state => ({
     // This is the button's mode, as opposed to the actual current state
     blocksId: state.scratchGui.timeTravel.year.toString(),
     stageSizeMode: state.scratchGui.stageSize.stageSize,
-    theme: state.scratchGui.theme.theme
+    theme: state.scratchGui.theme.theme,
+    layoutMode: state.scratchGui.layoutMode.mode,
+    miniStage: state.scratchGui.layoutMode.miniStage,
+    phoneMenuOpen: state.scratchGui.layoutMode.phoneMenuOpen,
+    phoneTab: state.scratchGui.layoutMode.phoneTab,
+    touchControlsShown: touchControlsVisible(state.scratchGui.layoutMode),
+    viewportHeight: state.scratchGui.layoutMode.viewportHeight,
+    viewportWidth: state.scratchGui.layoutMode.viewportWidth
+});
+
+const mapDispatchToProps = dispatch => ({
+    onClosePhoneMenu: () => dispatch(setPhoneMenuOpen(false))
 });
 
 export default injectIntl(connect(
-    mapStateToProps
+    mapStateToProps,
+    mapDispatchToProps
 )(GUIComponent));

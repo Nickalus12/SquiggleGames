@@ -334,3 +334,238 @@ $fade-out-distance: 15px;
     /* overridden by JS; this will be used if the browser can't understand that color */
     background-color: white;
 }
+
+:global(html):has(.page-wrapper.phone),
+:global(body):has(.page-wrapper.phone) {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+.page-wrapper.phone {
+    height: 100%;
+    height: 100dvh;
+    max-height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+}
+
+.phone .body-wrapper {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+}
+
+.phone .flex-wrapper {
+    height: 100%;
+}
+
+.phone .editor-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.phone .stage-and-target-wrapper {
+    flex-basis: auto;
+    min-width: 0;
+    min-height: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.phone .watermark {
+    display: none;
+}
+
+.phone input,
+.phone select,
+.phone textarea {
+    font-size: max(16px, 1em);
+}
+
+.phone-sheet {
+    display: none;
+}
+
+.page-wrapper.phone .phone-sheet.phone-sheet-open {
+    display: flex;
+    position: fixed;
+    top: calc(52px + env(safe-area-inset-top, 0px));
+    left: 0;
+    width: min(100%, 360px);
+    max-height: calc(100% - 52px - 60px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 0 0 16px 0;
+    box-shadow: 0 12px 32px $shadow;
+}
+
+[dir="rtl"].page-wrapper.phone .phone-sheet.phone-sheet-open {
+    left: auto;
+    right: 0;
+    border-radius: 0 0 0 16px;
+}
+
+.phone-sheet-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: $z-index-alerts;
+    background-color: $ui-modal-overlay;
+}
+
+.phone .tab-list {
+    display: none;
+}
+
+.phone[data-phone-tab="media"] .tab-list {
+    display: flex;
+    width: 100%;
+    height: 52px;
+    padding: 0 8px;
+}
+
+.phone[data-phone-tab="media"] .tab {
+    min-height: 44px;
+    font-size: 16px;
+}
+
+.phone[data-phone-tab="media"] .tab:nth-of-type(1) {
+    display: none;
+}
+
+[dir="ltr"].phone[data-phone-tab="media"] .tab:nth-of-type(2) {
+    margin-left: 0;
+}
+
+[dir="rtl"].phone[data-phone-tab="media"] .tab:nth-of-type(2) {
+    margin-right: 0;
+}
+
+.phone[data-phone-tab="media"] .tab-panel.is-selected {
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.phone[data-phone-tab="code"] .stage-and-target-wrapper,
+.phone[data-phone-tab="media"] .stage-and-target-wrapper,
+.phone[data-phone-tab="room"] .stage-and-target-wrapper,
+.phone[data-phone-tab="stage"] .editor-wrapper,
+.phone[data-phone-tab="sprites"] .editor-wrapper,
+.phone[data-phone-tab="room"] .editor-wrapper {
+    display: none;
+}
+
+.phone.mini-stage-open[data-phone-tab="code"] .stage-and-target-wrapper {
+    display: block;
+    position: absolute;
+    top: 60px;
+    right: 8px;
+    z-index: $z-index-stage-indicator;
+    padding: 0;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px $shadow;
+}
+
+[dir="rtl"].phone.mini-stage-open[data-phone-tab="code"] .stage-and-target-wrapper {
+    right: auto;
+    left: 8px;
+}
+
+.phone.mini-stage-open[data-phone-tab="code"] .target-wrapper,
+.phone.mini-stage-open[data-phone-tab="code"] [data-phone-sprite-row] {
+    display: none;
+}
+
+.phone[data-phone-tab="stage"] .stage-and-target-wrapper {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    overflow: hidden;
+}
+
+.phone[data-phone-tab="stage"] .target-wrapper {
+    display: none;
+}
+
+.phone[data-phone-tab="stage"] [data-phone-sprite-row] {
+    max-width: 100%;
+}
+
+.phone.phone-landscape[data-phone-tab="stage"] .stage-and-target-wrapper {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+        "pad stage row"
+        "pad stage action";
+    align-items: start;
+    justify-items: center;
+}
+
+.phone.phone-landscape[data-phone-tab="stage"] .stage-and-target-wrapper > :first-child {
+    grid-area: stage;
+}
+
+.phone.phone-landscape[data-phone-tab="stage"] [data-phone-sprite-row] {
+    grid-area: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 8px;
+}
+
+.phone.phone-landscape.with-touch-controls[data-phone-tab="stage"] [data-phone-sprite-row] .sprite-info {
+    flex-basis: 100%;
+}
+
+.phone[data-phone-tab="sprites"] .stage-and-target-wrapper {
+    flex: 1 1 auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.phone[data-phone-tab="sprites"] .stage-and-target-wrapper > :first-child,
+.phone[data-phone-tab="sprites"] [data-phone-sprite-row] {
+    display: none;
+}
+
+.phone[data-phone-tab="sprites"] .target-wrapper {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-top: 0;
+}
+
+.phone[data-phone-tab="sprites"] .target-wrapper > *,
+.phone[data-phone-tab="sprites"] .target-wrapper > * > * {
+    min-width: 0;
+}
+
+.phone-touch-controls {
+    margin-top: auto;
+}
+
+.phone.phone-landscape .phone-touch-controls {
+    margin-top: 0;
+}
+
+.phone-room-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px;
+}
+
+.tablet .editor-wrapper {
+    flex-shrink: 1;
+    min-width: 0;
+}

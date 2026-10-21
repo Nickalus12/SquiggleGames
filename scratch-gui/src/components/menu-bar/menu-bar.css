@@ -229,7 +229,101 @@
     }
 }
 
+@media only screen and (max-width: 1023px) {
+    .menu-bar:not(.phone-sheet) .main-menu {
+        min-width: 0;
+    }
+
+    .menu-bar:not(.phone-sheet) .main-menu > .menu-bar-item:not(.growable) {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+}
+
 .menu-item-link {
     color: inherit;
     text-decoration: none;
+}
+
+.menu-bar.phone-sheet {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    height: auto;
+    gap: 0;
+    padding: 8px 0 12px;
+    font-size: 16px;
+}
+
+.phone-sheet .main-menu,
+.phone-sheet .file-group,
+.phone-sheet .account-info-group {
+    flex-direction: column;
+    align-items: stretch;
+    flex-grow: 0;
+    gap: 0;
+}
+
+.phone-sheet .menu-bar-item,
+.phone-sheet .file-group .menu-bar-item,
+.phone-sheet .account-info-group .menu-bar-item {
+    height: auto;
+    min-height: 48px;
+    margin: 0;
+    padding: 0 16px;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-self: stretch;
+    white-space: normal;
+}
+
+.phone-sheet .menu-bar-item.growable {
+    display: none;
+}
+
+.phone-sheet .divider {
+    display: none;
+}
+
+.phone-sheet .collapsible-label,
+.phone-sheet .tutorials-label {
+    display: inline;
+}
+
+.phone-sheet .menu-bar-menu {
+    flex-basis: 100%;
+    margin: 0 0 8px;
+}
+
+.phone-sheet .menu-bar-menu > ul,
+.phone-sheet [class*="menu_submenu_"],
+.phone-sheet [class*="menu_submenu_"] > ul {
+    position: static;
+    min-width: 0;
+    width: 100%;
+    box-shadow: none;
+    border-radius: 12px;
+}
+
+.phone-sheet [class*="menu_menu-item_"] {
+    line-height: 1.25;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 0 12px;
+    font-size: 16px;
+    white-space: normal;
+}
+
+.phone-sheet [class*="menu_submenu_"] {
+    flex-basis: 100%;
+    padding-left: 12px;
+}
+
+.phone-sheet .account-info-group > div {
+    min-height: 48px;
+    padding: 0 8px;
 }

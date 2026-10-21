@@ -1,0 +1,283 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+@import "../../css/z-index.css";
+
+.top-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    box-sizing: border-box;
+    height: calc(52px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) calc(4px + env(safe-area-inset-right, 0px)) 0 calc(4px + env(safe-area-inset-left, 0px));
+    flex-shrink: 0;
+    position: relative;
+    z-index: $z-index-menu-bar;
+    background-color: $menu-bar-background;
+    background-image: $menu-bar-background-image;
+    color: $menu-bar-foreground;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.icon-button:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+.icon-button:active,
+.icon-button[aria-expanded="true"],
+.icon-button[aria-pressed="true"] {
+    background-color: $ui-black-transparent;
+}
+
+.icon-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+.icon-button img {
+    width: 28px;
+    height: 28px;
+    pointer-events: none;
+}
+
+.icon-button.is-running {
+    background-color: $ui-black-transparent;
+}
+
+.stop-button img {
+    opacity: 0.6;
+}
+
+.stop-button.is-running img {
+    opacity: 1;
+}
+
+.title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.title input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    font-size: 16px;
+}
+
+.title input::placeholder {
+    font-size: 16px;
+}
+
+.title-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 0 0.25rem;
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.tab-bar {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    height: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    position: relative;
+    z-index: $z-index-menu-bar;
+    background-color: $ui-white;
+    border-top: 1px solid $ui-black-transparent;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.tab-button {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    color: $text-primary-transparent;
+    font: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    position: relative;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.tab-button:focus-visible {
+    outline: 2px solid $looks-secondary;
+    outline-offset: -4px;
+    border-radius: 12px;
+}
+
+.tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 28px;
+    border-radius: 14px;
+}
+
+.tab-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.tab-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-button.is-active {
+    color: $looks-secondary;
+}
+
+.tab-button.is-active .tab-icon {
+    background-color: $looks-transparent;
+}
+
+.badge {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 8px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    box-sizing: border-box;
+    border-radius: 9px;
+    background-color: $looks-secondary;
+    color: $menu-bar-foreground;
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+}
+
+.sprite-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 52px;
+    box-sizing: border-box;
+    padding: 4px 0;
+    color: $text-primary;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.sprite-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sprite-name {
+    font-size: 16px;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sprite-position {
+    font-size: 13px;
+    color: $text-primary-transparent;
+    font-variant-numeric: tabular-nums;
+}
+
+.row-button {
+    color: $text-primary;
+    background-color: $ui-tertiary;
+    border: 1px solid $ui-black-transparent;
+}
+
+.row-button[aria-pressed="true"] {
+    color: $looks-secondary;
+    background-color: $looks-transparent;
+    border-color: $looks-secondary;
+}
+
+.mini-stage-button {
+    position: absolute;
+    top: 8px;
+    z-index: $z-index-extension-button;
+    color: $menu-bar-foreground;
+    background-color: $looks-secondary;
+    box-shadow: 0 4px 12px $shadow;
+}
+
+[dir="ltr"] .mini-stage-button {
+    right: 8px;
+}
+
+[dir="rtl"] .mini-stage-button {
+    left: 8px;
+}
+
+.mini-stage-button:active,
+.mini-stage-button[aria-pressed="true"] {
+    background-color: $looks-secondary-dark;
+}
+
+.room-pane {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.room-empty {
+    padding: 24px 12px;
+    text-align: center;
+    color: $text-primary;
+    font-size: 16px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .tab-icon {
+        transition: background-color 0.15s ease;
+    }
+}
