@@ -1,0 +1,59 @@
+import './json-hook.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+process.removeAllListeners('warning');
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const {canonical, rulesPayload, hashRules, hasRuleBlocks} = await import('./hash.js');
+const fixture = JSON.parse(fs.readFileSync(path.join(here, 'hash-fixture.json'), 'utf8'));
+
+let pass = 0;
+let fail = 0;
+const ok = (label, cond, detail) => {
+    if (cond) {
+        pass++;
+        console.log(`  PASS  ${label}`);
+    } else {
+        fail++;
+        console.log(`  FAIL  ${label}${typeof detail === 'undefined' ? '' : ` : ${JSON.stringify(detail)}`}`);
+    }
+};
+
+const reorder = value => {
+    if (Array.isArray(value)) return value.map(reorder);
+    if (!value || typeof value !== 'object') return value;
+    const out = {};
+    Object.keys(value).reverse()
+        .forEach(key => {
+            out[key] = reorder(value[key]);
+        });
+    return out;
+};
+
+console.log('\ncanonical JSON');
+ok('sorted keys, no whitespace', canonical({b: 1, a: [true, null, 'x']}) === '{"a":[true,null,"x"],"b":1}');
+ok('undefined keys are dropped', canonical({a: 1, b: undefined}) === '{"a":1}');
+ok('non-finite numbers become 0', canonical({a: Infinity, b: NaN}) === '{"a":0,"b":0}');
+ok('matches the shared fixture byte for byte', canonical(rulesPayload(fixture.sprite)) === fixture.canonical);
+
+console.log('\nhash');
+const base = await hashRules(fixture.sprite);
+ok('matches the shared fixture sha256', base === fixture.sha256, base);
+const pretty = JSON.parse(JSON.stringify(reorder(fixture.sprite), null, 7));
+ok('stable under key order and whitespace', await hashRules(pretty) === base);
+const moved = JSON.parse(JSON.stringify(fixture.sprite));
+moved.x = 300;
+moved.costumes = [{name: 'other'}];
+ok('ignores sprite position and costumes', await hashRules(moved) === base);
+const edited = JSON.parse(JSON.stringify(fixture.sprite));
+edited.blocks.a.x += 1;
+ok('top-level block x is part of the hash', await hashRules(edited) !== base);
+const marked = JSON.parse(JSON.stringify(fixture.sprite));
+marked.extensionStorage.together.teams.push('Green');
+ok('the rules mark is part of the hash', await hashRules(marked) !== base);
+ok('hasRuleBlocks sees blocks', hasRuleBlocks(fixture.sprite) && !hasRuleBlocks({blocks: {}}));
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
