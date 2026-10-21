@@ -1,0 +1,89 @@
+@import "../../css/z-index.css";
+
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: $z-index-modal;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--sq-space-3, 12px);
+    background: var(--sq-scrim, rgba(27, 31, 58, 0.48));
+}
+
+.sheet {
+    width: min(440px, 100%);
+    padding: var(--sq-space-4, 16px);
+    border: 1px solid var(--sq-line, #d9d5ea);
+    border-radius: var(--sq-radius-panel, 16px);
+    box-shadow: var(--sq-elevation-3, 0 8px 24px rgba(27, 31, 58, 0.18));
+    font-family: var(--sq-font, system-ui, sans-serif);
+    color: var(--sq-text, #1b1f3a);
+    background: var(--sq-panel, #ffffff);
+}
+
+.title {
+    margin: 0 0 var(--sq-space-2, 8px);
+    font-size: var(--sq-text-lg, 1.125rem);
+    font-weight: var(--sq-weight-heavy, 800);
+}
+
+.body {
+    margin: 0 0 var(--sq-space-3, 12px);
+    font-size: var(--sq-text-sm, 0.875rem);
+    color: var(--sq-text-muted, #5a5f7a);
+}
+
+.choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sq-space-2, 8px);
+}
+
+.primary,
+.secondary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: var(--sq-target-touch, 44px);
+    padding: var(--sq-space-2, 8px) var(--sq-space-3, 12px);
+    border: 1px solid var(--sq-line, #d9d5ea);
+    border-radius: var(--sq-radius-chip, 8px);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.primary {
+    border-color: transparent;
+    color: var(--sq-on-brand, #ffffff);
+    background: var(--sq-brand-600, #5b3aa0);
+}
+
+.secondary {
+    color: var(--sq-text, #1b1f3a);
+    background: var(--sq-raised, #efecf9);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+    outline: 2px solid var(--sq-focus, #5b3aa0);
+    outline-offset: 2px;
+}
+
+.label {
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-weight: var(--sq-weight-bold, 700);
+}
+
+.help {
+    font-size: var(--sq-text-xs, 0.75rem);
+    opacity: 0.85;
+}
+
+@media (min-width: 640px) {
+    .scrim {
+        align-items: center;
+    }
+}
