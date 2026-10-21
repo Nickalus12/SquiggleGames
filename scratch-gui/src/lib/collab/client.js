@@ -18,6 +18,24 @@ const FRAME_LIMITS = new Map([
     ['presence', 4 * 1024]
 ]);
 const DEFAULT_FRAME_LIMIT = 64 * 1024;
+const PROTO = 2;
+const V2_FRAME_LIMITS = new Map([
+    ['block-event', 4 * 1024 * 1024],
+    ['vm-action', 1024 * 1024],
+    ['tilemap-patch', 32 * 1024],
+    ['kit-set', 20 * 1024],
+    ['game', 32 * 1024],
+    ['resync', 64 * 1024],
+    ['request-snapshot', 64 * 1024],
+    ['room-chat', 2 * 1024],
+    ['phrase', 256],
+    ['ack', 256]
+]);
+const V2_DEFAULT_FRAME_LIMIT = 4 * 1024;
+const RING_TYPES = new Set(['block-event', 'vm-action', 'tilemap-patch', 'kit-set']);
+const FINAL_CLOSE_CODES = new Set([4003, 4010]);
+const ACK_EVERY_MS = 1000;
+const RESTART_JITTER_MS = 2000;
 const SNAPSHOT_WINDOW_MS = 60 * 1000;
 const SNAPSHOT_BYTES_PER_WINDOW = Math.floor(0.6 * Math.min(128 * 1024 * 1024, 512 * 1024 * 1024));
 
@@ -103,6 +121,12 @@ class CollabClient {
         // Set when the reliable queue had to drop something. Whoever is
         // listening owes the room a full resync — see 'queue-overflow'.
         this.droppedReliable = false;
+        this.proto = 1;
+        this.rs = null;
+        this.resume = null;
+        this._selfIds = new Set();
+        this._received = 0;
+        this._ackTimer = null;
     }
 
     on (type, cb) {
@@ -123,6 +147,12 @@ class CollabClient {
     }
 
     connect ({url, room, name}) {
+        if (!this.session || this.session.url !== url || this.session.room !== room) {
+            this.proto = 1;
+            this.rs = null;
+            this.resume = null;
+            this._selfIds.clear();
+        }
         this.session = {url, room, name};
         this._closedByUser = false;
         this._backoff = 1000;
@@ -142,6 +172,56 @@ class CollabClient {
             clearTimeout(this._connectTimer);
             this._connectTimer = null;
         }
+    }
+
+    _clearAck () {
+        if (this._ackTimer) {
+            clearTimeout(this._ackTimer);
+            this._ackTimer = null;
+        }
+    }
+
+    _armAck (gen) {
+        if (this.proto < 2 || this._ackTimer || !this._received) return;
+        this._ackTimer = setTimeout(() => {
+            this._ackTimer = null;
+            if (gen !== this._openGen || !this.ws || this.ws.readyState !== 1) return;
+            try {
+                this.ws.send(JSON.stringify({type: 'ack', b: this._received, t: Date.now()}));
+            } catch (e) { /* the close handler will pick this up */ }
+        }, ACK_EVERY_MS);
+    }
+
+    _noteInbound (data, gen) {
+        if (typeof data === 'string') this._received += utf8Length(data);
+        this._armAck(gen);
+    }
+
+    _onRingFrame (msg) {
+        if (typeof msg.rs !== 'number') return true;
+        if (this.rs !== null && msg.rs <= this.rs) return false;
+        this.rs = msg.rs;
+        return !this._selfIds.has(msg.from);
+    }
+
+    _onWelcome (msg) {
+        this.proto = typeof msg.proto === 'number' ? msg.proto : 1;
+        if (this.proto < 2) return;
+        if (typeof msg.resume === 'string') this.resume = msg.resume;
+        if (typeof msg.id !== 'undefined') this._selfIds.add(msg.id);
+        if (typeof msg.rs === 'number' && (!msg.replay || this.rs === null)) this.rs = msg.rs;
+        this._queue = this._queue.filter(e => e.type !== 'snapshot' || e.size <= this._frameLimit('snapshot'));
+        this._purgeOversized();
+    }
+
+    _refusedBySize (msg) {
+        const largest = this._largestSent && this._largestSent.type === msg.of ? this._largestSent : null;
+        this._emit('frame-refused', {
+            type: msg.of,
+            ref: largest ? largest.ref : null,
+            bytes: largest ? largest.size : null,
+            reliable: !LOSSY.has(msg.of)
+        });
     }
 
     _startHeartbeat () {
@@ -229,6 +309,8 @@ class CollabClient {
         this._startHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();
+        this._clearAck();
+        this._received = 0;
 
         // Supersede any in-flight socket so its onclose can't double-reconnect.
         const gen = ++this._openGen;
@@ -283,8 +365,10 @@ class CollabClient {
             } catch (e) {
                 token = null;
             }
-            const join = {type: 'join', room, name};
+            const join = {type: 'join', proto: PROTO, room, name};
             if (token) join.token = token;
+            if (typeof this.rs === 'number') join.rs = this.rs;
+            if (this.resume) join.resume = this.resume;
             ws.send(JSON.stringify(join));
         };
         ws.onmessage = evt => {
@@ -294,8 +378,10 @@ class CollabClient {
             try {
                 msg = JSON.parse(evt.data);
             } catch (e) {
-                return;
+                msg = null;
             }
+            if (!msg || msg.type !== 'pong') this._noteInbound(evt.data, gen);
+            if (!msg) return;
             if (msg.type === 'pong') {
                 this._onPong();
                 return;
@@ -304,6 +390,8 @@ class CollabClient {
                 this.connected = true;
                 this._backoff = 1000;
                 this.me = {id: msg.id, color: msg.color};
+                this._onWelcome(msg);
+                this._armAck(gen);
                 if (msg.token && ownsSocketUrl(url)) {
                     try {
                         localStorage.setItem('st_token', msg.token);
@@ -315,11 +403,17 @@ class CollabClient {
                 if (this._holding) this.releaseQueue();
                 return;
             }
+            if (RING_TYPES.has(msg.type) && !this._onRingFrame(msg)) return;
+            if (msg.type === 'error' && msg.error === 'too-large' && typeof msg.of === 'string') {
+                this._refusedBySize(msg);
+                return;
+            }
             this._emit(msg.type, msg);
         };
         ws.onclose = event => {
             if (gen !== this._openGen) return;
             this._clearConnectTimer();
+            this._clearAck();
             const wasConnected = this.connected;
             this.connected = false;
             this.ws = null;
@@ -337,20 +431,23 @@ class CollabClient {
                 });
             }
             if (dropped) this._purgeOversized();
-            if (!this._closedByUser) this._scheduleReconnect();
+            if (code === 4010) this._emit('reload-needed', {code, reason});
+            if (FINAL_CLOSE_CODES.has(code)) this.disconnect();
+            else if (!this._closedByUser) this._scheduleReconnect(code === 1012);
         };
         ws.onerror = () => { /* onclose follows */ };
     }
 
-    _scheduleReconnect () {
+    _scheduleReconnect (restart) {
         if (this._closedByUser || !this.session) return;
         this._clearReconnect();
-        const delay = this._backoff * (0.75 + (Math.random() * 0.5));
+        const delay = restart ? Math.random() * RESTART_JITTER_MS :
+            this._backoff * (0.75 + (Math.random() * 0.5));
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;
             if (!this._closedByUser && this.session) this._open();
         }, delay);
-        this._backoff = Math.min(this._backoff * 1.6, 15000);
+        this._backoff = restart ? 1000 : Math.min(this._backoff * 1.6, 15000);
     }
 
     // Reconnect immediately when the tab comes back (laptop sleep / ZeroTier blip).
@@ -363,14 +460,19 @@ class CollabClient {
         this._open();
     }
 
+    _defaultFrameLimit () {
+        return this.proto >= 2 ? V2_DEFAULT_FRAME_LIMIT : DEFAULT_FRAME_LIMIT;
+    }
+
     _frameLimit (type) {
-        const limit = FRAME_LIMITS.get(type) || DEFAULT_FRAME_LIMIT;
+        const table = this.proto >= 2 ? V2_FRAME_LIMITS : FRAME_LIMITS;
+        const limit = table.get(type) || this._defaultFrameLimit();
         const learned = this._learnedLimits.get(type);
         return typeof learned === 'number' ? Math.min(limit, learned) : limit;
     }
 
     _noteSent (entry) {
-        if (entry.type === 'snapshot') this._snapshotLog.push({at: Date.now(), size: entry.size});
+        if (entry.type === 'snapshot') this._snapshotLog.push({at: Date.now(), size: entry.cost});
         const ratio = entry.size / this._frameLimit(entry.type);
         if (!this._largestSent || ratio > this._largestSent.ratio) {
             this._largestSent = {type: entry.type, ref: entry.ref, size: entry.size, ratio};
@@ -380,9 +482,9 @@ class CollabClient {
     _learnFrameLimit () {
         const largest = this._largestSent;
         this._largestSent = null;
-        if (!largest || largest.size <= DEFAULT_FRAME_LIMIT) return null;
+        if (!largest || largest.size <= this._defaultFrameLimit()) return null;
         this._learnedLimits.set(largest.type,
-            Math.max(DEFAULT_FRAME_LIMIT, Math.min(this._frameLimit(largest.type), largest.size - 1)));
+            Math.max(this._defaultFrameLimit(), Math.min(this._frameLimit(largest.type), largest.size - 1)));
         return {type: largest.type, ref: largest.ref, bytes: largest.size};
     }
 
@@ -415,11 +517,11 @@ class CollabClient {
     }
 
     _armPaced () {
-        const wait = this._paced ? this._snapshotWait(this._paced.size, Date.now()) : 0;
+        const wait = this._paced ? this._snapshotWait(this._paced.cost, Date.now()) : 0;
         this._pacedTimer = setTimeout(() => {
             this._pacedTimer = null;
             if (!this._paced) return;
-            if (this._snapshotWait(this._paced.size, Date.now()) > 0) {
+            if (this._snapshotWait(this._paced.cost, Date.now()) > 0) {
                 this._armPaced();
                 return;
             }
@@ -506,6 +608,7 @@ class CollabClient {
             ref: typeof msg.ref === 'number' ? msg.ref : null,
             size: frameSize(data, limit)
         };
+        entry.cost = msg.type === 'snapshot' && typeof msg.size === 'number' ? msg.size : entry.size;
         if (entry.size > limit) {
             this._refuse(entry, lossy);
             return false;
@@ -519,7 +622,7 @@ class CollabClient {
             // Under backpressure, drop lossy traffic so block edits keep flowing.
             if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return false;
             if (msg.type === 'snapshot' && urgent !== true &&
-                (this._paced || this._snapshotWait(entry.size, Date.now()) > 0)) {
+                (this._paced || this._snapshotWait(entry.cost, Date.now()) > 0)) {
                 this._pace(entry, msg);
                 return true;
             }
@@ -597,6 +700,7 @@ class CollabClient {
     _closeNow () {
         this.flushPaced();
         this._stopHeartbeat();
+        this._clearAck();
         this._clearReconnect();
         this._clearConnectTimer();
         this._openGen++; // the onclose below must not schedule a reconnect
@@ -611,6 +715,7 @@ class CollabClient {
 
     disconnect () {
         this._closedByUser = true;
+        this._clearAck();
         this._clearReconnect();
         this._clearConnectTimer();
         this._stopHeartbeat();

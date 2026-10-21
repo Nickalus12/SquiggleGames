@@ -1,19 +1,6 @@
 import schema from './rules-schema.json';
 import {RULES_KEY} from '../collab/project-seam.js';
-
-const canonical = value => {
-    if (value === null || typeof value === 'undefined') return 'null';
-    if (typeof value === 'number') return Number.isFinite(value) ? JSON.stringify(value) : '0';
-    if (typeof value === 'boolean' || typeof value === 'string') return JSON.stringify(value);
-    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-    if (typeof value === 'object') {
-        const keys = Object.keys(value)
-            .filter(key => typeof value[key] !== 'undefined' && typeof value[key] !== 'function')
-            .sort();
-        return `{${keys.map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
-    }
-    return 'null';
-};
+import {canonical} from '../collab/hash.js';
 
 const rulesPayload = sprite => {
     const storage = (sprite && sprite.extensionStorage) || {};

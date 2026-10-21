@@ -18,6 +18,8 @@ import moderated from './moderated';
 import overlay from './overlay';
 import paintMerge from './paint-merge';
 import {installProjectSeam} from './project-seam.js';
+import {driftedTargets, projectHashes} from './hash.js';
+import {showPortabilityNote} from '../../components/squiggle-only-notice';
 import {attachAssetStore, createSnapshotHttp, projectAssets, sha256Hex, snapshotFrame} from './snapshot-http.js';
 
 /*
@@ -354,6 +356,7 @@ const projectFileName = () => {
 
 const downloadCurrentProject = () => {
     if (!state.vm) return;
+    showPortabilityNote(state.vm);
     state.vm.saveProjectSb3().then(blob => saveFile(blob, projectFileName()), () => {
         overlay.toast('⚠️ Could not make the download. Try File → Save to your computer', '#e8386d');
     });
@@ -725,6 +728,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         const urgent = state.urgentSnapshot === true;
         state.urgentSnapshot = false;
         const fields = {ref, cacheOnly: cacheOnly === true, basedOn, force, reset};
+        if (typeof client.rs === 'number') fields.atSeq = client.rs;
         client.send(uploaded ?
             snapshotFrame(Object.assign(fields, uploaded)) :
             Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
@@ -1779,6 +1783,14 @@ const requestResync = why => {
     console.warn('[collab] dropped relayed edits, resyncing:', why);
 };
 
+const checkDrift = pointer => {
+    if (!state.vm || !pointer.hashes || typeof pointer.hashes !== 'object') return;
+    projectHashes(state.vm.toJSON()).then(local => {
+        const off = driftedTargets(local, pointer.hashes);
+        if (off.length) requestResync(`drift in ${off.length} of ${Object.keys(local).length}`);
+    }, () => requestResync('drift check failed'));
+};
+
 // A tab left open for a day would otherwise only learn about a deploy by
 // reconnecting. Cheap enough at this interval to just ask.
 const VERSION_POLL_MS = 5 * 60 * 1000;
@@ -1998,11 +2010,10 @@ const applyExtensionAdd = id => {
 const applySpriteAdd = msg => {
     const prevEditing = state.vm.editingTarget;
     const before = new Set(state.vm.runtime.targets.map(t => t.id));
-    const projectStorage = state.vm.runtime.extensionStorage;
+    installProjectSeam(state.vm);
     state.installingRemote++;
     const input = msg.format === 'json' ? msg.sprite : new Uint8Array(bufferFromB64(msg.sprite));
     state.vm.addSprite(input).then(() => {
-        state.vm.runtime.extensionStorage = projectStorage;
         state.installingRemote--;
         rebuildTargetIndex();
         if (prevEditing && state.vm.runtime.targets.includes(prevEditing)) {
@@ -2568,8 +2579,11 @@ const onFrameRefused = msg => {
 const CLOSE_TEXT = {
     1008: 'Lots of changes at once, so the room asked for a short pause. Reconnecting…',
     1009: 'That was too much to send in one go. Reconnecting…',
+    1012: 'Squiggle restarted. Reconnecting…',
+    1013: 'The connection is running slow. Reconnecting…',
     4008: 'The connection is running slow. Reconnecting…'
 };
+const RELOAD_TEXT = 'Squiggle has a new version. Reload the page to keep working together.';
 const GAME_REFUSED_TEXT = 'That game message has words that are not allowed here.';
 
 const applyRole = (role, canEditFlag) => {
@@ -2683,6 +2697,7 @@ const wireSocket = () => {
             // It gets copied into our library first rather than dropped.
             state.rescueOnNextSnapshot = true;
         }
+        const unsent = state.offlineEdits;
         state.offlineEdits = false;
         state.lastPresence = {status: null, sprite: null, sentAt: 0};
         client.send({type: 'presence', sprite: editingTargetName(), status: 'here'});
@@ -2691,7 +2706,9 @@ const wireSocket = () => {
         rebuildPeerCache();
         netEmit('game-state', {vars: cachedGameVars});
         if (state.httpSnapshots && msg.snap && typeof msg.snap.sha === 'string') {
-            applySnapshot(Object.assign({type: 'snapshot', version: msg.version}, msg.snap));
+            const pointer = Object.assign({type: 'snapshot', version: msg.version}, msg.snap);
+            if (!msg.replay || state.rescueOnNextSnapshot || state.skipNextSnapshot) applySnapshot(pointer);
+            else if (!unsent && client.rs === msg.snap.atSeq) checkDrift(pointer);
         }
     });
     client.on('disconnected', msg => {
@@ -2744,7 +2761,12 @@ const wireSocket = () => {
      * makes, and `bad-snapshot`, which means the project is no longer being
      * saved at all. Both of those end in lost work, and both were silent.
      */
+    client.on('reload-needed', () => {
+        endSession(RELOAD_TEXT);
+        overlay.toast('🔄 Reload the page to get the new Squiggle', '#f0912b');
+    });
     client.on('error', msg => {
+        if (msg.error === 'reload-needed') return;
         if (msg.error === 'session-replaced') {
             client.disconnect();
             endSession('This room is open in another tab, so this one stopped saving. ' +

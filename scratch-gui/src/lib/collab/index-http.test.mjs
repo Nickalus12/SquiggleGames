@@ -47,6 +47,7 @@ const noopObject = base => new Proxy(base, {
 const listeners = new Map();
 const sent = [];
 const banners = [];
+const notes = [];
 const client = noopObject({
     connected: true,
     generation: 1,
@@ -95,7 +96,8 @@ globalThis.__collabStubs = {
     }),
     './moderated': noopObject({}),
     './paint-merge': noopObject({}),
-    '@turbowarp/paper': noopObject({})
+    '@turbowarp/paper': noopObject({}),
+    '../../components/squiggle-only-notice': {showPortabilityNote: target => notes.push(target)}
 };
 globalThis.window = noopObject({addEventListener: noop, dispatchEvent: () => true});
 globalThis.document = noopObject({
@@ -149,8 +151,10 @@ const welcome = extra => Object.assign({
 
 section('welcome with proto 2 seeds the room over http');
 {
+    client.rs = 10;
     emit('welcome', welcome({proto: 2}));
     ok('the frame goes out', await waitFor(() => snapshots().length === 1), sent);
+    ok('it claims the room seq we have applied', snapshots()[0].atSeq === 10, snapshots()[0]);
     const frame = snapshots()[0];
     ok('it carries the sha and no project bytes', typeof frame.sha === 'string' && !('b64' in frame), frame);
     ok('the sha is the project text hash', frame.sha === await sha256Hex(vm.toJSON()));
@@ -331,6 +335,49 @@ section('a reconnect welcome with a pointer loads it');
     emit('welcome', welcome({proto: 2, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}], version: 9,
         snap: {sha, size: text.length, version: 9, atSeq: 0, hashes: {}}}));
     ok('the pointed project loads', await waitFor(() => vm.runtime.targets.some(t => t.getName && t.getName() === 'Fox')));
+}
+
+section('a replay welcome keeps the local project and checks drift');
+{
+    const {projectHashes} = await import('./hash.js');
+    const hashes = await projectHashes(vm.toJSON());
+    const headSha = 'f'.repeat(64);
+    const getsBefore = gets().length;
+    const sentBefore = sent.length;
+    client.rs = 20;
+    emit('welcome', welcome({proto: 2, replay: true, rs: 25, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}],
+        version: 10, snap: {sha: headSha, size: 10, version: 10, atSeq: 20, hashes}}));
+    await new Promise(r => setTimeout(r, 50));
+    ok('the head is not fetched when the ring replays', gets().length === getsBefore, gets().slice(getsBefore));
+    ok('matching hashes ask for nothing', !sent.slice(sentBefore).some(m => m && m.type === 'resync'));
+
+    const realNow = Date.now;
+    Date.now = () => realNow() + 60000;
+    const logWarn = console.warn;
+    console.warn = noop;
+    const drifted = Object.assign({}, hashes, {Fox: '0'.repeat(64)});
+    emit('welcome', welcome({proto: 2, replay: true, rs: 25, hasSnapshot: true, peers: [{id: 'me'}, {id: 'pal'}],
+        version: 10, snap: {sha: headSha, size: 10, version: 10, atSeq: 20, hashes: drifted}}));
+    const resynced = await waitFor(() => sent.slice(sentBefore).some(m => m && m.type === 'resync'));
+    console.warn = logWarn;
+    Date.now = realNow;
+    ok('a drifted target asks the room for a resync', resynced);
+    ok('still without fetching the head first', gets().length === getsBefore);
+}
+
+section('a 4010 close ends the session with a reload message');
+{
+    banners.length = 0;
+    const errorsBefore = banners.length;
+    listeners.get('error')({type: 'error', error: 'reload-needed'});
+    ok('the reload-needed error frame adds nothing by itself', banners.length === errorsBefore, banners);
+    emit('reload-needed', {code: 4010, reason: 'please-reload'});
+    const ended = banners.find(b => /Reload the page/.test(b.text || ''));
+    ok('the banner asks for a reload', Boolean(ended), banners);
+    ok('and offers a copy to keep', ended && typeof ended.opts.onAction === 'function');
+    vm.saveProjectSb3 = () => Promise.resolve(new Blob(['x']));
+    if (ended) ended.opts.onAction();
+    ok('saving the copy shows the portability note first', notes.length === 1 && notes[0] === vm, notes.length);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
