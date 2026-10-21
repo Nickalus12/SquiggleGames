@@ -47,6 +47,44 @@ const NOTE_MESSAGES = {
 
 const FOCUSABLE = 'button:not([disabled])';
 
+const TogetherSheetBodyComponent = ({bodyId, initialFocusRef, intl, onClose, onStartRoom}) => (
+    <React.Fragment>
+        <p
+            className={styles.body}
+            id={bodyId}
+        >
+            {intl.formatMessage(messages.togetherBody)}
+        </p>
+        <div className={styles.actions}>
+            <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={onStartRoom}
+            >
+                {intl.formatMessage(messages.startRoom)}
+            </button>
+            <button
+                type="button"
+                className={styles.secondaryButton}
+                ref={initialFocusRef}
+                onClick={onClose}
+            >
+                {intl.formatMessage(messages.gotIt)}
+            </button>
+        </div>
+    </React.Fragment>
+);
+
+TogetherSheetBodyComponent.propTypes = {
+    bodyId: PropTypes.string,
+    initialFocusRef: PropTypes.func,
+    intl: intlShape.isRequired,
+    onClose: PropTypes.func.isRequired,
+    onStartRoom: PropTypes.func
+};
+
+const TogetherSheetBody = injectIntl(TogetherSheetBodyComponent);
+
 class SquiggleOnlyNotice extends React.Component {
     constructor (props) {
         super(props);
@@ -136,29 +174,12 @@ class SquiggleOnlyNotice extends React.Component {
                     >
                         {intl.formatMessage(messages.togetherTitle)}
                     </h2>
-                    <p
-                        className={styles.body}
-                        id="sq-notice-together-body"
-                    >
-                        {intl.formatMessage(messages.togetherBody)}
-                    </p>
-                    <div className={styles.actions}>
-                        <button
-                            type="button"
-                            className={styles.primaryButton}
-                            onClick={onStartRoom}
-                        >
-                            {intl.formatMessage(messages.startRoom)}
-                        </button>
-                        <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            ref={this.setInitialFocusRef}
-                            onClick={onClose}
-                        >
-                            {intl.formatMessage(messages.gotIt)}
-                        </button>
-                    </div>
+                    <TogetherSheetBody
+                        bodyId="sq-notice-together-body"
+                        initialFocusRef={this.setInitialFocusRef}
+                        onClose={onClose}
+                        onStartRoom={onStartRoom}
+                    />
                 </div>
             </div>
         );
@@ -172,6 +193,6 @@ SquiggleOnlyNotice.propTypes = {
     onStartRoom: PropTypes.func
 };
 
-export {messages};
+export {messages, TogetherSheetBody};
 
 export default injectIntl(SquiggleOnlyNotice);
