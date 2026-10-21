@@ -5,6 +5,7 @@ const createPrediction = ({easeMs = EASE_MS, snapPx = SNAP_PX} = {}) => {
     let cid = 0;
     let snaps = 0;
     let pending = null;
+    const delta = {dx: 0, dy: 0};
     return {
         correct (correction, local, nowMs) {
             if (!Array.isArray(correction) || correction.length < 3) return null;
@@ -26,7 +27,8 @@ const createPrediction = ({easeMs = EASE_MS, snapPx = SNAP_PX} = {}) => {
             const f = Math.min(1, Math.max(0, (nowMs - pending.start) / easeMs));
             const part = f - pending.done;
             pending.done = f;
-            const delta = {dx: pending.ex * part, dy: pending.ey * part};
+            delta.dx = pending.ex * part;
+            delta.dy = pending.ey * part;
             if (f >= 1) pending = null;
             return delta;
         },

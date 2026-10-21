@@ -1,7 +1,10 @@
 process.removeAllListeners('warning');
 
-const {ok, section, done} = await import('./harness.test-util.mjs');
-const {avatarOf, blockedAt, createAvatarLayer, findPlayerSprite, outboundOp, renderedDirection} =
+const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
+const {createInterpolationBuffer} = await import('./buffer.js');
+const {createPrediction} = await import('./prediction.js');
+const {timeLeft} = await import('./game-state.js');
+const {avatarOf, blockedAt, createAvatarLayer, createGameLink, findPlayerSprite, outboundOp, renderedDirection} =
     await import('./session.js');
 
 const sprite = (name, extra) => Object.assign({
@@ -26,8 +29,10 @@ section('outbound messages are cut');
     const op = outboundOp({type: 'game', action: 'msg', name: 'n'.repeat(150), value: 'v'.repeat(9000)});
     ok('the name is cut to 100 and the value to 4096', op.name.length === 100 && op.value.length === 4096,
         [op.name.length, op.value.length]);
-    ok('a short message is untouched', JSON.stringify(outboundOp({type: 'game', action: 'msg', name: 'a', value: 1})) ===
-        '{"action":"msg","name":"a","value":"1"}');
+    ok('a numeric value goes as a JSON number', JSON.stringify(outboundOp({type: 'game', action: 'msg', name: 'a',
+        value: '12'})) === '{"action":"msg","name":"a","value":12}');
+    ok('007 and 1e5 stay text', outboundOp({type: 'game', action: 'msg', name: 'a', value: '007'}).value === '007' &&
+        outboundOp({type: 'game', action: 'msg', name: 'a', value: '1e5'}).value === '1e5');
 }
 
 section('the avatar frame');
@@ -68,6 +73,98 @@ globalThis.window = {SquiggleWorld: {solidAt: (x, y) => x > 100 && y > 0}};
 ok('a solid tile blocks the eased step', blockedAt(120, 4) === true);
 ok('open ground does not', blockedAt(20, 4) === false);
 delete globalThis.window;
+
+section('the game link follows the welcome tick rate');
+{
+    const clock = fakeClock();
+    const sockets = [];
+    class FakeSocket {
+        constructor (url) {
+            this.url = url;
+            this.sent = [];
+            sockets.push(this);
+        }
+        send (text) {
+            this.sent.push(JSON.parse(text));
+        }
+        close (code) {
+            this.onclose({code});
+        }
+    }
+    const handlers = {};
+    const positions = [];
+    let lookups = 0;
+    const hero = sprite('Hero', {extensionStorage: {together: {role: 'player'}}});
+    const runtime = {
+        targets: [{isOriginal: true, isStage: true, extensionStorage: {}}, hero],
+        renderer: new Proxy({}, {get: (target, key) => (...args) => {
+            if (key === 'updateDrawablePosition') positions.push(args[1]);
+            return key === 'createDrawable' ? 7 : undefined;
+        }}),
+        on: (type, fn) => {
+            handlers[type] = fn;
+        },
+        off: type => {
+            delete handlers[type];
+        }
+    };
+    Object.defineProperty(hero, 'extensionStorage', {get: () => {
+        lookups += 1;
+        return {together: {role: 'player'}};
+    }});
+    const link = createGameLink({vm: {runtime}, base: 'wss://sq.test', slug: 'blue', WebSocketImpl: FakeSocket,
+        now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer});
+    link.start();
+    const ws = sockets[0];
+    ws.onopen();
+    ok('before the welcome it assumes 20 a second', link.tickHz === 20 && link.game.tickSeconds === 0.05);
+    ws.onmessage({data: JSON.stringify({type: 'welcome', slot: 1, ack: 0, mode: 'relay', tickHz: 10})});
+    ok('the welcome sets the tick rate and the mode', link.tickHz === 10 && link.mode === 'relay',
+        [link.tickHz, link.mode]);
+    ok('timers count down at that rate', link.game.tickSeconds === 0.1);
+    ws.onmessage({data: JSON.stringify({type: 'tick', t: 10, kf: 1, a: {2: [0, 0, 90, 1, 1, 0]}, y: {timers: {go: 30}}})});
+    ok('a timer 20 ticks away at 10 a second is 2 seconds', timeLeft(link.game, 'go') === 2, timeLeft(link.game, 'go'));
+    clock.advance(100);
+    ws.onmessage({data: JSON.stringify({type: 'tick', t: 11, a: {2: [10, 0, 90, 1, 1, 0]}})});
+    handlers.AFTER_EXECUTE();
+    const firstX = positions[0] && positions[0][0];
+    ok('the 100 ms render delay is one tick at 10 a second', positions.length === 1 && firstX === 0, firstX);
+    const seen = lookups;
+    clock.advance(50);
+    handlers.AFTER_EXECUTE();
+    ok('half a tick later it is half way', positions[1] && positions[1][0] === 5, positions.map(p => p[0]));
+    ok('frames reuse one position array', positions[0] === positions[1]);
+    ok('the own sprite is not looked up again while the targets are the same', lookups === seen, [seen, lookups]);
+    runtime.targets.push(sprite('Cat'));
+    handlers.AFTER_EXECUTE();
+    ok('a new target looks it up again', lookups > seen);
+    handlers.PROJECT_CHANGED();
+    const before = lookups;
+    handlers.AFTER_EXECUTE();
+    ok('and so does a project change', lookups > before);
+    link.stop();
+}
+
+section('the render helpers write into what they are given');
+{
+    const buffer = createInterpolationBuffer();
+    buffer.clock.observe(1, 1000);
+    buffer.push('2', 1, [0, 0, 90, 1, 1, 0]);
+    buffer.push('2', 2, [10, 0, 90, 1, 1, 0]);
+    const out = [];
+    ok('sample fills the caller array', buffer.sample('2', 1200, out) === out && out.length === 6);
+    const keys = [];
+    ok('slots fills the caller array', buffer.slots(keys) === keys && keys.join() === '2');
+    const a = [];
+    ok('avatarOf fills the caller array', avatarOf(sprite('Cat'), 0, a) === a && a.length === 6);
+    const prediction = createPrediction();
+    prediction.correct([10, 0, 1], {x: 0, y: 0}, 0);
+    const first = prediction.step(50);
+    ok('the eased step reuses one delta', prediction.step(100) === first);
+    const turned = {direction: 0, scale: [0, 0]};
+    ok('renderedDirection fills the caller object', renderedDirection('left-right', -45, 80, turned) === turned &&
+        turned.scale[0] === -80);
+}
 
 section('rotation styles');
 ok('all around turns', renderedDirection('all around', -45, 100).direction === -45);

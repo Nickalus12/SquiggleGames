@@ -1,7 +1,7 @@
 process.removeAllListeners('warning');
 
 const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
-const {createGameSession, gameSocketUrl, MAX_FRAME_BYTES, cutOp} = await import('./net.js');
+const {createGameSession, gameSocketUrl, MAX_FRAME_BYTES, cutOp, wireValue} = await import('./net.js');
 
 const sockets = [];
 class FakeSocket {
@@ -114,6 +114,9 @@ section('ops are cut and frames are sized by bytes');
     const cut = ins(ws)[0].g[0];
     ok('a long value is cut to 4096 and still sent', cut.value.length === 4096, cut.value.length);
     ok('a long name is cut to 100', cut.name.length === 100, cut.name.length);
+    ok('wireValue sends numbers as numbers and the rest as text', wireValue('42') === 42 && wireValue(' -3.5') === -3.5 &&
+        wireValue('007') === '007' && wireValue('') === '' && wireValue('Infinity') === 'Infinity' &&
+        wireValue(NaN) === 'NaN' && wireValue('12345678') === 12345678, ['42', '007', '', 'Infinity'].map(wireValue));
     ok('cutOp leaves short ops alone', JSON.stringify(cutOp({action: 'msg', name: 'a', value: 'b'})) ===
         '{"action":"msg","name":"a","value":"b"}');
     clock.advance(5000);

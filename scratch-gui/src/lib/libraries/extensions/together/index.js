@@ -7,7 +7,14 @@ import {installRulesGuard} from '../../../rules/guard.js';
 import {ensureRulesSprite} from '../../../rules/ensure-sprite.js';
 import {openGameSetup} from '../../../rules/open-setup.js';
 import {gameServerReady} from '../../../rules/flags.js';
-import {MAX_OP_NAME, MAX_OP_VALUE} from '../../../together2/net.js';
+import {MAX_OP_NAME, MAX_OP_VALUE, wireValue} from '../../../together2/net.js';
+import {
+    beforeTick,
+    deviceBlocks,
+    deviceMenus,
+    fireDeviceHats,
+    installDeviceMethods
+} from '../../../together2/device-blocks.js';
 import {
     applyTick,
     createGameState,
@@ -75,6 +82,7 @@ class TogetherBlocks {
         this._bound = false;
         this._game = createGameState();
         installRuleMethods(this, 'together');
+        installDeviceMethods(this, 'together', () => this._game);
         const vm = runtime.extensionManager && runtime.extensionManager.vm;
         if (vm) installRulesGuard(vm);
 
@@ -168,7 +176,7 @@ class TogetherBlocks {
                 if (this._tokens < 1) break;
                 this._tokens -= 1;
                 this._pendingMsgs.delete(name);
-                if (net) net.send({type: 'game', action: 'msg', name, value});
+                if (net) net.send({type: 'game', action: 'msg', name, value: wireValue(value)});
             }
         }
     }
@@ -303,7 +311,12 @@ class TogetherBlocks {
     }
 
     _onTick (tick) {
+        const net = getNet();
+        const hz = net && net.tickHz;
+        if (Number.isFinite(hz) && hz > 0) this._game.tickSeconds = 1 / hz;
+        const before = beforeTick(this._game);
         const result = applyTick(this._game, tick);
+        fireDeviceHats(this.runtime, 'together', before, this._game, result);
         for (const event of result.events) {
             const name = str(event.n);
             if (name && event.f === 0) this._deliverGame(name, str(event.v));
@@ -617,6 +630,7 @@ class TogetherBlocks {
                     blockType: 'Boolean',
                     text: 'in a game?'
                 },
+                ...deviceBlocks('together'),
                 {
                     blockType: 'button',
                     text: 'Open Game Rules',
@@ -628,7 +642,7 @@ class TogetherBlocks {
                 },
                 setupButton()
             ].concat(ruleBlocks('together')),
-            menus: ruleMenus('together')
+            menus: Object.assign({}, ruleMenus('together'), deviceMenus('together'))
         };
     }
 
@@ -662,7 +676,7 @@ class TogetherBlocks {
         if (!name) return;
         const net = getNet();
         if (!net || !net.inGame || typeof net.sendInput !== 'function') return;
-        net.sendInput({g: {action: 'input', name, value: str(args.VALUE).slice(0, MAX_OP_VALUE)}});
+        net.sendInput({g: {action: 'input', name, value: wireValue(str(args.VALUE).slice(0, MAX_OP_VALUE))}});
     }
 
     gameValue (args) {
@@ -726,7 +740,7 @@ class TogetherBlocks {
         this._refill(this._now());
         if (this._tokens >= 1) {
             this._tokens -= 1;
-            net.send({type: 'game', action: 'msg', name, value});
+            net.send({type: 'game', action: 'msg', name, value: wireValue(value)});
             return;
         }
         // Over budget: hold it by name and let the next frame send it. A name
@@ -820,7 +834,7 @@ class TogetherBlocks {
             // Sets first: an increment that survived alongside one is meant to
             // land on top of it, not underneath.
             for (const [key, val] of sets) {
-                net.send({type: 'game', action: 'var', name: key, value: val});
+                net.send({type: 'game', action: 'var', name: key, value: wireValue(val)});
             }
             for (const [key, val] of deltas) {
                 net.send({type: 'game', action: 'var-add', name: key, delta: val});

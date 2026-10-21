@@ -32,8 +32,14 @@ const shortTurn = (a, b) => ((((b - a) % 360) + 540) % 360) - 180;
 
 const lerpAngle = (a, b, f) => wrapAngle(a + (shortTurn(a, b) * f));
 
-const blend = (from, to, f) => {
-    const out = (f < 1 ? from : to).slice();
+const copyInto = (out, a) => {
+    out.length = a.length;
+    for (let i = 0; i < a.length; i++) out[i] = a[i];
+    return out;
+};
+
+const blend = (from, to, f, out) => {
+    copyInto(out, f < 1 ? from : to);
     out[0] = lerp(from[0], to[0], f);
     out[1] = lerp(from[1], to[1], f);
     out[2] = lerpAngle(from[2], to[2], f);
@@ -50,23 +56,23 @@ const createInterpolationBuffer = ({
     const delayTicks = delayMs / tickMs;
     const maxAhead = maxExtrapolateMs / tickMs;
 
-    const sampleSlot = (list, at) => {
+    const sampleSlot = (list, at, out) => {
         if (!list.length) return null;
         const first = list[0];
-        if (at <= first.t) return first.a.slice();
+        if (at <= first.t) return copyInto(out, first.a);
         const last = list[list.length - 1];
         if (at >= last.t) {
-            if (list.length < 2) return last.a.slice();
+            if (list.length < 2) return copyInto(out, last.a);
             const prev = list[list.length - 2];
             const ahead = Math.min(at - last.t, maxAhead);
-            return blend(prev.a, last.a, 1 + (ahead / (last.t - prev.t)));
+            return blend(prev.a, last.a, 1 + (ahead / (last.t - prev.t)), out);
         }
         for (let i = list.length - 1; i > 0; i--) {
             const from = list[i - 1];
             const to = list[i];
-            if (at >= from.t) return blend(from.a, to.a, (at - from.t) / (to.t - from.t));
+            if (at >= from.t) return blend(from.a, to.a, (at - from.t) / (to.t - from.t), out);
         }
-        return first.a.slice();
+        return copyInto(out, first.a);
     };
 
     return {
@@ -88,21 +94,24 @@ const createInterpolationBuffer = ({
             const now = clock.tickAt(nowMs);
             return now === null ? null : now - delayTicks;
         },
-        sample (slot, nowMs) {
+        sample (slot, nowMs, out) {
             const list = slots.get(String(slot));
             const at = this.renderTick(nowMs);
             if (!list || at === null) return null;
-            return sampleSlot(list, at);
+            return sampleSlot(list, at, out || []);
         },
-        sampleAt (slot, at) {
+        sampleAt (slot, at, out) {
             const list = slots.get(String(slot));
-            return list ? sampleSlot(list, at) : null;
+            return list ? sampleSlot(list, at, out || []) : null;
         },
         drop (slot) {
             slots.delete(String(slot));
         },
-        slots () {
-            return Array.from(slots.keys());
+        slots (out) {
+            const into = out || [];
+            into.length = 0;
+            slots.forEach((list, key) => into.push(key));
+            return into;
         },
         clear () {
             slots.clear();

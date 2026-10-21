@@ -40,7 +40,13 @@ section('tick.y');
     ok('names by slot', playerName(state, 2) === 'Pal');
     ok('team by index into the mark teams', teamName(state, 1, ['Red', 'Blue']) === 'Red' &&
         teamName(state, 2, ['Red', 'Blue']) === 'Blue');
-    ok('team 0 is no team', teamName(state, 3, ['Red']) === '');
+    ok('a slot with no team entry has no team', teamName(state, 3, ['Red']) === '');
+    const zero = createGameState();
+    applyTick(zero, {t: 1, kf: 1, y: {teams: {4: 0, 5: 1}}});
+    ok('team 0 is no team', teamName(zero, 4, ['Red']) === '' && teamName(zero, 5, ['Red']) === 'Red');
+    const slow = createGameState(0.1);
+    applyTick(slow, {t: 10, kf: 1, y: {timers: {go: 30}}});
+    ok('time left follows the tick rate it was made with', timeLeft(slow, 'go') === 2, timeLeft(slow, 'go'));
     ok('time left is end minus t at 20 a second', timeLeft(state, 'clock') === 3, timeLeft(state, 'clock'));
     ok('a past timer reads 0', timeLeft(state, 'old') === 0);
     ok('boards and places arrive', state.boards.length === 1 && state.places.Best === 1);

@@ -3,6 +3,7 @@ import {getKit} from '../kits/registry.js';
 import {installRuleMethods, openRulesButton, ruleBlocks, ruleMenus} from './rule-blocks.js';
 import {installRulesGuard} from './guard.js';
 import {ensureRulesSprite} from './ensure-sprite.js';
+import {createDeviceFeed, deviceBlocks, deviceMenus, installDeviceMethods} from '../together2/device-blocks.js';
 import log from '../log.js';
 
 const vmOf = runtime => (runtime && runtime.extensionManager && runtime.extensionManager.vm) || null;
@@ -15,6 +16,8 @@ const makeExpansion = id => {
         constructor (runtime) {
             this.runtime = runtime;
             installRuleMethods(this, id);
+            this._device = createDeviceFeed(runtime, id);
+            installDeviceMethods(this, id, () => this._device.game);
             const vm = vmOf(runtime);
             if (vm) installRulesGuard(vm);
         }
@@ -26,8 +29,8 @@ const makeExpansion = id => {
                 color1: colors.color1,
                 color2: colors.color2,
                 color3: colors.color3,
-                blocks: [openRulesButton()].concat(ruleBlocks(id)),
-                menus: ruleMenus(id)
+                blocks: [openRulesButton()].concat(deviceBlocks(id), ruleBlocks(id)),
+                menus: Object.assign({}, ruleMenus(id), deviceMenus(id))
             };
         }
 

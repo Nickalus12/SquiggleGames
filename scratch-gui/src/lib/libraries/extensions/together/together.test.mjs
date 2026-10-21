@@ -311,6 +311,14 @@ console.log('\nshared variables: increments');
     await new Promise(r => setTimeout(r, 90));
     ok('a set after an increment sends one absolute write',
         net.sent.length === 1 && net.sent[0].action === 'var' && net.sent[0].value === 3, net.sent);
+
+    net.sent.length = 0;
+    ext.setSharedVariable({NAME: 'level', VALUE: '12'});
+    ext.setSharedVariable({NAME: 'code', VALUE: '007'});
+    await new Promise(r => setTimeout(r, 90));
+    const byName = name => (net.sent.find(m => m.action === 'var' && m.name === name) || {}).value;
+    ok('a numeric text value goes out as a number and 007 stays text',
+        byName('level') === 12 && byName('code') === '007', net.sent);
 }
 
 console.log('\nshared variables: remote');
@@ -442,8 +450,11 @@ console.log('\nblock shapes from 1.8 projects');
         ['Messages', 'Shared variables', 'Room', 'Game server', 'Game Rules'].every(text => labels.includes(text)),
         labels);
     const client = ['tellGame', 'whenGameSays', 'gameValue', 'myPlayerValue', 'gameRound', 'myTeam',
-        'timeLeft', 'inGame'];
-    ok('the eight game server blocks are present', client.every(opcode => byOpcode[opcode]), client);
+        'timeLeft', 'inGame', 'whenGameValueChanges', 'playerValueOf', 'nameOfPlayer'];
+    ok('the eleven game server blocks are present', client.every(opcode => byOpcode[opcode]), client);
+    ok('they stay hidden while the game server is off', client.every(opcode => byOpcode[opcode].hideFromPalette));
+    ok('a player slot takes me or nobody', info.menus.gamePlayers &&
+        info.menus.gamePlayers.items.map(item => item.text).join() === 'me,nobody');
     ok('an Open Game Rules button is offered',
         info.blocks.some(block => block && block.blockType === 'button' && block.func === 'openGameRules'));
     const rules = ruleOpcodes('together');
@@ -498,6 +509,12 @@ console.log('\ngame server ticks');
     ok('time left counts ticks to the end at 20 a second', ext.timeLeft({TIMER: 'timer'}) === 30,
         ext.timeLeft({TIMER: 'timer'}));
     ok('an unknown timer reads 0', ext.timeLeft({TIMER: 'other'}) === 0);
+    const left20 = ext.timeLeft({TIMER: 'timer'});
+    net.tickHz = 10;
+    tick({t: 6, y: {}});
+    ok('at 10 ticks a second the same timer reads twice as long', ext.timeLeft({TIMER: 'timer'}) === left20 * 2,
+        ext.timeLeft({TIMER: 'timer'}));
+    delete net.tickHz;
 
     const says = runtime.hats.filter(h => h.opcode === 'together_whenGameSays');
     ok('a game event starts its hat once', says.length === 1 && says[0].fields.TEXT === 'start', says);
@@ -534,7 +551,12 @@ console.log('\ntelling the game');
     ext.tellGame({NAME: 'jump', VALUE: 4});
     ok('in a game the input goes out',
         net.inputs.length === 1 && net.inputs[0].g.action === 'input' &&
-        net.inputs[0].g.name === 'jump' && net.inputs[0].g.value === '4', net.inputs);
+        net.inputs[0].g.name === 'jump' && net.inputs[0].g.value === 4, net.inputs);
+    ext.tellGame({NAME: 'code', VALUE: '007'});
+    ext.tellGame({NAME: 'pos', VALUE: ' 2.5 '});
+    ok('a number travels as a JSON number, anything else stays text',
+        net.inputs[1].g.value === '007' && net.inputs[2].g.value === 2.5, net.inputs.slice(1));
+    net.inputs.length = 1;
     ok('in a game? is true', ext.inGame() === true);
 
     ext.tellGame({NAME: '', VALUE: 4});

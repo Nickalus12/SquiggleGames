@@ -1,5 +1,5 @@
-import {MAX_OP_NAME, MAX_OP_VALUE, createGameSession, gameSocketUrl} from './net.js';
-import {createInterpolationBuffer} from './buffer.js';
+import {MAX_OP_NAME, MAX_OP_VALUE, createGameSession, gameSocketUrl, wireValue} from './net.js';
+import {TICK_MS, createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
 import {RULES_KEY} from '../collab/project-seam.js';
@@ -53,23 +53,30 @@ const wholeDirection = direction => {
     return turned > 180 ? turned - 360 : turned;
 };
 
-const avatarOf = (target, level) => [
-    halfPixel(clamp(target.x, -MAX_X, MAX_X)),
-    halfPixel(clamp(target.y, -MAX_Y, MAX_Y)),
-    wholeDirection(target.direction),
-    clamp((target.currentCostume | 0) + 1, 1, MAX_COSTUME),
-    target.visible ? FLAG_VISIBLE : 0,
-    clamp(level | 0, 0, MAX_LEVEL)
-];
+const avatarOf = (target, level, out) => {
+    const a = out || [];
+    a.length = 6;
+    a[0] = halfPixel(clamp(target.x, -MAX_X, MAX_X));
+    a[1] = halfPixel(clamp(target.y, -MAX_Y, MAX_Y));
+    a[2] = wholeDirection(target.direction);
+    a[3] = clamp((target.currentCostume | 0) + 1, 1, MAX_COSTUME);
+    a[4] = target.visible ? FLAG_VISIBLE : 0;
+    a[5] = clamp(level | 0, 0, MAX_LEVEL);
+    return a;
+};
 
-const renderedDirection = (style, direction, size) => {
-    if (style === 'left-right') return {direction: 90, scale: [direction < 0 ? -size : size, size]};
-    if (style === 'don\'t rotate') return {direction: 90, scale: [size, size]};
-    return {direction, scale: [size, size]};
+const renderedDirection = (style, direction, size, out) => {
+    const turned = out || {direction: 0, scale: [0, 0]};
+    turned.direction = style === 'left-right' || style === 'don\'t rotate' ? 90 : direction;
+    turned.scale[0] = style === 'left-right' && direction < 0 ? -size : size;
+    turned.scale[1] = size;
+    return turned;
 };
 
 const createAvatarLayer = runtime => {
     const drawn = new Map();
+    const position = [0, 0];
+    const turned = {direction: 0, scale: [0, 0]};
     const renderer = () => runtime.renderer || null;
     return {
         draw (slot, a, source) {
@@ -83,8 +90,10 @@ const createAvatarLayer = runtime => {
             const costumes = source.sprite.costumes;
             const costume = costumes[clamp((a[3] | 0) - 1, 0, costumes.length - 1)];
             if (costume && typeof costume.skinId === 'number') r.updateDrawableSkinId(id, costume.skinId);
-            r.updateDrawablePosition(id, [a[0], a[1]]);
-            const turned = renderedDirection(source.rotationStyle, a[2], source.size);
+            position[0] = a[0];
+            position[1] = a[1];
+            r.updateDrawablePosition(id, position);
+            renderedDirection(source.rotationStyle, a[2], source.size, turned);
             r.updateDrawableDirectionScale(id, turned.direction, turned.scale);
             r.updateDrawableVisible(id, (a[4] & FLAG_VISIBLE) === FLAG_VISIBLE);
         },
@@ -94,8 +103,11 @@ const createAvatarLayer = runtime => {
             const r = renderer();
             if (r && typeof id !== 'undefined') r.destroyDrawable(id, SPRITE_LAYER);
         },
-        slots () {
-            return Array.from(drawn.keys());
+        slots (out) {
+            const into = out || [];
+            into.length = 0;
+            drawn.forEach((id, slot) => into.push(slot));
+            return into;
         },
         clear () {
             this.slots().forEach(slot => this.remove(slot));
@@ -111,7 +123,7 @@ const outboundOp = msg => {
         return {
             action: 'msg',
             name,
-            value: (typeof msg.value === 'undefined' ? '' : String(msg.value)).slice(0, MAX_OP_VALUE)
+            value: wireValue((typeof msg.value === 'undefined' ? '' : String(msg.value)).slice(0, MAX_OP_VALUE))
         };
     }
     return null;
@@ -132,14 +144,46 @@ const createGameLink = ({
 }) => {
     const runtime = vm.runtime;
     const tickHandlers = new Set();
-    const buffer = createInterpolationBuffer();
     const prediction = createPrediction();
     const avatars = createAvatarLayer(runtime);
-    let game = createGameState();
+    const ownAvatar = [];
+    const sampled = [];
+    const bufferSlots = [];
+    const drawnSlots = [];
+    const live = new Set();
+    let tickMs = TICK_MS;
+    let buffer = createInterpolationBuffer({tickMs});
+    let game = createGameState(tickMs / 1000);
     let session = null;
     let unsubs = [];
+    let ownTarget = null;
+    let ownTargets = null;
+    let ownCount = -1;
+    let mineSlot = null;
+    let mineKey = '';
 
-    const own = () => findPlayerSprite(runtime);
+    const forgetOwn = () => {
+        ownTargets = null;
+    };
+
+    const own = () => {
+        const targets = runtime.targets;
+        if (targets !== ownTargets || !targets || targets.length !== ownCount) {
+            ownTarget = findPlayerSprite(runtime);
+            ownTargets = targets;
+            ownCount = targets ? targets.length : -1;
+        }
+        return ownTarget;
+    };
+
+    const onWelcome = msg => {
+        const hz = msg && Number.isFinite(msg.tickHz) && msg.tickHz > 0 ? msg.tickHz : 0;
+        if (!hz) return;
+        game.tickSeconds = 1 / hz;
+        if (1000 / hz === tickMs) return;
+        tickMs = 1000 / hz;
+        buffer = createInterpolationBuffer({tickMs});
+    };
 
     const deliverTick = tick => {
         tickHandlers.forEach(cb => {
@@ -153,15 +197,15 @@ const createGameLink = ({
 
     const onTick = tick => {
         const result = applyTick(game, tick);
-        const at = now();
         if (result.applied && tick.a && typeof tick.a === 'object') {
+            buffer.clock.observe(tick.t, now());
             Object.keys(tick.a).forEach(slot => {
                 if (tick.a[slot] === null) buffer.drop(slot);
-                else buffer.push(slot, tick.t, tick.a[slot], at);
+                else buffer.push(slot, tick.t, tick.a[slot]);
             });
         }
         if (result.keyframe) {
-            buffer.slots().forEach(slot => {
+            buffer.slots(bufferSlots).forEach(slot => {
                 if (!game.avatars[slot]) buffer.drop(slot);
             });
         }
@@ -199,29 +243,39 @@ const createGameLink = ({
             if (delta && !blockedAt(target.x + delta.dx, target.y + delta.dy)) {
                 target.setXY(target.x + delta.dx, target.y + delta.dy);
             }
-            session.setAvatar(avatarOf(target, worldLevel()));
+            session.setAvatar(avatarOf(target, worldLevel(), ownAvatar));
         }
-        const mine = String(session.slot);
-        const live = new Set();
-        buffer.slots().forEach(slot => {
-            if (slot === mine) return;
-            live.add(slot);
-            avatars.draw(slot, buffer.sample(slot, at), target);
-        });
-        avatars.slots().forEach(slot => {
-            if (!live.has(slot)) avatars.remove(slot);
-        });
+        if (session.slot !== mineSlot) {
+            mineSlot = session.slot;
+            mineKey = String(mineSlot);
+        }
+        live.clear();
+        buffer.slots(bufferSlots);
+        for (let i = 0; i < bufferSlots.length; i++) {
+            const slot = bufferSlots[i];
+            if (slot !== mineKey) {
+                live.add(slot);
+                avatars.draw(slot, buffer.sample(slot, at, sampled), target);
+            }
+        }
+        avatars.slots(drawnSlots);
+        for (let i = 0; i < drawnSlots.length; i++) {
+            if (!live.has(drawnSlots[i])) avatars.remove(drawnSlots[i]);
+        }
     };
 
     const reset = () => {
         unsubs.forEach(off => off());
         unsubs = [];
         runtime.off('AFTER_EXECUTE', frame);
+        runtime.off('PROJECT_CHANGED', forgetOwn);
         avatars.clear();
         buffer.clear();
         prediction.reset();
-        game = createGameState();
+        game = createGameState(tickMs / 1000);
         session = null;
+        forgetOwn();
+        mineSlot = null;
     };
 
     return {
@@ -236,6 +290,7 @@ const createGameLink = ({
                 clearTimer
             });
             const current = session;
+            unsubs.push(session.on('welcome', onWelcome));
             unsubs.push(session.on('tick', onTick));
             unsubs.push(session.on('correction', onCorrection));
             unsubs.push(session.on('rules-status', msg => onRulesStatus && onRulesStatus(msg)));
@@ -249,6 +304,7 @@ const createGameLink = ({
                 if (onClosed) onClosed(msg);
             }));
             runtime.on('AFTER_EXECUTE', frame);
+            runtime.on('PROJECT_CHANGED', forgetOwn);
             session.start();
             return session;
         },
@@ -281,6 +337,12 @@ const createGameLink = ({
         },
         get rtt () {
             return session ? session.rtt : null;
+        },
+        get mode () {
+            return session ? session.mode : null;
+        },
+        get tickHz () {
+            return 1000 / tickMs;
         },
         get game () {
             return game;

@@ -22,7 +22,7 @@ const PROTO = 2;
 const V2_FRAME_LIMITS = new Map([
     ['block-event', 4 * 1024 * 1024],
     ['vm-action', 1024 * 1024],
-    ['snapshot', 64 * 1024],
+    ['snapshot', 160 * 1024],
     ['tilemap-patch', 256 * 1024],
     ['kit-set', 20 * 1024],
     ['game', 32 * 1024],

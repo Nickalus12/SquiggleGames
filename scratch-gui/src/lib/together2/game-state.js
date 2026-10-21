@@ -3,7 +3,8 @@ const TICK_SECONDS = 0.05;
 
 const isObject = value => !!value && typeof value === 'object' && !Array.isArray(value);
 
-const createGameState = () => ({
+const createGameState = (tickSeconds = TICK_SECONDS) => ({
+    tickSeconds,
     t: -1,
     kf: -1,
     values: {},
@@ -124,7 +125,7 @@ const gameValue = (state, name) => (Object.prototype.hasOwnProperty.call(state.v
 const timeLeft = (state, name) => {
     const end = Number(state.timers[name]);
     if (!Number.isFinite(end) || state.t < 0) return 0;
-    return Math.max(0, Math.round((end - state.t) * TICK_SECONDS * 100) / 100);
+    return Math.max(0, Math.round((end - state.t) * state.tickSeconds * 100) / 100);
 };
 
 const teamName = (state, slot, teams) => {

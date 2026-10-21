@@ -28,10 +28,18 @@ const encoder = new TextEncoder();
 
 const byteLength = text => encoder.encode(text).length;
 
+const wireValue = value => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    const number = Number(trimmed);
+    return trimmed && Number.isFinite(number) && String(number) === trimmed ? number : value;
+};
+
 const cutOp = op => {
     const out = Object.assign({}, op);
     if (typeof out.name === 'string') out.name = out.name.slice(0, MAX_OP_NAME);
-    if (typeof out.value === 'string') out.value = out.value.slice(0, MAX_OP_VALUE);
+    if (typeof out.value === 'string') out.value = wireValue(out.value.slice(0, MAX_OP_VALUE));
     return out;
 };
 
@@ -372,6 +380,7 @@ export {
     MAX_OP_NAME,
     MAX_OP_VALUE,
     cutOp,
+    wireValue,
     gameSocketUrl,
     createGameSession
 };

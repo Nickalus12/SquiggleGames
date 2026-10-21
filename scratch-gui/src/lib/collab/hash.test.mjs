@@ -99,7 +99,10 @@ for (let i = 0; i < 60; i++) sixty[`Sprite ${i}`] = 'a'.repeat(64);
 ok('a 60-sprite project still sends its hashes', sendableHashes(sixty) === sixty);
 const wide = {};
 for (let i = 0; i < 512; i++) wide[`${i}`.padStart(128, 'w')] = 'a'.repeat(64);
-ok('512 targets with 128-character names go over 60 KiB and send none', sendableHashes(wide) === null);
+ok('512 targets with 128-character names still fit in 150 KiB', sendableHashes(wide) === wide);
+const wider = {};
+for (let i = 0; i < 512; i++) wider[`${i}`.padStart(128, '\u20ac')] = 'a'.repeat(64);
+ok('512 names of 128 three-byte characters go over 150 KiB and send none', sendableHashes(wider) === null);
 
 const extra = project();
 extra.targets.push(target({name: 'Dog'}));

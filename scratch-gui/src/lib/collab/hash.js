@@ -2,7 +2,7 @@ import {sha256Hex} from './snapshot-http.js';
 
 const MAX_HASHED_TARGETS = 512;
 const MAX_HASHED_NAME = 128;
-const MAX_HASHES_BYTES = 60 * 1024;
+const MAX_HASHES_BYTES = 150 * 1024;
 
 const canonical = value => {
     if (value === null || typeof value === 'undefined') return 'null';

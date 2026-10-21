@@ -2613,6 +2613,12 @@ const installNetBridge = () => {
         get rtt () {
             return state.gameLink ? state.gameLink.rtt : null;
         },
+        get mode () {
+            return state.gameLink ? state.gameLink.mode : null;
+        },
+        get tickHz () {
+            return state.gameLink ? state.gameLink.tickHz : null;
+        },
         on (type, cb) {
             if (typeof cb !== 'function') return () => {};
             (netHandlers[type] = netHandlers[type] || []).push(cb);
