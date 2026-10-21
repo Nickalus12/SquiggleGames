@@ -56,4 +56,19 @@ ok('shake ends after its time', cam.report('x') === 0 && cam.state.shake === nul
 cam.reset();
 ok('reset makes the camera inactive', cam.info() === null && cam.report('zoom') === 100);
 
+section('hold');
+const held = createCamera();
+held.set(40, 0);
+const release = held.hold({kit: 'a'});
+ok('a held camera is not active', !held.isActive() && held.isHeld());
+held.follow('Hero', 0);
+ok('camera blocks still set the camera while held', held.state.follow === 'Hero' && !held.isActive());
+const second = held.hold({kit: 'b'});
+release();
+ok('every holder must let go', !held.isActive());
+second();
+ok('the camera resumes after the last release', held.isActive() && !held.isHeld() && held.view(1).x === 40);
+release();
+ok('releasing twice is harmless', held.isActive());
+
 done();

@@ -64,9 +64,19 @@ const createCamera = options => {
         state.from = {x: state.x, y: state.y, zoom: state.zoom};
     };
 
+    const holds = new Set();
+
     const camera = {
         state,
-        isActive: () => state.active,
+        isActive: () => state.active && holds.size === 0,
+        isHeld: () => holds.size > 0,
+        hold (owner) {
+            const key = owner || {};
+            holds.add(key);
+            return () => {
+                holds.delete(key);
+            };
+        },
         activate () {
             state.active = true;
         },
