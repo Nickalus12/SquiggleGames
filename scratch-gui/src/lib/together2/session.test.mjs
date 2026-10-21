@@ -1,7 +1,7 @@
 process.removeAllListeners('warning');
 
 const {ok, section, done} = await import('./harness.test-util.mjs');
-const {avatarOf, createAvatarLayer, findPlayerSprite, renderedDirection} = await import('./session.js');
+const {avatarOf, blockedAt, createAvatarLayer, findPlayerSprite, renderedDirection} = await import('./session.js');
 
 const sprite = (name, extra) => Object.assign({
     name, isOriginal: true, isStage: false, extensionStorage: {}, x: 0, y: 0, direction: 90, size: 100,
@@ -47,6 +47,13 @@ section('others are drawn without clones');
     ok('removing destroys it', calls.some(c => c[0] === 'destroyDrawable' && c[1] === 7) && layer.slots().length === 0);
     ok('no renderer draws nothing', (createAvatarLayer({}).draw('1', [0, 0, 90, 0, 1, 0], source), true));
 }
+
+section('walls come from the world kit');
+ok('no world means no walls', blockedAt(5, 5) === false);
+globalThis.window = {SquiggleWorld: {solidAt: (x, y) => x > 100 && y > 0}};
+ok('a solid tile blocks the eased step', blockedAt(120, 4) === true);
+ok('open ground does not', blockedAt(20, 4) === false);
+delete globalThis.window;
 
 section('rotation styles');
 ok('all around turns', renderedDirection('all around', -45, 100).direction === -45);

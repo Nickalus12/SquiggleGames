@@ -26,8 +26,15 @@ const findPlayerSprite = runtime => {
     }) || playable[0] || null;
 };
 
+const squiggleWorld = () => (typeof window === 'undefined' ? null : window.SquiggleWorld);
+
+const blockedAt = (x, y) => {
+    const world = squiggleWorld();
+    return !!(world && typeof world.solidAt === 'function' && world.solidAt(x, y));
+};
+
 const worldLevel = () => {
-    const world = typeof window === 'undefined' ? null : window.SquiggleWorld;
+    const world = squiggleWorld();
     if (!world || typeof world.currentLevel !== 'function' || typeof world.levels !== 'function') return 0;
     const current = world.currentLevel();
     if (!current) return 0;
@@ -178,7 +185,9 @@ const createGameLink = ({
         const target = own();
         if (target) {
             const delta = prediction.step(at);
-            if (delta) target.setXY(target.x + delta.dx, target.y + delta.dy);
+            if (delta && !blockedAt(target.x + delta.dx, target.y + delta.dy)) {
+                target.setXY(target.x + delta.dx, target.y + delta.dy);
+            }
             session.setAvatar(avatarOf(target, worldLevel()));
         }
         const mine = String(session.slot);
@@ -270,6 +279,7 @@ const createGameLink = ({
 
 export {
     avatarOf,
+    blockedAt,
     createAvatarLayer,
     createGameLink,
     findPlayerSprite,
