@@ -36,8 +36,12 @@
         color: white;
       }
       .splash-screen[data-theme="squiggle"] {
-        background-color: #0d1020;
+        background-color: #10142a;
         color: #f2f4fb;
+      }
+      .splash-screen[data-theme="squiggle-day"] {
+        background-color: #f7f6fc;
+        color: #5b3aa0;
       }
       .splash-screen > * {
         max-width: 80%;
@@ -126,7 +130,7 @@
             } else if (parsed.accent === 'red' || parsed.accent === 'rainbow') {
               accent = '#ff4c4c';
             }
-            if (parsed.gui === 'dark' || parsed.gui === 'light' || parsed.gui === 'squiggle') {
+            if (parsed.gui === 'dark' || parsed.gui === 'light' || parsed.gui === 'squiggle' || parsed.gui === 'squiggle-day' || parsed.gui === 'auto') {
               theme = parsed.gui;
             }
           } catch (e) {
@@ -136,6 +140,15 @@
 
         if (!theme) {
           theme = 'squiggle';
+        }
+        if (theme === 'auto') {
+          var prefersLight = false;
+          try {
+            prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          } catch (e) {
+            prefersLight = false;
+          }
+          theme = prefersLight ? 'squiggle-day' : 'squiggle';
         }
 
         var splash = document.querySelector('.spash-waiting-for-js');

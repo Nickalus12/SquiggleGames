@@ -13,6 +13,10 @@
         background: #0d1020;
       }
 
+      body[data-splash-theme="squiggle-day"] {
+        background: #f7f6fc;
+      }
+
       noscript {
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
@@ -39,7 +43,7 @@
         } else if (themeSetting) {
           try {
             var parsed = JSON.parse(themeSetting);
-            if (parsed.gui === 'dark' || parsed.gui === 'light' || parsed.gui === 'squiggle') {
+            if (parsed.gui === 'dark' || parsed.gui === 'light' || parsed.gui === 'squiggle' || parsed.gui === 'squiggle-day' || parsed.gui === 'auto') {
               theme = parsed.gui;
             }
           } catch (e) {
@@ -49,6 +53,15 @@
 
         if (!theme) {
           theme = 'squiggle';
+        }
+        if (theme === 'auto') {
+          var prefersLight = false;
+          try {
+            prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          } catch (e) {
+            prefersLight = false;
+          }
+          theme = prefersLight ? 'squiggle-day' : 'squiggle';
         }
 
         document.body.setAttribute('data-splash-theme', theme);

@@ -25,7 +25,7 @@
     border-radius: $space;
     user-select: none;
 
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     overflow: hidden;
 }
 
@@ -70,7 +70,7 @@ $sides: 20rem;
     background-color: $ui-modal-header-background;
     color: $ui-modal-header-foreground;
 
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     font-size: 1rem;
     font-weight: normal;
 }
