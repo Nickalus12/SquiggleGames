@@ -85,6 +85,10 @@ const emit = (event, detail) => {
     } catch (e) { /* different origin — the panel just won't update */ }
 };
 
+const chatBody = d => (typeof d.phrase === 'string' && d.phrase ?
+    {type: 'play-chat', phrase: d.phrase} :
+    {type: 'play-chat', text: d.text});
+
 const isDriving = () => !!state.me && state.driver === state.me.id;
 
 const send = msg => {
@@ -454,10 +458,19 @@ const handle = msg => {
         emit('chat', msg);
         break;
 
+    case 'play-chat-config':
+        emit('chat-config', {mode: msg.mode, phrases: msg.phrases});
+        break;
+
     case 'play-blocked':
         // The warning rides along: the panel around this player is what shows
         // it, and it is the server's decision, not something to re-derive.
-        emit('blocked', {message: msg.message, category: msg.category, warning: msg.warning});
+        emit('blocked', {
+            reason: msg.reason,
+            message: msg.message,
+            category: msg.category,
+            warning: msg.warning
+        });
         break;
 
     case 'play-error':
@@ -541,7 +554,7 @@ const init = (vm, {code, name}) => {
         if (!d || d.source !== 'squiggle-coplay-host') return;
         if (d.action === 'pass') send({type: 'play-pass', to: d.to});
         else if (d.action === 'ask') send({type: 'play-ask'});
-        else if (d.action === 'chat') send({type: 'play-chat', text: d.text});
+        else if (d.action === 'chat') send(chatBody(d));
         else if (d.action === 'roster') pushRoster();
     });
 };

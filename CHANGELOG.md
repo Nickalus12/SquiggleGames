@@ -1,4 +1,4 @@
-# Changelog — Squiggle editor
+# Changelog: Squiggle editor
 
 Changes to the editor in this repository. The editor is versioned by the
 Squiggle release it ships with; the hosted service reports its own version at
@@ -9,13 +9,118 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
-## Unreleased
+## 1.8.0 (2026-10-20)
+
+### Added
+
+- **Room chat.** A chat panel sits beside the editor on desktop and opens as
+  its own pane on the phone. Everyone in the room sees the same lines; there is
+  no way to message one person privately. Players the server marks as needing
+  the child-safe mode, and guests, get a set of quick phrases instead of a
+  keyboard. The phrase list and the chat mode come from the server, so the
+  editor never decides who may type.
+- **Report a chat line in plain words.** The report sheet offers reasons a
+  ten-year-old can read, and they match the reasons the server accepts.
+- **Messages button with an unread badge** in the menu bar. It opens your
+  messages in a new tab so the project stays open, and it is hidden when you
+  are signed out.
+- Co-play forwards the chat config, the phrase list and the server's reason
+  for a blocked line to the panel around the player.
+
+### Changed
+
+- Chat controls use the account id the server sends for each player instead
+  of guessing it from a name and colour, so Mute can no longer point at the
+  wrong person when two players share both.
+- Lint on `src/lib/collab` is clean and CI now fails a pull request that
+  breaks it (#6).
 
 ### Fixed
 
+- From UI review: button and badge contrast, touch targets of 44px, a menu
+  bar that no longer shifts when a badge appears, phrase chips a mouse wheel
+  can scroll, and a composer that stays reachable on landscape phones.
+- Join no longer sends an `undefined` token when there is none (#6).
+
+## 1.7.0 (2026-10-20)
+
+### Added
+
+- **The editor works on a phone.** On a narrow screen it switches to one pane
+  at a time: a top bar with the project name and menu, tabs along the bottom
+  for Code, Costumes, Sounds and Stage, a sprite row, and a small stage button
+  that keeps the game in view while you edit.
+- **On-screen keys for games.** Arrow and space buttons appear over the stage
+  on touch screens, showing only the keys the project actually uses and staying
+  clear of the tab bar.
+- The editor tracks phone, tablet and desktop layout modes, the stage can take
+  a fixed width, and the block flyout can be narrower, which is what lets the
+  phone layout fit.
+- The playground page has a viewport tag for phones and allows pinch zoom.
+
+### Fixed
+
+- The phone stage draws when it becomes visible instead of staying blank until
+  the first resize.
+- The room pane is readable on a phone, and toasts clear the top bar.
+- The phone menu sheet works from the keyboard, with better contrast and
+  larger targets.
+- The FPS and interpolation labels no longer show in embed and player mode.
+- Room messages no longer use em dashes.
+
+## 1.6.0 (2026-10-20)
+
+### Fixed
+
+- **Editor sync no longer loses, duplicates or silently reverts edits** around
+  reconnects, refusals and moderation. Queued edits stay queued until the
+  editor has decided whether to keep its own copy or take the room's.
+- **Offline work can no longer overwrite a room that moved on**, and role
+  changes, viewer games and server closes are noticed instead of ignored.
+- **A refused save keeps the other pending saves**, and host-only refusals and
+  blocked viewer game text show the right message.
+- **Large projects respect the server's per-socket byte budget**, and a frame
+  the server closed as too large is no longer sent again after every
+  reconnect.
+- The client keeps the server's close code, so a tab kicked for flooding can
+  say why.
+- Masked costume, sound and sprite names and block comments are masked on the
+  sender's screen too.
+- A malformed workspace update no longer leaves local block edits unsent for
+  the rest of the session.
+- File > New, Load from your computer and restore points no longer try to
+  replace a shared room.
+- A `?server=` link can no longer hand the device token to someone else's
+  server.
+- The Together game blocks keep working after the second project load in a
+  room.
+
+
+- **A page restored from the back-forward cache checks the connection is
+  alive again.** Leaving closed the socket and stopped the heartbeat, and
+  coming back reopened the socket but never restarted the heartbeat, so a
+  connection that died silently after a restore (wifi changed, laptop slept)
+  showed a green presence dot while every edit went nowhere. The heartbeat
+  now starts with every socket, not just the first. It also no longer tears
+  down a connection for silence while the tab is hidden, where timers are
+  throttled and silence means nothing.
+
+- **A server that accepts the socket and then refuses the join no longer
+  gets retried every second forever.** The reconnect backoff reset when the
+  socket opened, before the room had said yes, so an accept-then-close loop
+  pinned the retry at its minimum. The backoff resets on the welcome now,
+  and each retry is jittered so a room full of clients does not come back
+  in lockstep after an outage.
+
+- **Only the newest unsent snapshot is kept while offline.** Snapshots are
+  whole projects, and edits made across a long disconnection queued one
+  after another, megabytes of superseded project copies that all flushed,
+  oldest first, on reconnect. A newer snapshot now replaces any queued one,
+  carrying its force/reset flags with it.
+
 - **The "you are watching" banner no longer sits on top of the menu bar.** It
   was a fixed bar at the top of the window, and unlike a toast it never goes
-  away — so for as long as you were a viewer it covered File, Edit, Addons, the
+  away, so for as long as you were a viewer it covered File, Edit, Addons, the
   project name and Save. The banner hid the controls it was telling you about.
   It takes its own space now: the editor root is inset by the bar's measured
   height, re-measured when the text wraps on a narrow window, and a resize is
@@ -24,7 +129,7 @@ of work rather than just moving files.
 
 - **Leaving a room hands the seat back before the next page asks who is in it.**
   Browsers do close the socket when you navigate away, but on their own
-  schedule, and the dashboard fetches the room list immediately — so you could
+  schedule, and the dashboard fetches the room list immediately, so you could
   walk out of a room and be told you were still in it. The client now closes on
   `pagehide`, which puts the close frame ahead of that first request. The
   session is kept rather than torn down, so a page restored from the bfcache
@@ -35,8 +140,8 @@ of work rather than just moving files.
   the project JSON without the assets and render skins behind them, and the
   result looks almost right: sprite names, coordinates and panels all present,
   stage and sprite thumbnails blank, nothing saying why. That was a
-  `console.error` and nothing else. It now asks the room for the project again
-  — rate limited, and forced past the "same bytes" check — and tells the person
+  `console.error` and nothing else. It now asks the room for the project again,
+  rate limited, and forced past the "same bytes" check, and tells the person
   watching that it is retrying.
 
 ### Changed
@@ -44,7 +149,7 @@ of work rather than just moving files.
 - A refusal in co-play chat now carries the server's warning with it, so the
   panel around the player can show what was recognised and what it costs the
   account rather than a line in the chat log. The editor forwards it and does
-  not re-derive any of it — the decision is the server's.
+  not re-derive any of it, the decision is the server's.
 
 ## 1.5.0
 
@@ -52,7 +157,7 @@ of work rather than just moving files.
 
 - **`when I receive any game message`.** Asked for by a player: naming every
   message up front is fine until you are writing the thing that logs them,
-  relays them, or reacts to whatever the other player just did — and then it is
+  relays them, or reacts to whatever the other player just did, and then it is
   one hat block per message, edited again whenever the game changes. Inside the
   new hat, `game message name` and `game message value` tell you which one
   arrived, so one script can handle all of them.
@@ -62,14 +167,14 @@ of work rather than just moving files.
 - **Watching a project no longer looks like editing one.** A viewer was handed
   a working editor: `canEdit` arrived with the welcome, was shown in a toast
   that faded in under three seconds, and then nothing consulted it. Every edit
-  applied locally, went to the server, and was refused there in silence — the
-  error handler knew three codes and dropped the rest, `read-only` among them
-  — until the next snapshot erased the lot. Viewers now send nothing, the
+  applied locally, went to the server, and was refused there in silence, the
+  error handler knew three codes and dropped the rest, `read-only` among them,
+  until the next snapshot erased the lot. Viewers now send nothing, the
   workspace and the palette stop accepting edits, every structural change is
   refused at the call rather than half-applied, and the reason stays on screen
   instead of fading.
-- **A project too large to save said so.** `bad-snapshot` — the size cap, which
-  means nothing is reaching disk any more — was one of the errors being
+- **A project too large to save said so.** `bad-snapshot`, the size cap, which
+  means nothing is reaching disk any more, was one of the errors being
   dropped. It gets a banner now, and anything unrecognised at least gets a
   toast.
 - **Costumes and sounds are addressed by identity, not position.** An index is
@@ -87,21 +192,21 @@ of work rather than just moving files.
   frame stayed open in the tab forever with the presence dot green. The editor
   keeps its own clock now, and a handshake left hanging gets a deadline.
 - **Dropped edits ask for a fresh copy.** Four buffers silently discarded
-  relayed edits when full — edits nothing would ever resend, because the sender
+  relayed edits when full, edits nothing would ever resend, because the sender
   never learns they went missing. Each now repairs itself rather than leaving
   two people looking at different projects.
 - **Game messages no longer read each other's values.** Two arriving in one
   frame both wrote `game message name` before either script ran, so both scripts
-  saw the second one — rare enough with `when I receive [score]` to look like a
+  saw the second one, rare enough with `when I receive [score]` to look like a
   glitch, and the normal case for a script handling several kinds. Each started
   script now carries the message it woke on. Broadcasting had the same bug
   locally and worse: `broadcast score` then `broadcast lives` in one frame is an
   ordinary pair, and both hats read "lives". A game behaves the same now
-  whoever sent the message, which matters more than the frame it costs — a bug
+  whoever sent the message, which matters more than the frame it costs, a bug
   that only appears when *you* are the host is the worst kind to be told about.
 - **A `forever` loop cannot flood the room.** `forever [broadcast game
   message]` sends at the frame rate, and the server relays game traffic
-  reliably, unthrottled, fanned out per peer — six players was 900 relayed
+  reliably, unthrottled, fanned out per peer, six players was 900 relayed
   messages a second from one loop nobody thought was unusual. There is a budget
   now: under it nothing changes, over it messages coalesce by name and flush
   next frame, so distinct events still all arrive.
@@ -111,7 +216,7 @@ of work rather than just moving files.
   current one. Shared variables were left behind for the next project to read
   as though they were current, too.
 - **`player count` counts you.** It returned 0 while connected-but-not-yet-named
-  and 1 when there was no bridge at all — so it read 1 alone offline, 0 alone
+  and 1 when there was no bridge at all, so it read 1 alone offline, 0 alone
   online, and any game checking `= 1` or dividing by it broke for the first
   second of every session.
 - **`change shared variable by` cannot lose a point.** It computed the new
@@ -119,11 +224,11 @@ of work rather than just moving files.
   wrote 6, and one child's point vanished. The increment now travels as an
   increment. Requires a server new enough to understand it.
 - **Comment bodies are not overwritten while you type in them**, and comments
-  cost one pair of document listeners between them rather than two each — forty
+  cost one pair of document listeners between them rather than two each, forty
   comments used to force eighty layouts on every click anywhere in the editor.
 - **The History panel says why it failed.** Every failure collapsed into "Could
   not read the history", so a permission problem, a signed-out session and a
-  real outage were indistinguishable — impossible to diagnose from a
+  real outage were indistinguishable, impossible to diagnose from a
   screenshot, which is exactly how it arrived. The server sends a reason and the
   panel shows it, restore included, where the likely answer is that only the
   host may put a version back.

@@ -39,6 +39,7 @@ class Stage extends React.Component {
             'onWheel',
             'onContextMenu',
             'updateRect',
+            'handleWindowResize',
             'questionListener',
             'setDragCanvas',
             'clearDragCanvas',
@@ -90,7 +91,7 @@ class Stage extends React.Component {
         this.attachRectEvents();
         this.attachMouseEvents(this.canvas);
         this.updateRect();
-        this.renderer.resize(this.rect.width, this.rect.height);
+        this.resizeRenderer();
         this.props.vm.runtime.addListener('QUESTION', this.questionListener);
     }
     shouldComponentUpdate (nextProps, nextState) {
@@ -100,6 +101,7 @@ class Stage extends React.Component {
             this.props.isFullScreen !== nextProps.isFullScreen ||
             this.props.isWindowFullScreen !== nextProps.isWindowFullScreen ||
             this.props.dimensions !== nextProps.dimensions ||
+            this.props.fixedWidth !== nextProps.fixedWidth ||
             this.state.question !== nextState.question ||
             this.props.micIndicator !== nextProps.micIndicator ||
             this.props.isStarted !== nextProps.isStarted ||
@@ -112,7 +114,7 @@ class Stage extends React.Component {
             this.stopColorPickingLoop();
         }
         this.updateRect();
-        this.renderer.resize(this.rect.width, this.rect.height);
+        this.resizeRenderer();
     }
     componentWillUnmount () {
         this.detachMouseEvents(this.canvas);
@@ -162,14 +164,29 @@ class Stage extends React.Component {
     }
     attachRectEvents () {
         window.addEventListener('resize', this.updateRect);
+        window.addEventListener('resize', this.handleWindowResize);
         window.addEventListener('scroll', this.updateRect);
     }
     detachRectEvents () {
         window.removeEventListener('resize', this.updateRect);
+        window.removeEventListener('resize', this.handleWindowResize);
         window.removeEventListener('scroll', this.updateRect);
     }
     updateRect () {
         this.rect = this.canvas.getBoundingClientRect();
+    }
+    resizeRenderer () {
+        const {width, height} = this.rect;
+        if (this.props.fixedWidth && !(width && height)) return;
+        this.rendererSize = [width, height];
+        this.renderer.resize(width, height);
+    }
+    handleWindowResize () {
+        if (!this.props.fixedWidth) return;
+        this.updateRect();
+        const size = this.rendererSize;
+        if (size && size[0] === this.rect.width && size[1] === this.rect.height) return;
+        this.resizeRenderer();
     }
     getScratchCoords (x, y) {
         const nativeSize = this.renderer.getNativeSize();
@@ -477,6 +494,7 @@ Stage.propTypes = {
     isRtl: PropTypes.bool,
     isWindowFullScreen: PropTypes.bool,
     dimensions: PropTypes.arrayOf(PropTypes.number),
+    fixedWidth: PropTypes.number,
     isStarted: PropTypes.bool,
     micIndicator: PropTypes.bool,
     onActivateColorPicker: PropTypes.func,

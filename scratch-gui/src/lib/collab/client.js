@@ -6,6 +6,32 @@ const LOSSY = new Set(['cursor', 'presence', 'sprite-info']);
 // Reliable traffic is queued briefly across reconnects (block edits, snapshots…).
 const MAX_QUEUE = 80;
 const MAX_BUFFERED = 2 * 1024 * 1024; // ~2MB socket buffer → start dropping lossy
+const MAX_FRAME = 64 * 1024 * 1024;
+const FRAME_LIMITS = new Map([
+    ['snapshot', MAX_FRAME],
+    ['save-project', MAX_FRAME],
+    ['vm-action', 32 * 1024 * 1024],
+    ['block-event', 4 * 1024 * 1024],
+    ['play-sync', 512 * 1024],
+    ['game', 32 * 1024],
+    ['cursor', 4 * 1024],
+    ['presence', 4 * 1024]
+]);
+const DEFAULT_FRAME_LIMIT = 64 * 1024;
+const SNAPSHOT_WINDOW_MS = 60 * 1000;
+const SNAPSHOT_BYTES_PER_WINDOW = Math.floor(0.6 * Math.min(128 * 1024 * 1024, 512 * 1024 * 1024));
+
+const utf8Length = s => {
+    let n = s.length;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c >= 0x800 && (c < 0xd800 || c > 0xdfff)) n += 2;
+        else if (c >= 0x80) n += 1;
+    }
+    return n;
+};
+const frameSize = (data, limit) => (data.length > limit || data.length * 3 <= limit ?
+    data.length : utf8Length(data));
 
 /*
  * Liveness. The server pings every 30s and drops sockets that stop answering,
@@ -20,12 +46,28 @@ const MAX_BUFFERED = 2 * 1024 * 1024; // ~2MB socket buffer → start dropping l
  * application ping rather than a "no frames in 90s" rule — an idle-but-healthy
  * room sends no traffic for minutes and must not be torn down for it.
  */
-const HEARTBEAT_MS = 25000;
-const SILENCE_LIMIT_MS = 70000; // ~2 missed heartbeats
+const HEARTBEAT_MS = 2000;
+const PING_IDLE_MS = 4000;
+const PING_BUSY_MS = 1000;
+const SILENCE_LIMIT_MS = 10000;
+const SILENCE_MAX_MS = 60000;
+const SILENCE_RELAX_MS = 5 * 60 * 1000;
+const UNLOAD_GRACE_MS = 3000;
 // A socket can sit in CONNECTING indefinitely (this is what a sleeping laptop
 // wakes up to). resumeIfNeeded deliberately won't touch a handshake in flight,
 // so the handshake needs its own deadline or nothing ever replaces it.
 const CONNECT_TIMEOUT_MS = 12000;
+
+const ownsSocketUrl = url => {
+    if (typeof location === 'undefined') return false;
+    try {
+        const target = new URL(url);
+        if (target.hostname !== location.hostname) return false;
+        return target.host === location.host || location.port === '8601';
+    } catch (e) {
+        return false;
+    }
+};
 
 class CollabClient {
     constructor () {
@@ -42,6 +84,22 @@ class CollabClient {
         this._connectTimer = null;
         this._heartbeatTimer = null;
         this._lastInbound = 0;
+        this._lastProgress = 0;
+        this._lastBuffered = 0;
+        this._lastPingAt = 0;
+        this._pingCovers = [];
+        this._sentGen = 0;
+        this._confirmedGen = 0;
+        this._learnedLimits = new Map();
+        this._largestSent = null;
+        this._snapshotLog = [];
+        this._paced = null;
+        this._pacedTimer = null;
+        this._silenceLimit = SILENCE_LIMIT_MS;
+        this._lastSilenceAt = 0;
+        this._holding = false;
+        this._cancelUnload = null;
+        this.unloadGuard = null;
         // Set when the reliable queue had to drop something. Whoever is
         // listening owes the room a full resync — see 'queue-overflow'.
         this.droppedReliable = false;
@@ -104,20 +162,71 @@ class CollabClient {
     _heartbeat () {
         if (this._closedByUser || !this.session) return;
         if (!this.ws || this.ws.readyState !== 1) return;
-        if (this._lastInbound && Date.now() - this._lastInbound > SILENCE_LIMIT_MS) {
+        const now = Date.now();
+        const buffered = this.ws.bufferedAmount || 0;
+        if (buffered && buffered < this._lastBuffered) this._lastProgress = now;
+        this._lastBuffered = buffered;
+        const hidden = typeof document !== 'undefined' && document.hidden;
+        const heard = Math.max(this._lastInbound, this._lastProgress);
+        if (!hidden && heard && now - heard > this._silenceLimit) {
+            this._lastSilenceAt = now;
+            this._silenceLimit = Math.min(this._silenceLimit * 2, SILENCE_MAX_MS);
+            const wasConnected = this.connected;
             this.connected = false;
-            this._emit('disconnected', {});
+            if (wasConnected) this._emit('disconnected', {unconfirmed: this._takeUnconfirmed()});
             this._backoff = 1000;
             this._open();
             return;
         }
+        const busy = this._sentGen > this._confirmedGen;
+        if (now - this._lastPingAt < (busy ? PING_BUSY_MS : PING_IDLE_MS)) return;
+        this._lastPingAt = now;
+        this._pingCovers.push(this._sentGen);
+        if (this._pingCovers.length > 64) this._pingCovers.shift();
         try {
             this.ws.send(JSON.stringify({type: 'ping'}));
         } catch (e) { /* the close handler will pick this up */ }
     }
 
+    _takeUnconfirmed () {
+        const unconfirmed = this._sentGen > this._confirmedGen;
+        this._confirmedGen = this._sentGen;
+        this._pingCovers = [];
+        return unconfirmed;
+    }
+
+    _onPong () {
+        const covered = this._pingCovers.shift();
+        if (typeof covered === 'number' && covered > this._confirmedGen) this._confirmedGen = covered;
+        if (this._silenceLimit !== SILENCE_LIMIT_MS && Date.now() - this._lastSilenceAt > SILENCE_RELAX_MS) {
+            this._silenceLimit = SILENCE_LIMIT_MS;
+        }
+    }
+
+    get generation () {
+        return this._openGen;
+    }
+
+    get holdingQueue () {
+        return this._holding;
+    }
+
+    releaseQueue () {
+        this._holding = false;
+        this._flushQueue();
+    }
+
+    discardQueue () {
+        this._holding = false;
+        this._dropPaced();
+        const dropped = this._queue.length;
+        this._queue = [];
+        return dropped;
+    }
+
     _open () {
         if (!this.session || this._closedByUser) return;
+        this._startHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();
 
@@ -144,6 +253,14 @@ class CollabClient {
         }
         this.ws = ws;
         this._lastInbound = Date.now();
+        this._lastProgress = 0;
+        this._lastBuffered = 0;
+        this._lastPingAt = Date.now();
+        this._pingCovers = [];
+        this._holding = false;
+        this._unpace();
+        this._largestSent = null;
+        this._snapshotLog = [];
         this._connectTimer = setTimeout(() => {
             this._connectTimer = null;
             if (gen !== this._openGen || !this.ws || this.ws.readyState !== 0) return;
@@ -158,12 +275,11 @@ class CollabClient {
             if (gen !== this._openGen) return;
             this._clearConnectTimer();
             this._lastInbound = Date.now();
-            this._backoff = 1000;
             // Persistent device identity: token issued by the server on first
             // join, kept in localStorage — name-only login stays that simple.
             let token = null;
             try {
-                token = localStorage.getItem('st_token');
+                token = ownsSocketUrl(url) ? localStorage.getItem('st_token') : null;
             } catch (e) {
                 token = null;
             }
@@ -180,26 +296,47 @@ class CollabClient {
             } catch (e) {
                 return;
             }
-            if (msg.type === 'pong') return; // liveness only — nobody subscribes
+            if (msg.type === 'pong') {
+                this._onPong();
+                return;
+            }
             if (msg.type === 'welcome') {
                 this.connected = true;
+                this._backoff = 1000;
                 this.me = {id: msg.id, color: msg.color};
-                if (msg.token) {
+                if (msg.token && ownsSocketUrl(url)) {
                     try {
                         localStorage.setItem('st_token', msg.token);
                     } catch (e) { /* private mode */ }
                 }
-                this._flushQueue();
+                this._confirmedGen = this._sentGen;
+                this._holding = this._queue.length > 0;
+                this._emit('welcome', msg);
+                if (this._holding) this.releaseQueue();
+                return;
             }
             this._emit(msg.type, msg);
         };
-        ws.onclose = () => {
+        ws.onclose = event => {
             if (gen !== this._openGen) return;
             this._clearConnectTimer();
             const wasConnected = this.connected;
             this.connected = false;
             this.ws = null;
-            if (wasConnected) this._emit('disconnected', {});
+            this._holding = false;
+            this._unpace();
+            const code = event && typeof event.code === 'number' ? event.code : 0;
+            const reason = event && typeof event.reason === 'string' ? event.reason : '';
+            const dropped = code === 1009 && reason !== 'too-much-data' ? this._learnFrameLimit() : null;
+            if (wasConnected) {
+                this._emit('disconnected', {
+                    unconfirmed: this._takeUnconfirmed(),
+                    code,
+                    reason,
+                    dropped
+                });
+            }
+            if (dropped) this._purgeOversized();
             if (!this._closedByUser) this._scheduleReconnect();
         };
         ws.onerror = () => { /* onclose follows */ };
@@ -208,20 +345,120 @@ class CollabClient {
     _scheduleReconnect () {
         if (this._closedByUser || !this.session) return;
         this._clearReconnect();
+        const delay = this._backoff * (0.75 + (Math.random() * 0.5));
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;
             if (!this._closedByUser && this.session) this._open();
-        }, this._backoff);
+        }, delay);
         this._backoff = Math.min(this._backoff * 1.6, 15000);
     }
 
     // Reconnect immediately when the tab comes back (laptop sleep / ZeroTier blip).
     resumeIfNeeded () {
+        if (this._cancelUnload) this._cancelUnload();
         if (this._closedByUser || !this.session) return;
         // Don't kill a healthy open socket OR an in-flight CONNECTING handshake.
         if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
         this._backoff = 1000;
         this._open();
+    }
+
+    _frameLimit (type) {
+        const limit = FRAME_LIMITS.get(type) || DEFAULT_FRAME_LIMIT;
+        const learned = this._learnedLimits.get(type);
+        return typeof learned === 'number' ? Math.min(limit, learned) : limit;
+    }
+
+    _noteSent (entry) {
+        if (entry.type === 'snapshot') this._snapshotLog.push({at: Date.now(), size: entry.size});
+        const ratio = entry.size / this._frameLimit(entry.type);
+        if (!this._largestSent || ratio > this._largestSent.ratio) {
+            this._largestSent = {type: entry.type, ref: entry.ref, size: entry.size, ratio};
+        }
+    }
+
+    _learnFrameLimit () {
+        const largest = this._largestSent;
+        this._largestSent = null;
+        if (!largest || largest.size <= DEFAULT_FRAME_LIMIT) return null;
+        this._learnedLimits.set(largest.type,
+            Math.max(DEFAULT_FRAME_LIMIT, Math.min(this._frameLimit(largest.type), largest.size - 1)));
+        return {type: largest.type, ref: largest.ref, bytes: largest.size};
+    }
+
+    _purgeOversized () {
+        const kept = [];
+        for (const entry of this._queue) {
+            if (entry.size > this._frameLimit(entry.type)) this._refuse(entry, false);
+            else kept.push(entry);
+        }
+        this._queue = kept;
+    }
+
+    _snapshotWait (size, now) {
+        this._snapshotLog = this._snapshotLog.filter(sent => now - sent.at < SNAPSHOT_WINDOW_MS);
+        let used = this._snapshotLog.reduce((sum, sent) => sum + sent.size, 0);
+        let wait = 0;
+        for (const sent of this._snapshotLog) {
+            if (used + size <= SNAPSHOT_BYTES_PER_WINDOW) break;
+            used -= sent.size;
+            wait = sent.at + SNAPSHOT_WINDOW_MS - now;
+        }
+        return wait;
+    }
+
+    _pace (entry, msg) {
+        entry.force = !!msg.force;
+        entry.reset = !!msg.reset;
+        this._paced = entry;
+        if (!this._pacedTimer) this._armPaced();
+    }
+
+    _armPaced () {
+        const wait = this._paced ? this._snapshotWait(this._paced.size, Date.now()) : 0;
+        this._pacedTimer = setTimeout(() => {
+            this._pacedTimer = null;
+            if (!this._paced) return;
+            if (this._snapshotWait(this._paced.size, Date.now()) > 0) {
+                this._armPaced();
+                return;
+            }
+            this.flushPaced();
+        }, Math.max(0, wait));
+    }
+
+    flushPaced () {
+        const entry = this._paced;
+        if (!entry) return;
+        this._dropPaced();
+        if (!this.connected || !this.ws || this.ws.readyState !== 1 || this._holding) {
+            this._enqueue(entry);
+            return;
+        }
+        try {
+            this.ws.send(entry.data);
+            this._sentGen++;
+            this._noteSent(entry);
+        } catch (e) {
+            this._enqueue(entry);
+        }
+    }
+
+    _dropPaced () {
+        clearTimeout(this._pacedTimer);
+        this._pacedTimer = null;
+        this._paced = null;
+    }
+
+    _unpace () {
+        const entry = this._paced;
+        if (!entry) return;
+        this._dropPaced();
+        this._enqueue(entry);
+    }
+
+    _refuse (entry, lossy) {
+        this._emit('frame-refused', {type: entry.type, ref: entry.ref, bytes: entry.size, reliable: !lossy});
     }
 
     _flushQueue () {
@@ -230,7 +467,9 @@ class CollabClient {
         this._queue = [];
         for (let i = 0; i < pending.length; i++) {
             try {
-                this.ws.send(pending[i]);
+                this.ws.send(pending[i].data);
+                this._sentGen++;
+                this._noteSent(pending[i]);
             } catch (e) {
                 // Re-queue the rest if the socket died mid-flush.
                 this._queue = pending.slice(i);
@@ -239,35 +478,69 @@ class CollabClient {
         }
     }
 
-    send (msg) {
-        if (!msg || typeof msg !== 'object') return;
+    send (msg, urgent) {
+        if (!msg || typeof msg !== 'object') return false;
         const lossy = LOSSY.has(msg.type);
+        const superseded = msg.type === 'snapshot' ? this._queue.filter(e => e.type === 'snapshot') : [];
+        for (const old of superseded) {
+            try {
+                const prior = JSON.parse(old.data);
+                if (prior.force) msg.force = true;
+                if (prior.reset) msg.reset = true;
+            } catch (e) { /* unparseable — superseded either way */ }
+        }
+        if (msg.type === 'snapshot' && this._paced) {
+            if (this._paced.force) msg.force = true;
+            if (this._paced.reset) msg.reset = true;
+        }
         let data;
         try {
             data = JSON.stringify(msg);
         } catch (e) {
-            return;
+            return false;
         }
+        const limit = this._frameLimit(msg.type);
+        const entry = {
+            data,
+            type: msg.type,
+            ref: typeof msg.ref === 'number' ? msg.ref : null,
+            size: frameSize(data, limit)
+        };
+        if (entry.size > limit) {
+            this._refuse(entry, lossy);
+            return false;
+        }
+        if (superseded.length) this._queue = this._queue.filter(e => e.type !== 'snapshot');
 
         // Only treat the socket as writable after welcome — frames sent between
         // onopen and welcome are dropped server-side (no room yet) and would
         // bypass the reliable queue.
-        if (this.connected && this.ws && this.ws.readyState === 1) {
+        if (this.connected && this.ws && this.ws.readyState === 1 && (lossy || !this._holding)) {
             // Under backpressure, drop lossy traffic so block edits keep flowing.
-            if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return;
+            if (lossy && this.ws.bufferedAmount > MAX_BUFFERED) return false;
+            if (msg.type === 'snapshot' && urgent !== true &&
+                (this._paced || this._snapshotWait(entry.size, Date.now()) > 0)) {
+                this._pace(entry, msg);
+                return true;
+            }
+            if (msg.type === 'snapshot') this._dropPaced();
             try {
                 this.ws.send(data);
+                if (!lossy) this._sentGen++;
+                this._noteSent(entry);
             } catch (e) {
-                if (!lossy) this._enqueue(data);
+                if (lossy) return false;
+                this._enqueue(entry);
             }
-            return;
+            return true;
         }
 
-        if (lossy) return; // no point queueing cursors for a dead socket
-        this._enqueue(data);
+        if (lossy) return false; // no point queueing cursors for a dead socket
+        this._enqueue(entry);
+        return true;
     }
 
-    _enqueue (data) {
+    _enqueue (entry) {
         if (this._queue.length >= MAX_QUEUE) {
             // Prefer keeping the newest reliable messages (latest block state
             // wins) — but say so. A dropped `create` with its later `move`
@@ -279,7 +552,7 @@ class CollabClient {
                 this._emit('queue-overflow', {});
             }
         }
-        this._queue.push(data);
+        this._queue.push(entry);
     }
 
     /*
@@ -295,6 +568,34 @@ class CollabClient {
      * can reconnect instead of coming back to a dead editor.
      */
     closeForUnload () {
+        let pending = null;
+        try {
+            pending = this.unloadGuard ? this.unloadGuard() : null;
+        } catch (e) {
+            pending = null;
+        }
+        if (pending && typeof pending.then === 'function' && this.connected) {
+            const gen = this._openGen;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                this._cancelUnload = null;
+                if (gen === this._openGen) this._closeNow();
+            };
+            this._cancelUnload = () => {
+                done = true;
+                this._cancelUnload = null;
+            };
+            pending.then(finish, finish);
+            setTimeout(finish, UNLOAD_GRACE_MS);
+            return;
+        }
+        this._closeNow();
+    }
+
+    _closeNow () {
+        this.flushPaced();
         this._stopHeartbeat();
         this._clearReconnect();
         this._clearConnectTimer();
@@ -313,6 +614,7 @@ class CollabClient {
         this._clearReconnect();
         this._clearConnectTimer();
         this._stopHeartbeat();
+        this._dropPaced();
         this._queue = [];
         this._openGen++;
         if (this.ws) {

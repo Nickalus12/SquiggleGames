@@ -86,7 +86,13 @@ class Overlay {
             connected: this.connected,
             projects: this.projects,
             peers: [...this.peers.entries()].map(([id, p]) => ({
-                id, name: p.name, color: p.color, status: p.status, sprite: p.sprite
+                id,
+                name: p.name,
+                color: p.color,
+                status: p.status,
+                sprite: p.sprite,
+                userId: p.userId,
+                handle: p.handle
             }))
         };
     }
@@ -181,14 +187,16 @@ class Overlay {
         this._notify();
     }
 
-    addPeer (id, name, color, style) {
+    addPeer (id, name, color, style, account) {
         this.peers.set(id, {
             name,
             color,
             style: style || 'arrow',
             status: 'here',
             sprite: null,
-            cursor: null
+            cursor: null,
+            userId: account && typeof account.userId === 'number' ? account.userId : null,
+            handle: account && typeof account.handle === 'string' ? account.handle : null
         });
         this._notify();
     }
@@ -208,7 +216,9 @@ class Overlay {
                     style: p.cursor || 'arrow',
                     status: 'here',
                     sprite: null,
-                    cursor: null
+                    cursor: null,
+                    userId: typeof p.userId === 'number' ? p.userId : null,
+                    handle: typeof p.handle === 'string' ? p.handle : null
                 });
             }
         });
@@ -216,11 +226,12 @@ class Overlay {
     }
 
     // Live colour/cursor change: drop the cached node so it rebuilds once.
-    updatePeerAppearance (id, {color, style}) {
+    updatePeerAppearance (id, {color, style, role}) {
         const p = this.peers.get(id);
         if (!p) return;
         if (color) p.color = color;
         if (style) p.style = style;
+        if (role) p.role = role;
         if (p._cursorEl) {
             p._cursorEl.remove();
             p._cursorEl = null;
@@ -401,7 +412,7 @@ class Overlay {
             'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:99999',
             'display:flex', 'align-items:center', 'justify-content:center', 'gap:12px',
             `background:${opts.kind === 'busy' ? '#2f7fe0' : '#6f4bd8'}`,
-            'color:#fff', 'padding:8px 16px',
+            'color:#fff', 'padding:calc(8px + env(safe-area-inset-top, 0px)) 16px 8px',
             'font:600 13px ui-rounded,"Segoe UI",Helvetica,Arial,sans-serif',
             'box-shadow:0 2px 12px rgba(0,0,0,.35)'
         ].join(';');
@@ -492,9 +503,11 @@ class Overlay {
         t.appendChild(dot);
         t.appendChild(document.createTextNode(text));
         t.style.cssText = [
-            'position:fixed', `top:${60 + this._topInset()}px`,
+            'position:fixed', `top:calc(${60 + this._topInset()}px + env(safe-area-inset-top, 0px))`,
+            'pointer-events:none',
             'left:50%', 'transform:translateX(-50%)', 'z-index:99998',
             'display:flex', 'align-items:center', 'gap:9px',
+            'box-sizing:border-box', 'max-width:calc(100vw - 32px)', 'width:max-content',
             'background:#161c36', 'color:#f2f4fb', 'padding:10px 18px', 'border-radius:14px',
             'border:1px solid rgba(255,255,255,.11)',
             'font:600 13.5px ui-rounded,"Segoe UI",Helvetica,Arial,sans-serif',

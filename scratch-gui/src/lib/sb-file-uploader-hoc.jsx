@@ -6,6 +6,7 @@ import {connect} from 'react-redux';
 import log from '../lib/log';
 import sharedMessages from './shared-messages';
 import {setFileHandle, setProjectError} from '../reducers/tw';
+import collab from './collab';
 
 import {
     LoadingStates,
@@ -60,6 +61,7 @@ const SBFileUploaderHOC = function (WrappedComponent) {
         }
         // step 1: this is where the upload process begins
         handleStartSelectingFileUpload () {
+            if (!collab.mayReplaceProject()) return;
             this.expectingFileUploadFinish = true;
             this.createFileObjects(); // go to step 2
         }

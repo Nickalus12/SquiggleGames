@@ -1,0 +1,172 @@
+@import "../../css/colors.css";
+@import "../../css/z-index.css";
+
+.controls {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 168px;
+    box-sizing: border-box;
+    padding: 0 4px 12px;
+}
+
+.sides {
+    display: contents;
+}
+
+.overlay {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc($z-index-stage-wrapper-overlay + 1);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+    pointer-events: none;
+}
+
+.overlay .pad,
+.overlay .actions {
+    pointer-events: auto;
+    opacity: 0.85;
+}
+
+.pad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+.sides .pad {
+    grid-area: pad;
+    align-self: center;
+    justify-self: center;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 44px);
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+.bottom .actions,
+.overlay .actions {
+    margin-inline-start: auto;
+}
+
+.sides .actions {
+    grid-area: action;
+    align-self: center;
+    justify-self: center;
+}
+
+.up {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.left {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.right {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+.down {
+    grid-column: 2;
+    grid-row: 3;
+}
+
+.key {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border: 2px solid $ui-black-transparent;
+    border-radius: 14px;
+    background-color: $ui-tertiary;
+    color: $text-primary;
+    font: inherit;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    cursor: pointer;
+}
+
+.key svg {
+    width: 26px;
+    height: 26px;
+    pointer-events: none;
+}
+
+.action {
+    width: 104px;
+    height: 104px;
+    border-radius: 52px;
+    background-color: $looks-secondary;
+    border-color: transparent;
+    color: $menu-bar-foreground;
+}
+
+.sides .action {
+    width: 88px;
+    height: 88px;
+    border-radius: 44px;
+}
+
+.action .key-label {
+    font-size: 20px;
+}
+
+.key-label {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    font-weight: bold;
+    pointer-events: none;
+}
+
+.key.is-down {
+    background-color: $looks-transparent;
+    border-color: $looks-secondary;
+    color: $looks-secondary;
+}
+
+.action.is-down {
+    background-color: $looks-secondary-dark;
+    color: $menu-bar-foreground;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .key {
+        transition: background-color 0.08s ease, transform 0.08s ease;
+    }
+
+    .key.is-down {
+        transform: scale(0.94);
+    }
+}

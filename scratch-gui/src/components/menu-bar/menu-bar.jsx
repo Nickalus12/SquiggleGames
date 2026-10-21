@@ -33,6 +33,7 @@ import ChangeUsername from '../../containers/tw-change-username.jsx';
 import CloudVariablesToggler from '../../containers/tw-cloud-toggler.jsx';
 import TWSaveStatus from './tw-save-status.jsx';
 import CollabPresence from './collab-presence.jsx';
+import MessagesButton from '../collab-chat/messages-button.jsx';
 import OutlinePanel from './outline-panel.jsx';
 import HistoryPanel from './history-panel.jsx';
 import TWNews from './tw-news.jsx';
@@ -110,6 +111,7 @@ import sharedMessages from '../../lib/shared-messages';
 import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
 import {APP_NAME} from '../../lib/brand.js';
+import collab from '../../lib/collab';
 
 const ariaMessages = defineMessages({
     tutorials: {
@@ -240,6 +242,10 @@ class MenuBar extends React.Component {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
     handleClickNew () {
+        if (!collab.mayReplaceProject()) {
+            this.props.onRequestCloseFile();
+            return;
+        }
         // if the project is dirty, and user owns the project, we will autosave.
         // but if they are not logged in and can't save, user should consider
         // downloading or logging in first.
@@ -490,8 +496,10 @@ class MenuBar extends React.Component {
             <Box
                 className={classNames(
                     this.props.className,
-                    styles.menuBar
+                    styles.menuBar,
+                    {[styles.phoneSheet]: this.props.isPhoneSheet}
                 )}
+                id={this.props.isPhoneSheet ? 'phone-menu-sheet' : null}
             >
                 <div className={styles.mainMenu}>
                     <div className={styles.fileGroup}>
@@ -1043,7 +1051,8 @@ class MenuBar extends React.Component {
                 <div className={styles.accountInfoGroup}>
                     <OutlinePanel />
                     <HistoryPanel />
-                    <CollabPresence />
+                    <MessagesButton sheet={this.props.isPhoneSheet} />
+                    <CollabPresence phoneSheet={this.props.isPhoneSheet} />
                     <TWSaveStatus
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
@@ -1096,6 +1105,7 @@ MenuBar.propTypes = {
     fileMenuOpen: PropTypes.bool,
     handleSaveProject: PropTypes.func,
     intl: intlShape,
+    isPhoneSheet: PropTypes.bool,
     isPlayerOnly: PropTypes.bool,
     isRtl: PropTypes.bool,
     isShared: PropTypes.bool,

@@ -1,6 +1,11 @@
+import PropTypes from 'prop-types';
 import React from 'react';
 import overlay from '../../lib/collab/overlay';
 import client from '../../lib/collab/client';
+import chatRoom from '../../lib/collab/chat-room';
+import ChatPanel from '../collab-chat/chat-panel.jsx';
+import ChatToggle from '../collab-chat/chat-toggle.jsx';
+import chatStyles from '../collab-chat/collab-chat.css';
 
 /* Native menu-bar multiplayer panel.
  * Collapsed: one compact button — connection dot, people icon, player count.
@@ -59,6 +64,44 @@ const personRow = {
     color: T.ink
 };
 
+const touchBtn = {
+    minHeight: '44px',
+    padding: '10px 16px',
+    fontSize: '15px'
+};
+
+const paneQuiet = {
+    color: T.dim,
+    fontSize: '13px'
+};
+
+const chip = {
+    flexShrink: 0,
+    minHeight: '28px',
+    padding: '4px 10px',
+    borderRadius: '8px',
+    fontSize: '12.5px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    color: T.ink,
+    background: T.card,
+    border: `1px solid ${T.line}`,
+    fontFamily: 'inherit'
+};
+
+const touchChip = {
+    minHeight: '44px',
+    minWidth: '44px',
+    padding: '8px 12px',
+    fontSize: '14px'
+};
+
+const chipOn = {
+    color: T.warn,
+    borderColor: 'rgba(251, 191, 36, 0.55)',
+    background: 'rgba(251, 191, 36, 0.12)'
+};
+
 const dot = (color, size) => ({
     display: 'inline-block',
     width: `${size || 10}px`,
@@ -71,8 +114,24 @@ const dot = (color, size) => ({
 class CollabPresence extends React.Component {
     constructor (props) {
         super(props);
-        this.state = {...overlay.getState(), open: false, copied: false, saveName: '', confirmOpenId: null};
+        this.state = {
+            ...overlay.getState(),
+            chat: chatRoom.getState(),
+            open: false,
+            copied: false,
+            saveName: '',
+            confirmOpenId: null
+        };
         this.handleChange = () => this.setState(overlay.getState());
+        this.handleChat = () => this.setState({chat: chatRoom.getState()});
+        this.handleMute = e => {
+            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
+            chatRoom.setMuted(userId, !chatRoom.isMuted(userId));
+        };
+        this.handleHide = e => {
+            const userId = Number(e.currentTarget.getAttribute('data-user-id'));
+            chatRoom.setHidden(userId, this.state.chat.hidden.indexOf(userId) === -1);
+        };
         this.handleToggle = () => {
             this.setState(s => {
                 if (!s.open) client.send({type: 'list-projects'});
@@ -106,12 +165,53 @@ class CollabPresence extends React.Component {
     }
     componentDidMount () {
         this.unsubscribe = overlay.subscribe(this.handleChange);
+        this.unsubscribeChat = chatRoom.subscribe(this.handleChat);
         document.addEventListener('mousedown', this.handleClickOutside);
         this.handleChange();
+        if (this.props.variant === 'pane') client.send({type: 'list-projects'});
     }
     componentWillUnmount () {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.unsubscribeChat) this.unsubscribeChat();
         document.removeEventListener('mousedown', this.handleClickOutside);
+    }
+    renderChatControls (peer, pane) {
+        const {config, hidden, mutedUserIds} = this.state.chat;
+        const userId = config && typeof peer.userId === 'number' ? peer.userId : null;
+        if (userId === null) return null;
+        const size = pane ? touchChip : null;
+        const muted = mutedUserIds.indexOf(userId) !== -1;
+        const isHidden = hidden.indexOf(userId) !== -1;
+        return (
+            <span style={{display: 'flex', gap: '5px', flexShrink: 0}}>
+                {config.canModerate ? (
+                    <button
+                        aria-label={muted ? `Unmute ${peer.name} in chat` : `Mute ${peer.name} in chat`}
+                        aria-pressed={muted}
+                        data-chat-mute={userId}
+                        data-user-id={userId}
+                        onClick={this.handleMute}
+                        style={{...chip, ...(muted ? chipOn : null), ...size}}
+                        title={muted ? 'Let them chat again' : 'Stop them chatting in this room'}
+                        type="button"
+                    >
+                        {muted ? 'Unmute' : 'Mute'}
+                    </button>
+                ) : null}
+                <button
+                    aria-label={isHidden ? `Show chat from ${peer.name}` : `Hide chat from ${peer.name}`}
+                    aria-pressed={isHidden}
+                    data-chat-hide={userId}
+                    data-user-id={userId}
+                    onClick={this.handleHide}
+                    style={{...chip, ...(isHidden ? chipOn : null), ...size}}
+                    title={isHidden ? 'Show their chat messages again' : 'Hide their chat messages, just for you'}
+                    type="button"
+                >
+                    {isHidden ? 'Show' : 'Hide'}
+                </button>
+            </span>
+        );
     }
     inviteLink () {
         const {self} = this.state;
@@ -130,6 +230,9 @@ class CollabPresence extends React.Component {
     render () {
         const {self, connected, peers, open, copied} = this.state;
         if (!self) return null; // solo mode
+        const pane = this.props.variant === 'pane';
+        const touch = pane ? touchBtn : null;
+        const quiet = pane ? paneQuiet : null;
 
         // The slug is a URL detail — disambiguated with -2 when a name is
         // taken — so it is the wrong thing to show a person.
@@ -139,6 +242,7 @@ class CollabPresence extends React.Component {
         // a one-way door once you are in a room.
         const homeButton = (
             <a
+                aria-label={'Home'}
                 href={'/'}
                 title={'Back to Squiggle'}
                 style={{
@@ -170,12 +274,13 @@ class CollabPresence extends React.Component {
                         strokeLinecap={'round'}
                     />
                 </svg>
-                {'Home'}
+                <span className={this.props.phoneSheet ? null : chatStyles.homeLabel}>{'Home'}</span>
             </a>
         );
 
         const button = (
             <div
+                data-collab-people-toggle
                 onClick={this.handleToggle}
                 style={{
                     display: 'flex',
@@ -201,27 +306,10 @@ class CollabPresence extends React.Component {
             </div>
         );
 
-        const panel = open ? (
-            <div
-                style={{
-                    // fixed — the menu bar clips absolutely-positioned children
-                    position: 'fixed',
-                    top: '52px',
-                    right: '8px',
-                    width: '290px',
-                    background: T.surface,
-                    border: `1px solid ${T.line}`,
-                    borderRadius: '16px',
-                    boxShadow: '0 18px 50px -12px rgba(0, 0, 0, 0.7)',
-                    overflow: 'hidden',
-                    zIndex: 1000,
-                    cursor: 'default',
-                    color: T.ink,
-                    fontFamily: T.font
-                }}
-            >
+        const sections = (open || pane) ? (
+            <React.Fragment>
                 <div style={{padding: '14px 15px 13px', borderBottom: `1px solid ${T.line}`}}>
-                    <div style={label}>{'Room'}</div>
+                    <div style={{...label, ...quiet}}>{'Room'}</div>
                     <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px'}}>
                         <span
                             style={{
@@ -262,21 +350,27 @@ class CollabPresence extends React.Component {
                             marginTop: '11px',
                             background: copied ? 'rgba(52, 211, 153, 0.16)' : T.accentBg,
                             borderColor: copied ? 'rgba(52, 211, 153, 0.5)' : 'transparent',
-                            color: '#fff'
+                            color: '#fff',
+                            ...touch
                         }}
                     >
-                        {copied ? '✓ Copied — send it to your partner' : 'Copy invite link'}
+                        {copied ? '✓ Copied! Send it to your partner' : 'Copy invite link'}
                     </button>
                 </div>
 
-                <div style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}>
-                    <div style={{...label, marginBottom: '7px'}}>
+                {pane ? <ChatPanel variant="pane" /> : null}
+
+                <div
+                    data-collab-people
+                    style={{padding: '11px 15px 12px', borderBottom: `1px solid ${T.line}`}}
+                >
+                    <div style={{...label, marginBottom: '7px', ...quiet}}>
                         {`In here · ${1 + peers.length}`}
                     </div>
                     <div style={personRow}>
                         <span style={dot(self.color)} />
                         <span style={{fontWeight: 700}}>{self.name}</span>
-                        <span style={{color: T.faint, fontSize: '11.5px'}}>{'you'}</span>
+                        <span style={{color: T.faint, fontSize: '11.5px', ...quiet}}>{'you'}</span>
                     </div>
                     {peers.map(p => (
                         <div
@@ -293,22 +387,26 @@ class CollabPresence extends React.Component {
                                     textAlign: 'right',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    textOverflow: 'ellipsis',
+                                    ...quiet
                                 }}
                             >
                                 {p.sprite ? `${statusIcon(p.status)} ${p.sprite}` : statusIcon(p.status)}
                             </span>
+                            {this.renderChatControls(p, pane)}
                         </div>
                     ))}
                     {peers.length === 0 ? (
-                        <div style={{fontSize: '12px', color: T.faint, padding: '3px 0 1px', lineHeight: 1.5}}>
+                        <div
+                            style={{fontSize: '12px', color: T.faint, padding: '3px 0 1px', lineHeight: 1.5, ...quiet}}
+                        >
                             {'Just you so far. Send the invite link and build together.'}
                         </div>
                     ) : null}
                 </div>
 
                 <div style={{padding: '11px 15px 14px'}}>
-                    <div style={{...label, marginBottom: '7px'}}>{'Save to library'}</div>
+                    <div style={{...label, marginBottom: '7px', ...quiet}}>{'Save to library'}</div>
                     <div style={{display: 'flex', gap: '7px'}}>
                         <input
                             onChange={e => this.setState({saveName: e.target.value})}
@@ -319,8 +417,8 @@ class CollabPresence extends React.Component {
                             style={{
                                 flex: 1,
                                 minWidth: 0,
-                                padding: '8px 10px',
-                                fontSize: '12.5px',
+                                padding: pane ? '10px 12px' : '8px 10px',
+                                fontSize: pane ? '16px' : '12.5px',
                                 color: T.ink,
                                 background: 'rgba(0, 0, 0, 0.3)',
                                 border: `1.5px solid ${T.line}`,
@@ -338,7 +436,8 @@ class CollabPresence extends React.Component {
                                 ...btn,
                                 flexShrink: 0,
                                 opacity: this.state.saveName.trim() ? 1 : 0.45,
-                                cursor: this.state.saveName.trim() ? 'pointer' : 'default'
+                                cursor: this.state.saveName.trim() ? 'pointer' : 'default',
+                                ...touch
                             }}
                         >
                             {'Save'}
@@ -346,7 +445,7 @@ class CollabPresence extends React.Component {
                     </div>
 
                     {(this.state.projects || []).length ? (
-                        <div style={{maxHeight: '164px', overflowY: 'auto', marginTop: '11px'}}>
+                        <div style={{maxHeight: pane ? 'none' : '164px', overflowY: 'auto', marginTop: '11px'}}>
                             {this.state.projects.map(p => (
                                 <div
                                     key={p.id}
@@ -370,7 +469,7 @@ class CollabPresence extends React.Component {
                                         >
                                             {p.name}
                                         </div>
-                                        <div style={{fontSize: '10.5px', color: T.faint}}>
+                                        <div style={{fontSize: '10.5px', color: T.faint, ...quiet}}>
                                             {new Date(p.updatedAt).toLocaleDateString()}
                                         </div>
                                     </div>
@@ -385,7 +484,8 @@ class CollabPresence extends React.Component {
                                                 'rgba(251, 191, 36, 0.18)' : T.card,
                                             borderColor: this.state.confirmOpenId === p.id ?
                                                 'rgba(251, 191, 36, 0.55)' : T.line,
-                                            color: this.state.confirmOpenId === p.id ? T.warn : T.ink
+                                            color: this.state.confirmOpenId === p.id ? T.warn : T.ink,
+                                            ...touch
                                         }}
                                         title={'Opening replaces what everyone in this room is looking at'}
                                     >
@@ -395,11 +495,52 @@ class CollabPresence extends React.Component {
                             ))}
                         </div>
                     ) : (
-                        <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5}}>
-                            {'The room saves itself as you go — this is for keeping a named copy.'}
+                        <div style={{fontSize: '11.5px', color: T.faint, marginTop: '9px', lineHeight: 1.5, ...quiet}}>
+                            {'The room saves itself as you go. This is for keeping a named copy.'}
                         </div>
                     )}
                 </div>
+            </React.Fragment>
+        ) : null;
+
+        if (pane) {
+            return (
+                <div
+                    data-collab-room-pane
+                    style={{
+                        background: T.surface,
+                        border: `1px solid ${T.line}`,
+                        borderRadius: '16px',
+                        overflow: 'hidden',
+                        color: T.ink,
+                        fontFamily: T.font
+                    }}
+                >
+                    {sections}
+                </div>
+            );
+        }
+
+        const panel = open ? (
+            <div
+                style={{
+                    // fixed — the menu bar clips absolutely-positioned children
+                    position: 'fixed',
+                    top: '52px',
+                    right: '8px',
+                    width: '290px',
+                    background: T.surface,
+                    border: `1px solid ${T.line}`,
+                    borderRadius: '16px',
+                    boxShadow: '0 18px 50px -12px rgba(0, 0, 0, 0.7)',
+                    overflow: 'hidden',
+                    zIndex: 1000,
+                    cursor: 'default',
+                    color: T.ink,
+                    fontFamily: T.font
+                }}
+            >
+                {sections}
             </div>
         ) : null;
 
@@ -410,10 +551,16 @@ class CollabPresence extends React.Component {
             >
                 {homeButton}
                 {button}
+                {this.props.phoneSheet ? null : <ChatToggle />}
                 {panel}
             </div>
         );
     }
 }
+
+CollabPresence.propTypes = {
+    phoneSheet: PropTypes.bool,
+    variant: PropTypes.oneOf(['menu', 'pane'])
+};
 
 export default CollabPresence;

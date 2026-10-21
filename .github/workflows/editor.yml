@@ -43,6 +43,10 @@ jobs:
         run: node src/lib/libraries/extensions/together/together.test.mjs
         working-directory: scratch-gui
 
+      - name: Collab client
+        run: for t in src/lib/collab/*.test.mjs; do node "$t" || exit 1; done
+        working-directory: scratch-gui
+
       - name: Build
         run: npm run build
         working-directory: scratch-gui

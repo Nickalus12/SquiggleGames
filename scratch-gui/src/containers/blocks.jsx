@@ -171,6 +171,11 @@ class Blocks extends React.Component {
         );
         this.workspace = this.ScratchBlocks.inject(this.blocks, workspaceConfig);
         AddonHooks.blocklyWorkspace = this.workspace;
+        if (this.props.flyoutWidth) {
+            const flyout = this.workspace.getFlyout();
+            this.workspace.getToolbox().width -= flyout.DEFAULT_WIDTH - this.props.flyoutWidth;
+            flyout.DEFAULT_WIDTH = this.props.flyoutWidth;
+        }
 
         // Register buttons under new callback keys for creating variables,
         // lists, and procedures from extensions.
@@ -485,8 +490,8 @@ class Blocks extends React.Component {
         // Remove and reattach the workspace listener (but allow flyout events)
         this.workspace.removeChangeListener(this.props.vm.blockListener);
         collab.suspendWorkspaceEvents();
-        const dom = this.ScratchBlocks.Xml.textToDom(data.xml);
         try {
+            const dom = this.ScratchBlocks.Xml.textToDom(data.xml);
             this.ScratchBlocks.Xml.clearWorkspaceAndLoadFromXml(dom, this.workspace);
         } catch (error) {
             // The workspace is likely incomplete. What did update should be
@@ -502,9 +507,10 @@ class Blocks extends React.Component {
                 error.message = `Workspace Update Error: ${error.message}`;
             }
             log.error(error);
+        } finally {
+            this.workspace.addChangeListener(this.props.vm.blockListener);
+            collab.resumeWorkspaceEvents();
         }
-        this.workspace.addChangeListener(this.props.vm.blockListener);
-        collab.resumeWorkspaceEvents();
 
         if (this.props.vm.editingTarget && this.props.workspaceMetrics.targets[this.props.vm.editingTarget.id]) {
             const {scrollX, scrollY, scale} = this.props.workspaceMetrics.targets[this.props.vm.editingTarget.id];
@@ -681,6 +687,7 @@ class Blocks extends React.Component {
             customStageSize,
             customProceduresVisible,
             extensionLibraryVisible,
+            flyoutWidth,
             options,
             stageSize,
             vm,
@@ -755,6 +762,7 @@ Blocks.propTypes = {
     }),
     customProceduresVisible: PropTypes.bool,
     extensionLibraryVisible: PropTypes.bool,
+    flyoutWidth: PropTypes.number,
     isRtl: PropTypes.bool,
     isVisible: PropTypes.bool,
     locale: PropTypes.string.isRequired,

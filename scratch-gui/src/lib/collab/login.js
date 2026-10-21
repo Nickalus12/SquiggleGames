@@ -4,9 +4,12 @@
  * A signed-out visitor is sent to the dashboard with ?next= so they land back
  * here once they have an account. */
 
+const isDevHost = () => location.port === '8601' ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
 const defaultServerUrl = () => {
     const params = new URLSearchParams(location.search);
-    if (params.get('server')) return params.get('server');
+    if (isDevHost() && params.get('server')) return params.get('server');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     // Dev server (8601) -> collab server on 4455. Production -> same host:port.
     if (location.port === '8601') return `ws://${location.hostname}:4455`;

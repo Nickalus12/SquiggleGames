@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Ideas from people who actually build things here are the best input this
-        project gets. Describe what you were trying to make — even if you don't
+        project gets. Describe what you were trying to make, even if you don't
         know what the fix should be.
 
   - type: textarea

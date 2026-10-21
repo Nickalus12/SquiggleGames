@@ -1,5 +1,5 @@
 <!--
-Thanks for this. Nothing here is a hurdle — if a section doesn't apply, delete it.
+Thanks for this. Nothing here is a hurdle. If a section doesn't apply, delete it.
 First PR? Say so and someone will help it land.
 -->
 
@@ -26,7 +26,7 @@ Fixes #
 
 ---
 
-- [ ] Every changed line traces to the thing above — no drive-by reformatting or renames
+- [ ] Every changed line traces to the thing above, with no drive-by reformatting or renames
 - [ ] No new server dependency (or the PR explains why the platform can't do it)
 - [ ] Nothing new is collected about users
 - [ ] No path where someone's on-screen work can be silently discarded
