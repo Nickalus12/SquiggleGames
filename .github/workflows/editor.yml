@@ -15,9 +15,7 @@ on:
 jobs:
   build:
     # The editor is a TurboWarp checkout, so a full install + webpack 4 build is
-    # slow, and the build succeeding is the real gate. Lint is advisory here:
-    # upstream's eslint config reports ~75 pre-existing JSDoc/operator errors on
-    # src/lib/collab, so a blocking lint step would fail every PR on day one.
+    # slow, and the build succeeding is the real gate.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,12 +30,11 @@ jobs:
         working-directory: scratch-gui
         timeout-minutes: 20
 
-      - name: Lint the collab client (advisory)
+      - name: Lint the collab client
         run: npx eslint src/lib/collab --ext .js,.jsx
         working-directory: scratch-gui
-        continue-on-error: true
 
-      # This one is a real gate, unlike the lint above. It needs no browser and
+      # This one needs no browser and
       # no VM — it drives the extension against a stubbed runtime and bridge —
       # and it covers the failures that manual play-testing does not reach:
       # two messages in a single frame, a second project load, a loop fast
