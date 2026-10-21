@@ -178,22 +178,22 @@ export default defineMessages({
     },
     reasonMean: {
         id: 'gui.collabChat.reasonMean',
-        defaultMessage: 'It is mean or rude',
+        defaultMessage: 'Being mean',
         description: 'Reason for reporting a chat message'
     },
-    reasonNotForKids: {
-        id: 'gui.collabChat.reasonNotForKids',
-        defaultMessage: 'It is not OK for kids',
+    reasonUnsafe: {
+        id: 'gui.collabChat.reasonUnsafe',
+        defaultMessage: 'Something that feels unsafe',
         description: 'Reason for reporting a chat message'
     },
-    reasonPrivate: {
-        id: 'gui.collabChat.reasonPrivate',
-        defaultMessage: 'It shares private stuff, like where someone lives',
+    reasonPersonal: {
+        id: 'gui.collabChat.reasonPersonal',
+        defaultMessage: 'Asking for or sharing private stuff',
         description: 'Reason for reporting a chat message'
     },
     reasonOther: {
         id: 'gui.collabChat.reasonOther',
-        defaultMessage: 'Something else is wrong, like spam',
+        defaultMessage: 'Something else',
         description: 'Reason for reporting a chat message'
     },
     reportSend: {

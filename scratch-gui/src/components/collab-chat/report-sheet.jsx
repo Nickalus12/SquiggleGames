@@ -9,8 +9,8 @@ import styles from './collab-chat.css';
 
 const REASONS = [
     {id: 'mean', label: messages.reasonMean},
-    {id: 'unsafe', label: messages.reasonNotForKids},
-    {id: 'personal', label: messages.reasonPrivate},
+    {id: 'personal', label: messages.reasonPersonal},
+    {id: 'unsafe', label: messages.reasonUnsafe},
     {id: 'other', label: messages.reasonOther}
 ];
 
