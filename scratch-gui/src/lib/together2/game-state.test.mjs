@@ -72,6 +72,18 @@ section('tick.y');
     ok('who hit me last becomes nobody when that slot leaves', state.lastHit === 0);
     applyTick(state, {t: 103, y: {round: 4}});
     ok('a bare round number still reads', state.round === 4 && state.running === true);
+    applyTick(state, {t: 104, y: {timers: {go: 200}}});
+    ok('timers arrive whole, so a timer left out has stopped',
+        timeLeft(state, 'clock') === 0 && timeLeft(state, 'go') === 4.8, JSON.stringify(state.timers));
+    ok('there is no speed limit until one is set', state.speed === 0);
+    applyTick(state, {t: 105, y: {speed: 150}});
+    ok('speed reads the steps a second', state.speed === 150);
+    applyTick(state, {t: 106, y: {round: [4, 1]}});
+    ok('a tick without speed keeps it', state.speed === 150);
+    applyTick(state, {t: 107, y: {speed: 'fast'}});
+    ok('a speed that is not a number is ignored', state.speed === 150);
+    applyTick(state, {t: 140, kf: 1, y: {round: [4, 1]}});
+    ok('a keyframe without speed clears it', state.speed === 0);
 }
 
 section('what a tick changed');

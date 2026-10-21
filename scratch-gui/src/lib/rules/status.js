@@ -30,10 +30,15 @@ const LIMIT_WORDS = Object.freeze({
     playerValues: 'player values',
     inputNames: 'input names',
     lists: 'lists',
+    listItems: 'items in one list',
     teams: 'teams',
     boards: 'boards',
     repeat: 'repeats',
-    string: 'letters'
+    string: 'letters',
+    levels: 'levels',
+    levelSide: 'tiles across one level',
+    nameLength: 'letters in one name',
+    depth: 'blocks inside each other'
 });
 
 const REPEAT_TEXT = 'Happened {n} times.';
@@ -63,9 +68,13 @@ const withRepeats = (text, n) => (n > 1 ? `${text} ${REPEAT_TEXT.replace('{n}', 
 
 const errorText = (code, detail, n) => withRepeats(withStatus(fillLimit(kidText(code), detail), detail), n);
 
+const limitDetail = detail => (detail && typeof detail === 'object' && typeof detail.limit !== 'string' &&
+    typeof detail.kind === 'string' ? Object.assign({}, detail, {limit: detail.kind}) : detail);
+
 const normalizeError = error => {
     const code = error && typeof error.code === 'string' ? error.code : 'unknown';
-    const detail = error && typeof error.detail !== 'undefined' ? error.detail : null;
+    const raw = error && typeof error.detail !== 'undefined' ? error.detail : null;
+    const detail = code === 'limit' ? limitDetail(raw) : raw;
     const n = error && Number.isFinite(error.n) ? error.n : 1;
     return {
         blockId: error && typeof error.blockId === 'string' ? error.blockId : null,
