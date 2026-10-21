@@ -77,9 +77,10 @@ const paneQuiet = {
 
 const chip = {
     flexShrink: 0,
-    padding: '3px 8px',
+    minHeight: '28px',
+    padding: '4px 10px',
     borderRadius: '8px',
-    fontSize: '11.5px',
+    fontSize: '12.5px',
     fontWeight: 700,
     cursor: 'pointer',
     color: T.ink,

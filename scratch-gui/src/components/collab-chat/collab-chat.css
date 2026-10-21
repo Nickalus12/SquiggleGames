@@ -7,6 +7,7 @@
     --chat-ink: #f2f4fb;
     --chat-dim: #a3abc8;
     --chat-accent: #7c5cff;
+    --chat-accent-strong: #6646f0;
     --chat-accent-soft: rgba(124, 92, 255, 0.26);
     --chat-accent-line: rgba(124, 92, 255, 0.6);
     --chat-good: #34d399;
@@ -49,6 +50,14 @@
 .pane .list {
     height: min(46vh, 360px);
     min-height: 180px;
+}
+
+@media (max-height: 500px) {
+    .pane .list {
+        height: 120px;
+        min-height: 120px;
+        overscroll-behavior: auto;
+    }
 }
 
 .pane.keyboard {
@@ -158,7 +167,7 @@
     padding: 6px 14px;
     border: 0;
     border-radius: 10px;
-    background: var(--chat-accent);
+    background: var(--chat-accent-strong);
     color: #ffffff;
     font: inherit;
     font-size: 14px;
@@ -421,7 +430,7 @@
     padding: 6px 14px;
     border: 0;
     border-radius: 18px;
-    background: var(--chat-accent);
+    background: var(--chat-accent-strong);
     box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.6);
     color: #ffffff;
     font: inherit;
@@ -489,6 +498,22 @@
 
 .phrase-row::-webkit-scrollbar {
     display: none;
+}
+
+.desktop .phrase-row {
+    flex-wrap: wrap;
+    max-height: 84px;
+    margin-right: 0;
+    padding-right: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.desktop .phrase-row::-webkit-scrollbar {
+    display: block;
+    width: 6px;
 }
 
 .pane .phrase-row {
@@ -564,7 +589,7 @@
     padding: 8px 14px;
     border: 0;
     border-radius: 11px;
-    background: linear-gradient(135deg, #7c5cff, #a855f7);
+    background: linear-gradient(135deg, #6646f0, #9333ea);
     color: #ffffff;
     font: inherit;
     font-size: 14px;
@@ -818,7 +843,7 @@
 
 .primary {
     border: 0;
-    background: linear-gradient(135deg, #7c5cff, #a855f7);
+    background: linear-gradient(135deg, #6646f0, #9333ea);
     color: #ffffff;
 }
 
@@ -917,7 +942,7 @@
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    background: #e8386d;
+    background: #d1245a;
     color: #ffffff;
     font-size: 11px;
     font-weight: 800;
@@ -928,7 +953,7 @@
 .messages-item {
     display: flex;
     align-items: center;
-    padding: 0 4px;
+    padding: 0 8px 0 4px;
 }
 
 .messages-link {
@@ -970,6 +995,25 @@
     margin-left: auto;
 }
 
+.messages-item:not(.messages-sheet) .messages-link,
+.toggle {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+}
+
+.messages-item:not(.messages-sheet) .count,
+.toggle .count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 16px;
+}
+
 @media only screen and (max-width: 1124px) {
     .messages-item {
         padding: 0 6px 0 2px;
@@ -978,27 +1022,34 @@
     .messages-item:not(.messages-sheet) .messages-link,
     .toggle {
         width: 32px;
-        padding: 0;
-        justify-content: center;
     }
 
     .toggle {
         margin-left: 2px;
     }
 
-    .messages-item:not(.messages-sheet) .count,
-    .toggle .count {
-        position: absolute;
-        top: -6px;
-        right: -6px;
-        min-width: 16px;
-        height: 16px;
-        padding: 0 4px;
-        font-size: 10px;
-        line-height: 16px;
-    }
-
     .home-label {
         display: none;
+    }
+}
+
+@media (pointer: coarse) {
+    .desktop .close,
+    .desktop .more {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .desktop .switch,
+    .desktop .action,
+    .desktop .new-pill,
+    .desktop .chip,
+    .desktop .input,
+    .desktop .send {
+        min-height: 44px;
+    }
+
+    .desktop .phrase-row {
+        max-height: 100px;
     }
 }

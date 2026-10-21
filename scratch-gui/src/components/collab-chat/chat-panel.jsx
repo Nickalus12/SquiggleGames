@@ -151,7 +151,8 @@ class ChatPanel extends React.Component {
         const incoming = !!added && !ownNew && !chatRoom.isHidden(added);
         const patch = {chat: next};
         if (incoming) {
-            patch.announce = this.props.intl.formatMessage(messages.announce, {name: added.name, text: added.text});
+            const said = this.props.intl.formatMessage(messages.announce, {name: added.name, text: added.text});
+            patch.announce = said === this.state.announce ? `${said}\u00a0` : said;
         }
         const restore = next.restoreText === null ? null : chatRoom.takeRestoreText();
         if (restore && !this.state.text) patch.text = restore;
@@ -581,7 +582,7 @@ class ChatPanel extends React.Component {
             >
                 <header className={styles.head}>
                     <h2 className={styles.title}>{intl.formatMessage(messages.title)}</h2>
-                    {config.canModerate ? (
+                    {config.canModerate && !keyboard ? (
                         <button
                             aria-checked={config.on}
                             aria-label={intl.formatMessage(messages.switchLabel)}
