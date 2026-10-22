@@ -9,7 +9,13 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
-## Unreleased
+## 2.0.3 (2026-10-22)
+
+### Changed
+
+- The feedback button in the menu bar, and in the phone menu, now reads "Help and bugs". It opens the Help section of the Squiggle home page in a new tab, which points to the Squiggle Discord, What's new and GitHub issues, so a project in progress stays open.
+
+## 2.0.2 (2026-10-22)
 
 ### Fixed
 
