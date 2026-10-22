@@ -25,7 +25,9 @@ import {
     openExtensionLibrary
 } from '../reducers/modals';
 import {setProjectTitle} from '../reducers/project-title';
-import {setInterpolationState} from '../reducers/tw';
+import {setHighQualityPenState, setInterpolationState} from '../reducers/tw';
+import {attachStageRenderer} from '../lib/stage-renderer.js';
+import {isRendererSupported} from '../lib/tw-environment-support-prober';
 
 import FontLoaderHOC from '../lib/font-loader-hoc.jsx';
 import LocalizationHOC from '../lib/localization-hoc.jsx';
@@ -62,6 +64,13 @@ class GUI extends React.Component {
         setIsScratchDesktop(this.props.isScratchDesktop);
         this.props.onStorageInit(storage);
         this.props.onVmInit(this.props.vm);
+        if (isRendererSupported()) {
+            attachStageRenderer({
+                vm: this.props.vm,
+                stageSize: this.props.customStageSize,
+                onHighQualityPenChanged: this.props.onHighQualityPenChanged
+            });
+        }
         setProjectIdMetadata(this.props.projectId);
         if (!this.props.isPlayerOnly) this.startCollab();
     }
@@ -105,10 +114,12 @@ class GUI extends React.Component {
             /* eslint-disable no-unused-vars */
             assetHost,
             cloudHost,
+            customStageSize,
             error,
             isError,
             isScratchDesktop,
             isShowingProject,
+            onHighQualityPenChanged,
             onProjectLoaded,
             onStorageInit,
             onUpdateProjectId,
@@ -137,6 +148,10 @@ GUI.propTypes = {
     assetHost: PropTypes.string,
     children: PropTypes.node,
     cloudHost: PropTypes.string,
+    customStageSize: PropTypes.shape({
+        width: PropTypes.number,
+        height: PropTypes.number
+    }),
     error: PropTypes.oneOfType([PropTypes.object, PropTypes.string]),
     fetchingProject: PropTypes.bool,
     intl: intlShape,
@@ -149,6 +164,7 @@ GUI.propTypes = {
     isShowingProject: PropTypes.bool,
     isTotallyNormal: PropTypes.bool,
     loadingStateVisible: PropTypes.bool,
+    onHighQualityPenChanged: PropTypes.func,
     onProjectLoaded: PropTypes.func,
     onSeeCommunity: PropTypes.func,
     onStorageInit: PropTypes.func,
@@ -183,6 +199,7 @@ const mapStateToProps = state => {
         connectionModalVisible: state.scratchGui.modals.connectionModal,
         costumeLibraryVisible: state.scratchGui.modals.costumeLibrary,
         costumesTabVisible: state.scratchGui.editorTab.activeTabIndex === COSTUMES_TAB_INDEX,
+        customStageSize: state.scratchGui.customStageSize,
         error: state.scratchGui.projectState.error,
         isError: getIsError(loadingState),
         isEmbedded: state.scratchGui.mode.isEmbedded,
@@ -219,7 +236,8 @@ const mapDispatchToProps = dispatch => ({
     onRequestCloseCostumeLibrary: () => dispatch(closeCostumeLibrary()),
     onRequestCloseTelemetryModal: () => dispatch(closeTelemetryModal()),
     onSetProjectTitle: title => dispatch(setProjectTitle(title)),
-    onSetInterpolation: on => dispatch(setInterpolationState(on))
+    onSetInterpolation: on => dispatch(setInterpolationState(on)),
+    onHighQualityPenChanged: enabled => dispatch(setHighQualityPenState(enabled))
 });
 
 const ConnectedGUI = injectIntl(connect(
