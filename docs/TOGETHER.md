@@ -148,8 +148,8 @@ pull request.
 
 ## Undo in a room
 
-Undo is yours alone. Ctrl or Cmd+Z walks back your own block edits in the sprite you are looking at, newest first. Your friends' edits never go on your undo stack, so you cannot undo what they did, and they cannot undo what you did. The same is true in the paint editor.
+Undo is yours alone. Ctrl or Cmd+Z walks back your own block edits in the sprite you are looking at, newest first. Your friends' edits never go on your undo stack, so you cannot undo what they did, and they cannot undo what you did.
 
-If a friend changed a block after you did, undo stops at that step and tells you. Press undo again to skip that step and keep going from before it. That way you never roll back a friend's later change by accident.
+If a friend changed a block after you did, undo stops at that step and tells you. Press undo again within a few seconds to skip that step and keep going from before it. That way you never roll back a friend's later change by accident.
 
-Undo does not cover adding or deleting a sprite, renaming a variable, or switching sprites. For a bigger mistake use Room history in the room panel: the room keeps a version about once a minute, and the owner can restore one for everyone.
+Undo starts fresh when you switch sprites. A deleted sprite, costume or sound comes back with Restore in the Edit menu. For a bigger mistake use Room history in the room panel: the room keeps a version about once a minute, and the room host can bring one back for everyone.
