@@ -41,6 +41,7 @@ import {
     sha256Hex,
     snapshotFrame
 } from './snapshot-http.js';
+import {createUndoGuard, installUndoGuard, UNDO_BLOCK_TEXT, UNDO_SKIP_TEXT} from './undo-guard.js';
 
 /*
  * Small preferences that belong to the person rather than the project, kept
@@ -1814,7 +1815,10 @@ const flushBlockMoves = () => {
     for (const msg of batch.values()) sendBlockEvent(msg);
 };
 
+const undoGuard = createUndoGuard();
+
 const onWorkspaceEvent = e => {
+    undoGuard.noteLocal(e);
     if (!canWrite() || state.workspaceSuspended) return;
     if (e.type === 'ui') return;
     if (!RELAYED_BLOCK_EVENTS.has(e.type)) return;
@@ -2145,6 +2149,7 @@ const sendKitSet = change => {
 };
 
 const applyBlockEvent = msg => {
+    undoGuard.noteRemote(msg && msg.event);
     if (state.snapshotLoading || state.keepWork) {
         // Don't apply into a half-loaded project — replay after the load.
         if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
@@ -3369,6 +3374,10 @@ const attachWorkspace = (workspace, ScratchBlocks) => {
     state.workspace = workspace;
     state.ScratchBlocks = ScratchBlocks;
     workspace.addChangeListener(onWorkspaceEvent);
+    installUndoGuard(workspace, undoGuard, {
+        onBlock: () => overlay.toast(UNDO_BLOCK_TEXT, '#f0912b'),
+        onSkip: () => overlay.toast(UNDO_SKIP_TEXT, '#f0912b')
+    });
     const svg = workspace.getParentSvg();
     if (svg) svg.addEventListener('mousemove', onWorkspaceMouseMove);
     // A workspace can be built after the welcome that decided we are a viewer.
