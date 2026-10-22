@@ -9,6 +9,12 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
+## Unreleased
+
+### Fixed
+
+- A new project could open with a blank stage, with sprites listed but not drawn, and hovering a sprite then crashed the editor with "Oops! Something went wrong". It happened when the editor took longer to download than the starter project took to load, which was most first visits since 2.0.1. The stage is now ready before any project loads.
+
 ## 2.0.1 (2026-10-21)
 
 ### Fixed
