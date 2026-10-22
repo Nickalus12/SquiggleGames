@@ -9,6 +9,12 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
+## 2.0.1 (2026-10-21)
+
+### Fixed
+
+- Undo in a room no longer rolls back a friend's later change to the same block. It stops with a note, and a second press skips that step and keeps going from before it. Redo is unchanged. The Together docs now explain undo in a room.
+
 ## 2.0.0 (2026-10-21)
 
 The editor for Squiggle 2.0, which now runs on Cloudflare. 210 commits since
