@@ -1,14 +1,12 @@
 import bindAll from 'lodash.bindall';
 import PropTypes from 'prop-types';
 import React from 'react';
-import Renderer from 'scratch-render';
 import VM from 'scratch-vm';
 import {connect} from 'react-redux';
 
 import {STAGE_DISPLAY_SIZES} from '../lib/layout-constants';
 import {getEventXY} from '../lib/touch-utils';
-import VideoProvider from '../lib/video/video-provider';
-import {installWorldSeams} from '../lib/world/seams.js';
+import {attachStageRenderer} from '../lib/stage-renderer.js';
 import {BitmapAdapter as V2BitmapAdapter} from '@turbowarp/scratch-svg-renderer';
 
 import StageComponent from '../components/stage/stage.jsx';
@@ -56,37 +54,12 @@ class Stage extends React.Component {
             colorInfo: null,
             question: null
         };
-        if (this.props.vm.renderer) {
-            this.renderer = this.props.vm.renderer;
-            this.canvas = this.renderer.canvas;
-        } else {
-            this.canvas = document.createElement('canvas');
-            this.renderer = new Renderer(
-                this.canvas,
-                -this.props.customStageSize.width / 2,
-                this.props.customStageSize.width / 2,
-                -this.props.customStageSize.height / 2,
-                this.props.customStageSize.height / 2
-            );
-            this.props.vm.setStageSize(
-                this.props.customStageSize.width,
-                this.props.customStageSize.height
-            );
-            this.props.vm.attachRenderer(this.renderer);
-            installWorldSeams(this.props.vm);
-
-            // Only attach a video provider once because it is stateful
-            this.props.vm.setVideoProvider(new VideoProvider());
-
-            // Calling draw a single time before any project is loaded just makes
-            // the canvas white instead of solid black–needed because it is not
-            // possible to use CSS to style the canvas to have a different
-            // default color
-            this.props.vm.renderer.draw();
-
-            // tw: handle changes to high quality pen
-            this.props.vm.renderer.on('UseHighQualityRenderChanged', this.props.onHighQualityPenChanged);
-        }
+        this.renderer = attachStageRenderer({
+            vm: this.props.vm,
+            stageSize: this.props.customStageSize,
+            onHighQualityPenChanged: this.props.onHighQualityPenChanged
+        });
+        this.canvas = this.renderer.canvas;
         this.props.vm.attachV2BitmapAdapter(new V2BitmapAdapter());
     }
     componentDidMount () {
