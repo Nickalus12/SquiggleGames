@@ -1032,14 +1032,14 @@ class MenuBar extends React.Component {
                             // Upstream points this at the TurboWarp author's Scratch
                             // profile; under our own name that would send our users
                             // to someone else's inbox.
-                            href="https://github.com/Nickalus12/SquiggleGames/issues"
+                            href="/#help"
                             rel="noopener noreferrer"
                             target="_blank"
                         >
                             {/* todo: icon */}
                             <Button className={styles.feedbackButton}>
                                 <FormattedMessage
-                                    defaultMessage="{APP_NAME} Feedback"
+                                    defaultMessage="Help and bugs"
                                     description="Button to give feedback in the menu bar"
                                     id="tw.feedbackButton"
                                     values={{
