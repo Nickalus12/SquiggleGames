@@ -52,6 +52,11 @@ let messages = defineMessages({
         description: 'Button to add a blank costume in the editor tab',
         id: 'gui.costumeTab.addBlankCostume'
     },
+    addCostumeSheet: {
+        id: 'sq.phone.addCostume',
+        defaultMessage: 'Add a costume',
+        description: 'Title of the sheet on phones that lists the ways to add a costume'
+    },
     addSurpriseCostumeMsg: {
         defaultMessage: 'Surprise',
         description: 'Button to add a surprise costume in the editor tab',
@@ -275,6 +280,8 @@ class CostumeTab extends React.Component {
         })) : [];
         return (
             <AssetPanel
+                addSheetId="sq-add-costume-sheet"
+                addSheetTitle={intl.formatMessage(messages.addCostumeSheet)}
                 buttons={[
                     {
                         title: intl.formatMessage(addLibraryMessage),

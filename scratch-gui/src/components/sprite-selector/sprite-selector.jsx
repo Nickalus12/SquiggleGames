@@ -6,6 +6,11 @@ import Box from '../box/box.jsx';
 import SpriteInfo from '../../containers/sprite-info.jsx';
 import SpriteList from './sprite-list.jsx';
 import ActionMenu from '../action-menu/action-menu.jsx';
+import PhoneAddSpriteSlot, {
+    SHEET_ID as ADD_SPRITE_SHEET_ID,
+    messages as phoneMessages
+} from '../phone-shell/phone-add-sprite-slot.jsx';
+import {addSheetItems} from '../phone-shell/add-sheet-items';
 import {STAGE_DISPLAY_SIZES} from '../../lib/layout-constants';
 import {isRtl} from '@turbowarp/scratch-l10n';
 
@@ -75,6 +80,30 @@ const SpriteSelectorComponent = function (props) {
         selectedSprite = {};
         spriteInfoDisabled = true;
     }
+    const addButtons = [
+        {
+            title: intl.formatMessage(messages.addSpriteFromFile),
+            img: fileUploadIcon,
+            onClick: onFileUploadClick,
+            fileAccept: '.svg, .png, .bmp, .jpg, .jpeg, .jfif, .webp, .sprite2, .sprite3, .gif',
+            fileChange: onSpriteUpload,
+            fileInput: spriteFileInput,
+            fileMultiple: true
+        }, {
+            title: intl.formatMessage(messages.addSpriteFromSurprise),
+            img: surpriseIcon,
+            onClick: onSurpriseSpriteClick
+        }, {
+            title: intl.formatMessage(messages.addSpriteFromPaint),
+            img: paintIcon,
+            onClick: onPaintSpriteClick
+        }, {
+            title: intl.formatMessage(messages.addSpriteFromLibrary),
+            img: searchIcon,
+            onClick: onNewSpriteClick
+        }
+    ];
+    const addSheetTitle = intl.formatMessage(phoneMessages.addSprite);
     return (
         <Box
             className={styles.spriteSelector}
@@ -115,32 +144,22 @@ const SpriteSelectorComponent = function (props) {
             <ActionMenu
                 className={styles.addButton}
                 img={spriteIcon}
-                moreButtons={[
-                    {
-                        title: intl.formatMessage(messages.addSpriteFromFile),
-                        img: fileUploadIcon,
-                        onClick: onFileUploadClick,
-                        fileAccept: '.svg, .png, .bmp, .jpg, .jpeg, .jfif, .webp, .sprite2, .sprite3, .gif',
-                        fileChange: onSpriteUpload,
-                        fileInput: spriteFileInput,
-                        fileMultiple: true
-                    }, {
-                        title: intl.formatMessage(messages.addSpriteFromSurprise),
-                        img: surpriseIcon,
-                        onClick: onSurpriseSpriteClick // TODO need real function for this
-                    }, {
-                        title: intl.formatMessage(messages.addSpriteFromPaint),
-                        img: paintIcon,
-                        onClick: onPaintSpriteClick // TODO need real function for this
-                    }, {
-                        title: intl.formatMessage(messages.addSpriteFromLibrary),
-                        img: searchIcon,
-                        onClick: onNewSpriteClick
-                    }
-                ]}
+                moreButtons={addButtons}
+                sheetId={ADD_SPRITE_SHEET_ID}
+                sheetTitle={addSheetTitle}
                 title={intl.formatMessage(messages.addSpriteFromLibrary)}
                 tooltipPlace={isRtl(intl.locale) ? 'right' : 'left'}
                 onClick={onNewSpriteClick}
+            />
+            <PhoneAddSpriteSlot
+                items={addSheetItems({
+                    main: {
+                        title: intl.formatMessage(messages.addSpriteFromLibrary),
+                        img: searchIcon,
+                        onClick: onNewSpriteClick
+                    },
+                    moreButtons: addButtons
+                })}
             />
         </Box>
     );

@@ -12,6 +12,8 @@ import styles from './selector.css';
 
 const Selector = props => {
     const {
+        addSheetId,
+        addSheetTitle,
         buttons,
         containerRef,
         dragType,
@@ -41,6 +43,8 @@ const Selector = props => {
                 <ActionMenu
                     img={img}
                     moreButtons={moreButtons}
+                    sheetId={addSheetId}
+                    sheetTitle={addSheetTitle}
                     title={title}
                     tooltipPlace={isRtl ? 'left' : 'right'}
                     onClick={onClick}
@@ -91,6 +95,8 @@ const Selector = props => {
 };
 
 Selector.propTypes = {
+    addSheetId: PropTypes.string,
+    addSheetTitle: PropTypes.node,
     buttons: PropTypes.arrayOf(PropTypes.shape({
         title: PropTypes.string.isRequired,
         img: PropTypes.string.isRequired,

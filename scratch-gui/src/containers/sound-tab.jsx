@@ -207,6 +207,11 @@ class SoundTab extends React.Component {
                 description: 'Button to upload sound from file in the editor tab',
                 id: 'gui.soundTab.fileUploadSound'
             },
+            addSoundSheet: {
+                id: 'sq.phone.addSound',
+                defaultMessage: 'Add a sound',
+                description: 'Title of the sheet on phones that lists the ways to add a sound'
+            },
             surpriseSound: {
                 defaultMessage: 'Surprise',
                 description: 'Button to get a random sound in the editor tab',
@@ -226,6 +231,8 @@ class SoundTab extends React.Component {
 
         return (
             <AssetPanel
+                addSheetId="sq-add-sound-sheet"
+                addSheetTitle={intl.formatMessage(messages.addSoundSheet)}
                 buttons={isSupported ? [{
                     title: intl.formatMessage(messages.addSound),
                     img: addSoundFromLibraryIcon,

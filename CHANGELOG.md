@@ -9,6 +9,16 @@ described the service and the editor as one program, which they are not, and
 splitting the narrative after the fact would have meant rewriting descriptions
 of work rather than just moving files.
 
+## Unreleased
+
+### Fixed
+
+- On a phone there was no visible way to add a sprite from the Code tab, where the editor opens. The only button at the bottom of the screen was the purple puzzle piece, which adds an extension. The top bar now has an **Add a sprite** button on the Code and Sprites tabs.
+
+### Changed
+
+- On a phone the round **+** buttons for sprites, backdrops, costumes and sounds open a sheet from the bottom of the screen with each choice written out next to its icon, instead of the mouse hover menu of unlabelled icons that needed a second tap to do anything. Picking a choice closes the sheet and carries on as before: the library, the paint editor or the file picker opens. Computers keep the hover menu.
+
 ## 2.0.3 (2026-10-22)
 
 ### Changed

@@ -9,6 +9,7 @@ can do on a computer is still there, laid out for a thumb.
 |---|---|
 | Menu | Opens the menu as a sheet from the bottom |
 | Project name | Tap to rename, when you are allowed to edit |
+| Add a sprite | Opens a sheet with the ways to add a sprite. It shows on the Code and Sprites tabs |
 | Find blocks | Opens the block palette with a search box |
 | Tiles | Opens the tile painter. It shows when the project uses World |
 | Go, Stop | The green flag and the stop sign |
@@ -27,6 +28,25 @@ If you join a room as a viewer, the editor keeps you on the Stage tab.
 
 A small stage button keeps the game in view while you edit. Tap it again to
 hide the small stage.
+
+## Adding sprites, backdrops, costumes and sounds
+
+On a phone every round **+** button opens a sheet instead of the hover menu a
+mouse gets. Each choice has a label next to its icon, so there is nothing to
+guess at.
+
+| Where | Button | Choices |
+|---|---|---|
+| Code tab, Sprites tab | **Add a sprite** in the top bar, or the **+** under the sprite list | Choose a Sprite, Paint, Surprise, Upload Sprite |
+| Sprites tab | The **+** under the stage thumbnail | Choose a Backdrop, Paint, Surprise, Upload Backdrop |
+| Costumes tab | The **+** under the costume list | Choose a Costume, Paint, Surprise, Upload Costume |
+| Costumes tab, Sounds section | The **+** under the sound list | Choose a Sound, Record, Surprise, Upload Sound |
+
+Picking a choice closes the sheet and carries on as it does on a computer: the
+library opens, the paint editor opens, or the file picker opens.
+
+The purple puzzle piece at the bottom of the Code tab is not an add button for
+sprites. It adds an extension, which gives you new blocks.
 
 ## Sheets
 

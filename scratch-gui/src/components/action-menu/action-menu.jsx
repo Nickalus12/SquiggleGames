@@ -3,6 +3,11 @@ import React from 'react';
 import classNames from 'classnames';
 import bindAll from 'lodash.bindall';
 import ReactTooltip from 'react-tooltip';
+import {connect} from 'react-redux';
+
+import {LAYOUT_MODES} from '../../lib/layout-mode';
+import PhoneAddButton from '../phone-shell/phone-add-button.jsx';
+import {addSheetItems} from '../phone-shell/add-sheet-items';
 
 import styles from './action-menu.css';
 
@@ -207,4 +212,37 @@ ActionMenu.propTypes = {
     tooltipPlace: PropTypes.string
 };
 
-export default ActionMenu;
+const DEFAULT_SHEET_ID = 'sq-add-sheet';
+
+const ActionMenuSwitch = props => {
+    const {isPhone, sheetId, sheetTitle, ...rest} = props;
+    if (!isPhone) return <ActionMenu {...rest} />;
+    const {className, img, moreButtons, onClick, title} = rest;
+    const label = typeof sheetTitle === 'string' ? sheetTitle : title;
+    return (
+        <PhoneAddButton
+            className={className}
+            items={addSheetItems({main: {title, img, onClick}, moreButtons})}
+            label={label}
+            sheetId={sheetId || DEFAULT_SHEET_ID}
+            sheetTitle={sheetTitle || title}
+            withFileInputs
+        />
+    );
+};
+
+ActionMenuSwitch.propTypes = {
+    ...ActionMenu.propTypes,
+    isPhone: PropTypes.bool,
+    sheetId: PropTypes.string,
+    sheetTitle: PropTypes.node
+};
+
+export {ActionMenu};
+const mapStateToProps = state => ({
+    isPhone: state.scratchGui.layoutMode.mode === LAYOUT_MODES.phone
+});
+
+const mapDispatchToProps = () => ({});
+
+export default connect(mapStateToProps, mapDispatchToProps)(ActionMenuSwitch);

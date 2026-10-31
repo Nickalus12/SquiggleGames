@@ -15,6 +15,11 @@ import surpriseIcon from '../action-menu/icon--surprise.svg';
 import searchIcon from '../action-menu/icon--search.svg';
 
 const messages = defineMessages({
+    addBackdropSheet: {
+        id: 'sq.phone.addBackdrop',
+        defaultMessage: 'Add a backdrop',
+        description: 'Title of the sheet on phones that lists the ways to add a backdrop'
+    },
     addBackdropFromLibrary: {
         id: 'gui.spriteSelector.addBackdropFromLibrary',
         description: 'Button to add a stage in the target pane from library',
@@ -122,6 +127,8 @@ const StageSelector = props => {
                         onClick: onNewBackdropClick
                     }
                 ]}
+                sheetId="sq-add-backdrop-sheet"
+                sheetTitle={intl.formatMessage(messages.addBackdropSheet)}
                 title={intl.formatMessage(messages.addBackdropFromLibrary)}
                 tooltipPlace={isRtl(intl.locale) ? 'right' : 'left'}
                 onClick={onNewBackdropClick}
