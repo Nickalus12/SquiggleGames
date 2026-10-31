@@ -246,7 +246,7 @@ section('a drop resumes and resends what was not acked');
     ok('rtt comes from the fresh frame, not the welcome or a resent frame', session.rtt === 60, session.rtt);
 }
 
-section('a resent frame keeps the avatar it was sent with');
+section('a resend keeps only the newest avatar, so a backlog cannot drag the player back');
 {
     const {clock, session, ws} = make();
     ws.deliver({type: 'welcome', slot: 1, ack: 0, resume: 'tok'});
@@ -264,7 +264,8 @@ section('a resent frame keeps the avatar it was sent with');
     next.deliver({type: 'welcome', slot: 1, ack: 0});
     clock.advance(50);
     const sent = ins(next).map(f => `${f.s}:${f.a && f.a[0]}`).join();
-    ok('the resent s=1 and s=2 carry their own avatars and the third follows under s=3', sent === '1:5,2:6,3:7',
+    ok('the resent s=1 drops its stale avatar, s=2 keeps the newest, and the third follows under s=3',
+        sent === '1:undefined,2:6,3:7',
         ins(next));
 }
 

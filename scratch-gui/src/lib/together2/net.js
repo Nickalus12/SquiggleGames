@@ -204,8 +204,13 @@ const createGameSession = ({
             return byteLength(JSON.stringify(entry.frame)) <= MAX_FRAME_BYTES;
         });
         unacked.length = 0;
-        fits.forEach(entry => {
+        let newest = -1;
+        fits.forEach((entry, i) => {
+            if (entry.frame.a) newest = i;
+        });
+        fits.forEach((entry, i) => {
             entry.resent = true;
+            if (i !== newest && entry.frame.a) delete entry.frame.a;
             unacked.push(entry);
             sendRaw(entry.frame);
         });
