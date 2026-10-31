@@ -217,7 +217,9 @@ class CollabClient {
         if (this.rs !== null && msg.rs <= this.rs) return false;
         this.rs = msg.rs;
         if (this._syncSent === 'catching-up') this._emitSync();
-        return !this._selfIds.has(msg.from);
+        if (!this._selfIds.has(msg.from)) return true;
+        this._emit('own-frame', msg);
+        return false;
     }
 
     _onWelcome (msg) {

@@ -120,6 +120,9 @@ const state = {
     pendingRemotePaint: [], // deferred remote paint edits while locally painting
     pendingSnapshotMsg: null, // deferred remote snapshot while locally painting
     snapshotLoading: false,
+    ringLog: [],
+    ringLogTrimmedTo: null,
+    editedAlone: false,
     queuedBlockEvents: [],
     keepWork: null,
     // Orphan block-events (unknown sprite) held briefly until a snapshot lands.
@@ -812,6 +815,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         // what peers already received live.
         flushBlockMoves();
         if (cacheOnly === true) state.lastCacheSnapAt = Date.now();
+        const atSeq = typeof client.rs === 'number' ? client.rs : 0;
         const project = await readProject();
         const key = project.key;
         // Drop if we went inactive / started applying remote mid-zip.
@@ -844,7 +848,7 @@ const zipAndSendSnapshot = async cacheOnly => {
         const urgent = state.urgentSnapshot === true;
         state.urgentSnapshot = false;
         const fields = {ref, cacheOnly: cacheOnly === true, basedOn, force, reset};
-        fields.atSeq = typeof client.rs === 'number' ? client.rs : 0;
+        fields.atSeq = atSeq;
         client.send(uploaded ?
             snapshotFrame(Object.assign(fields, uploaded)) :
             Object.assign({type: 'snapshot', b64: project.b64}, fields), urgent);
@@ -1125,6 +1129,7 @@ const replayQueuedEvents = () => {
     const orphans = state.orphanBlockEvents.splice(0);
     for (let i = 0; i < queued.length; i++) {
         if (queued[i].type === 'kit-set') applyRemoteKitSet(queued[i]);
+        else if (queued[i].type === 'vm-action') applyVmAction(queued[i]);
         else applyBlockEvent(queued[i]);
     }
     for (let i = 0; i < orphans.length; i++) applyBlockEvent(orphans[i]);
@@ -1228,7 +1233,17 @@ const applySnapshot = async msg => {
             // Costumes now differ from the room's persisted zip — refresh it
             // (cacheOnly: peers already have the paint live).
             if (reapplied) setTimeout(() => scheduleSnapshot(true), 0);
+            if (!msg.reset && !msg.stale && typeof msg.atSeq === 'number') {
+                state.applyingRemote--;
+                try {
+                    replayRingAfter(msg.atSeq, msg._rsAt);
+                } finally {
+                    state.applyingRemote++;
+                }
+            }
         }
+        if (msg.reset || msg._rescue) forgetRingThrough(Infinity);
+        else forgetRingThrough(msg.atSeq);
     } catch (e) {
         /*
          * A load that throws part-way leaves the worst possible state: targets
@@ -1298,7 +1313,7 @@ const wrapTargeted = (vm, method, buildMsg, refusal) => {
         if (msg) {
             // Renames invalidate the name→target index used by remote applies.
             if (method === 'renameSprite') rebuildTargetIndex();
-            if (hasPeers()) client.send({type: 'vm-action', action: method, ...msg});
+            client.send({type: 'vm-action', action: method, ...msg});
             scheduleSnapshot(true); // keep the server's cached copy fresh, relay-free
         }
         return result;
@@ -1346,6 +1361,7 @@ const wrapVm = vm => {
                     for (const t of added) {
                         const name = t.getName();
                         claimName('sprite', name);
+                        if (!hasPeers()) state.editedAlone = true;
                         if (hasPeers()) {
                             state.exportingSprites.add(name);
                             exportAddedSprite(t).then(out => {
@@ -1381,7 +1397,7 @@ const wrapVm = vm => {
         const result = originalDeleteSprite(targetId);
         if (!wasRemote && name) {
             rebuildTargetIndex();
-            if (hasPeers()) client.send({type: 'vm-action', action: 'spriteDelete', target: name});
+            client.send({type: 'vm-action', action: 'spriteDelete', target: name});
             scheduleSnapshot(true);
         }
         return result;
@@ -1402,6 +1418,7 @@ const wrapVm = vm => {
                         (vm.runtime.getTargetForStage() && vm.runtime.getTargetForStage().getName()) :
                         (optTargetId ? targetNameById(optTargetId) : editingTargetName());
                     const asset = costumeObject && costumeObject.asset;
+                    if (!hasPeers()) state.editedAlone = true;
                     if (targetName && asset && asset.data && hasPeers()) {
                         const dataFormat = costumeObject.dataFormat || asset.dataFormat;
                         sendAssetAction({
@@ -1437,6 +1454,7 @@ const wrapVm = vm => {
             Promise.resolve(result).then(() => {
                 const targetName = optTargetId ? targetNameById(optTargetId) : editingTargetName();
                 const asset = soundObject && soundObject.asset;
+                if (!hasPeers()) state.editedAlone = true;
                 if (targetName && asset && asset.data && hasPeers()) {
                     const dataFormat = soundObject.dataFormat || asset.dataFormat;
                     sendAssetAction({
@@ -1618,6 +1636,7 @@ const wrapVm = vm => {
                 rotationCenterY
             };
             cachePaint(msg); // survives any snapshot that lands on top of it
+            if (!hasPeers()) state.editedAlone = true;
             if (hasPeers()) {
                 // Stroke-level delta lets a receiver who has DIVERGED (their own
                 // concurrent strokes) replay just our strokes instead of
@@ -1646,7 +1665,10 @@ const wrapVm = vm => {
         trimPaintBase();
         // Snapshot-reapply restores bitmaps from this shadow — no PNG needed.
         cachePaint(Object.assign({}, meta, {useShadow: true}));
-        if (!hasPeers()) return;
+        if (!hasPeers()) {
+            state.editedAlone = true;
+            return;
+        }
         try {
             if (prev && prev.width === meta.width && prev.height === meta.height) {
                 const diff = paintMerge.diffBitmap(prev.pixels, pixels, meta.width, meta.height);
@@ -1755,7 +1777,7 @@ const wrapVm = vm => {
             scheduleSnapshot(false);
             return;
         }
-        if (hasPeers()) client.send({type: 'vm-action', action: 'extensionAdd', id});
+        client.send({type: 'vm-action', action: 'extensionAdd', id});
         scheduleSnapshot(true);
     });
 };
@@ -2289,7 +2311,12 @@ const applyCostumeAdd = msg => {
         const costumeObj = Object.assign({}, msg.costume, {
             asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
         });
-        return state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version);
+        state.applyingRemote++;
+        try {
+            return state.vm.addCostume(costumeObj.md5, costumeObj, target.id, msg.version);
+        } finally {
+            state.applyingRemote--;
+        }
     })
         .catch(e => {
             log.error('[collab] costume install failed', e);
@@ -2306,7 +2333,12 @@ const applySoundAdd = msg => {
         const soundObj = Object.assign({}, msg.sound, {
             asset, assetId: asset.assetId, dataFormat: fmt, md5: `${asset.assetId}.${fmt}`
         });
-        return state.vm.addSound(soundObj, target.id);
+        state.applyingRemote++;
+        try {
+            return state.vm.addSound(soundObj, target.id);
+        } finally {
+            state.applyingRemote--;
+        }
     })
         .catch(e => {
             log.error('[collab] sound install failed', e);
@@ -2334,7 +2366,14 @@ const applyRemoteDuplicate = (target, index, isSound) => {
     }, () => requestResync('remote duplicate failed'));
 };
 
+const DEFERRABLE_VM_ACTIONS = new Set(['greenFlag', 'stopAll']);
+
 const applyVmAction = msg => {
+    if ((state.snapshotLoading || state.keepWork) && msg && !DEFERRABLE_VM_ACTIONS.has(msg.action)) {
+        if (state.queuedBlockEvents.length < 500) state.queuedBlockEvents.push(msg);
+        else requestResync('vm-action replay queue full');
+        return;
+    }
     state.applyingRemote++;
     try {
         if (msg.action === 'greenFlag') {
@@ -2810,7 +2849,53 @@ const keepWorkFor = head => {
     });
 };
 
+const RING_LOG_MAX = 400;
+
+const noteRing = msg => {
+    if (!msg || typeof msg.rs !== 'number') return;
+    if (msg.type === 'vm-action' && KEEP_SKIP_ACTIONS.has(msg.action)) return;
+    state.ringLog.push(msg);
+    if (state.ringLog.length > RING_LOG_MAX) {
+        const dropped = state.ringLog.splice(0, state.ringLog.length - RING_LOG_MAX);
+        state.ringLogTrimmedTo = dropped[dropped.length - 1].rs;
+    }
+};
+
+const forgetRingThrough = rs => {
+    if (typeof rs !== 'number') return;
+    let keep = 0;
+    while (keep < state.ringLog.length && state.ringLog[keep].rs <= rs) keep++;
+    if (keep) state.ringLog.splice(0, keep);
+    if (state.ringLogTrimmedTo !== null && state.ringLogTrimmedTo <= rs) state.ringLogTrimmedTo = null;
+};
+
+const replayRingAfter = (atSeq, upTo) => {
+    if (typeof atSeq !== 'number' || typeof upTo !== 'number' || upTo <= atSeq) return 0;
+    if (state.ringLogTrimmedTo !== null && state.ringLogTrimmedTo > atSeq) {
+        requestResync('ring log too short for snapshot');
+        return 0;
+    }
+    const frames = state.ringLog.filter(f => f.rs > atSeq && f.rs <= upTo);
+    const world = frames.some(f => f.type === 'tilemap-patch') ? getWorld(state.vm.runtime) : null;
+    const tiles = world && {world, sync: createTilemapSync({world, send: () => null})};
+    const self = overlay.self || {};
+    for (const f of frames) {
+        if (f.type === 'block-event') applyBlockEvent(f);
+        else if (f.type === 'vm-action') {
+            applyVmAction(state.selfId && f.from === state.selfId ?
+                Object.assign({}, f, {fromName: self.name, color: self.color}) : f);
+        } else if (f.type === 'kit-set') applyRemoteKitSet(f);
+        else if (f.type === 'tilemap-patch' && tiles) {
+            const grid = tiles.world.level(f.level);
+            if (grid) tiles.sync.apply(Object.assign({}, f, {base: grid.v || 0}));
+        }
+    }
+    if (tiles) tiles.sync.dispose();
+    return frames.length;
+};
+
 const onSnapshot = msg => {
+    if (msg && typeof client.rs === 'number') msg._rsAt = client.rs;
     if (state.keepWork) state.keepWork.head = msg;
     else applySnapshot(msg);
 };
@@ -3271,7 +3356,9 @@ const wireSocket = () => {
     client.on('peer-joined', msg => {
         const wasAlone = !hasPeers();
         overlay.addPeer(msg.peer.id, msg.peer.name, msg.peer.color, msg.peer.cursor, msg.peer);
-        if (wasAlone && canWrite() && hasUnsavedEdits()) {
+        const catchUp = state.editedAlone;
+        state.editedAlone = false;
+        if (wasAlone && canWrite() && (catchUp || hasUnsavedEdits())) {
             clearTimeout(state.snapshotTimer);
             state.snapshotTimer = null;
             state.snapshotDeferredSince = 0;
@@ -3311,10 +3398,20 @@ const wireSocket = () => {
         overlay.toast(`💾 ${msg.owner} saved "${msg.name}"`, '#4caf50');
     });
     client.on('request-snapshot', sendSnapshotNow);
-    client.on('block-event', applyBlockEvent);
+    client.on('block-event', msg => {
+        noteRing(msg);
+        applyBlockEvent(msg);
+    });
     client.on('sprite-info', applySpriteInfo);
-    client.on('vm-action', applyVmAction);
-    client.on('kit-set', applyRemoteKitSet);
+    client.on('vm-action', msg => {
+        noteRing(msg);
+        applyVmAction(msg);
+    });
+    client.on('kit-set', msg => {
+        noteRing(msg);
+        applyRemoteKitSet(msg);
+    });
+    client.on('own-frame', noteRing);
     client.on('presence', msg => overlay.setPeerPresence(msg.from, msg));
     client.on('cursor', msg => overlay.setPeerCursor(
         msg.from,

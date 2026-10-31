@@ -21,6 +21,9 @@ const STOP_CODES = new Set([1000, 1008, 1009]);
 const RELOAD_CODE = 4010;
 const BACK_OFF_CODE = 1013;
 const OUT_ACTIONS = new Set(['input', 'fire', 'msg', 'set', 'change']);
+const HEARTBEAT_MS = 2000;
+const PING_IDLE_MS = 2000;
+const SILENCE_LIMIT_MS = 10000;
 
 const socketOrigin = base => String(base || '').replace(/\/+$/, '')
     .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
@@ -107,6 +110,15 @@ const createGameSession = ({
     const pendingG = [];
     let mode = null;
     let tickHz = null;
+    let heartbeatTimer = null;
+    let lastInboundAt = -Infinity;
+    let lastPingAt = -Infinity;
+    let silenced = 0;
+
+    const stopHeartbeat = () => {
+        if (heartbeatTimer) clearTimer(heartbeatTimer);
+        heartbeatTimer = null;
+    };
 
     const emit = (type, payload) => {
         const list = handlers.get(type);
@@ -210,6 +222,7 @@ const createGameSession = ({
     };
 
     const onMessage = event => {
+        lastInboundAt = now();
         let msg;
         try {
             msg = JSON.parse(event.data);
@@ -217,6 +230,7 @@ const createGameSession = ({
             return;
         }
         if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'pong') return;
         if (msg.type === 'welcome') onWelcome(msg);
         else if (msg.type === 'tick') onTick(msg);
         else if (msg.type === 'rules-status') emit('rules-status', msg);
@@ -237,6 +251,7 @@ const createGameSession = ({
         const code = event && Number.isInteger(event.code) ? event.code : 1006;
         ws = null;
         open = false;
+        stopHeartbeat();
         if (flushTimer) clearTimer(flushTimer);
         flushTimer = null;
         if (closing) {
@@ -266,6 +281,25 @@ const createGameSession = ({
         }, reconnectDelay(code));
     };
 
+    const heartbeat = () => {
+        const socket = ws;
+        if (!socket || closing) return;
+        const t = now();
+        if (t - lastInboundAt > SILENCE_LIMIT_MS) {
+            silenced += 1;
+            ws = null;
+            try {
+                socket.close();
+            } catch (e) { /* already gone */ }
+            onClose({code: 1006});
+            return;
+        }
+        heartbeatTimer = setTimer(heartbeat, HEARTBEAT_MS);
+        if (t - lastInboundAt < PING_IDLE_MS || t - lastPingAt < PING_IDLE_MS) return;
+        lastPingAt = t;
+        sendRaw({type: 'ping'});
+    };
+
     connect = () => {
         if (closing) return;
         let socket;
@@ -278,6 +312,10 @@ const createGameSession = ({
         ws = socket;
         socket.onopen = () => {
             if (ws !== socket) return;
+            lastInboundAt = now();
+            lastPingAt = -Infinity;
+            stopHeartbeat();
+            heartbeatTimer = setTimer(heartbeat, HEARTBEAT_MS);
             const join = {type: 'join', proto: PROTO};
             if (resume) join.resume = resume;
             joinedWithResume = !!resume;
@@ -300,6 +338,7 @@ const createGameSession = ({
         },
         stop () {
             closing = true;
+            stopHeartbeat();
             if (reconnectTimer) clearTimer(reconnectTimer);
             reconnectTimer = null;
             if (flushTimer) clearTimer(flushTimer);
@@ -331,6 +370,14 @@ const createGameSession = ({
             if (FRAME_HEAD_BYTES + OPS_KEY_BYTES + bytes > MAX_FRAME_BYTES) {
                 oversized += 1;
                 return false;
+            }
+            if (cut.action === 'set') {
+                const at = pendingG.findIndex(entry => entry.op.action === 'set' && entry.op.name === cut.name);
+                if (at >= 0) {
+                    pendingG[at] = {op: cut, bytes};
+                    schedule();
+                    return true;
+                }
             }
             if (!bucket.take()) {
                 dropped += 1;
@@ -388,6 +435,9 @@ const createGameSession = ({
         },
         get unacked () {
             return unacked.length;
+        },
+        get silenced () {
+            return silenced;
         }
     };
 };
@@ -395,6 +445,8 @@ const createGameSession = ({
 export {
     PROTO,
     BATCH_MS,
+    HEARTBEAT_MS,
+    SILENCE_LIMIT_MS,
     OPS_PER_SECOND,
     OPS_BURST,
     MAX_OPS_PER_FRAME,

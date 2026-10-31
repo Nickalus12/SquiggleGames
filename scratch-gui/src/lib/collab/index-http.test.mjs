@@ -504,11 +504,25 @@ await section('a builtin extension travels as a vm-action', async () => {
 
     const ant = fx.named('Ant');
     const peerId = 'c'.repeat(32);
+    const beforePeer = sent.length;
     fx.emit('vm-action', {type: 'vm-action', action: 'soundAdd', target: 'Ant',
         sound: {name: 'chirp', dataFormat: 'wav'}, md5ext: `${peerId}.wav`, from: 'pal'});
     ok('a peer sound loads from the asset store',
         await waitFor(() => ant.getSounds().some(snd => snd.name === 'chirp')), ant.getSounds().map(snd => snd.name));
     ok('by its md5ext', vm.runtime.storage.loads.includes(`${peerId}.wav`), vm.runtime.storage.loads);
+    await settle();
+    ok('and is not relayed back', !sent.slice(beforePeer).some(m => m && m.type === 'vm-action'),
+        sent.slice(beforePeer).filter(m => m && m.type === 'vm-action').map(m => m.action));
+    const costumeId = 'd'.repeat(32);
+    const beforeCostume = sent.length;
+    fx.emit('vm-action', {type: 'vm-action', action: 'costumeAdd', target: 'Ant', version: 2,
+        costume: {name: 'hat', dataFormat: 'png', bitmapResolution: 1, rotationCenterX: 0, rotationCenterY: 0},
+        md5ext: `${costumeId}.png`, from: 'pal'});
+    ok('a peer costume loads from the asset store',
+        await waitFor(() => ant.getCostumes().some(c => c.name === 'hat')), ant.getCostumes().map(c => c.name));
+    await settle();
+    ok('and is not relayed back either', !sent.slice(beforeCostume).some(m => m && m.type === 'vm-action'),
+        sent.slice(beforeCostume).filter(m => m && m.type === 'vm-action').map(m => m.action));
     const quietError = console.error;
     console.error = noop;
     fx.emit('vm-action', {type: 'vm-action', action: 'soundAdd', target: 'Ant', sound: {name: 'bad', dataFormat: 'wav'},

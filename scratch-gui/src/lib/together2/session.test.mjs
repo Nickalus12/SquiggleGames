@@ -85,7 +85,9 @@ section('the game link follows the welcome tick rate');
             sockets.push(this);
         }
         send (text) {
-            this.sent.push(JSON.parse(text));
+            const frame = JSON.parse(text);
+            this.sent.push(frame);
+            if (frame.type === 'ping' && this.onmessage) this.onmessage({data: JSON.stringify({type: 'pong'})});
         }
         close (code) {
             this.onclose({code});
@@ -156,7 +158,9 @@ section('a bad-frame close on the game socket rejoins once, a second one inside 
             sockets.push(this);
         }
         send (text) {
-            this.sent.push(JSON.parse(text));
+            const frame = JSON.parse(text);
+            this.sent.push(frame);
+            if (frame.type === 'ping' && this.onmessage) this.onmessage({data: JSON.stringify({type: 'pong'})});
         }
         close (code) {
             this.onclose({code});
@@ -233,7 +237,9 @@ section('own game messages and input after stop');
             sockets.push(this);
         }
         send (text) {
-            this.sent.push(JSON.parse(text));
+            const frame = JSON.parse(text);
+            this.sent.push(frame);
+            if (frame.type === 'ping' && this.onmessage) this.onmessage({data: JSON.stringify({type: 'pong'})});
         }
         close (code) {
             this.closed = code;

@@ -3,13 +3,26 @@ const RENDER_DELAY_MS = 100;
 const MAX_EXTRAPOLATE_MS = 100;
 const MAX_SAMPLES = 20;
 const CLOCK_DRIFT_MS = 1;
+const CLOCK_REBASE_MS = 500;
+const CLOCK_REBASE_SAMPLES = 3;
+const CLOCK_REGRESS_TICKS = 40;
 
 const createTickClock = ({tickMs = TICK_MS} = {}) => {
     let offset = null;
+    let behind = 0;
     return {
         observe (t, nowMs) {
             const sample = nowMs - (t * tickMs);
-            offset = offset === null ? sample : Math.min(sample, offset + CLOCK_DRIFT_MS);
+            if (offset === null) {
+                offset = sample;
+            } else if (sample - offset > CLOCK_REBASE_MS) {
+                behind += 1;
+                offset = behind >= CLOCK_REBASE_SAMPLES ? sample : offset + CLOCK_DRIFT_MS;
+                if (behind >= CLOCK_REBASE_SAMPLES) behind = 0;
+            } else {
+                behind = 0;
+                offset = Math.min(sample, offset + CLOCK_DRIFT_MS);
+            }
             return offset;
         },
         tickAt (nowMs) {
@@ -17,6 +30,7 @@ const createTickClock = ({tickMs = TICK_MS} = {}) => {
         },
         reset () {
             offset = null;
+            behind = 0;
         }
     };
 };
@@ -81,7 +95,13 @@ const createInterpolationBuffer = ({
             if (!Array.isArray(a) || a.length < 3 || !Number.isFinite(t)) return;
             if (Number.isFinite(nowMs)) clock.observe(t, nowMs);
             const key = String(slot);
-            const list = slots.get(key) || [];
+            let list = slots.get(key) || [];
+            if (list.length && list[list.length - 1].t - t > CLOCK_REGRESS_TICKS) {
+                slots.clear();
+                clock.reset();
+                if (Number.isFinite(nowMs)) clock.observe(t, nowMs);
+                list = [];
+            }
             if (list.length && t <= list[list.length - 1].t) {
                 if (t === list[list.length - 1].t) list[list.length - 1].a = a.slice();
                 return;
