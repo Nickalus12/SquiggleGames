@@ -1,6 +1,7 @@
 import Renderer from 'scratch-render';
 import VideoProvider from './video/video-provider';
 import {installWorldSeams} from './world/seams.js';
+import {installHiddenStageDraw} from './hidden-stage-draw.js';
 
 const attachStageRenderer = ({vm, stageSize, onHighQualityPenChanged}) => {
     if (vm.renderer) return vm.renderer;
@@ -15,6 +16,7 @@ const attachStageRenderer = ({vm, stageSize, onHighQualityPenChanged}) => {
     vm.setStageSize(stageSize.width, stageSize.height);
     vm.attachRenderer(renderer);
     installWorldSeams(vm);
+    installHiddenStageDraw(renderer);
     vm.setVideoProvider(new VideoProvider());
     renderer.draw();
     if (onHighQualityPenChanged) {

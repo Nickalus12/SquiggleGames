@@ -158,11 +158,11 @@ const createWorld = (vm, runtime, renderer) => {
 
     const wrapRenderer = (method, hookName) => {
         const original = renderer[method];
-        const next = (...args) => original.apply(renderer, args);
-        renderer[method] = function (...args) {
+        const next = (a, b, c, d) => original.call(renderer, a, b, c, d);
+        renderer[method] = function (a, b, c, d) {
             const hook = hooks[hookName];
-            if (!hook) return original.apply(this, args);
-            return hook(next, ...args);
+            if (!hook) return original.call(this, a, b, c, d);
+            return hook(next, a, b, c, d);
         };
     };
     wrapRenderer('updateDrawablePosition', 'drawablePosition');
