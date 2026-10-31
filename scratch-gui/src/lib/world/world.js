@@ -35,9 +35,14 @@ const createEmitter = () => {
 
 const chainHook = (seam, name, fn) => {
     const prior = seam.hooks ? seam.hooks[name] || null : null;
-    return seam.hook(name, (next, ...args) => {
-        const forward = (...rest) => (prior ? prior(next, ...rest) : next(...rest));
-        return fn(forward, ...args);
+    let lastNext = null;
+    let forward = null;
+    return seam.hook(name, (next, a, b, c, d) => {
+        if (next !== lastNext) {
+            lastNext = next;
+            forward = prior ? (p, q, r, s) => prior(next, p, q, r, s) : next;
+        }
+        return fn(forward, a, b, c, d);
     });
 };
 
@@ -102,6 +107,9 @@ const createWorldState = (runtime, options) => {
         state.currentId = keep ? keep.id : (state.saved[0] ? state.saved[0].id : '');
         camera.reset();
         state.pinned.clear();
+        state.edit = null;
+        state.applied = null;
+        state.view = IDENTITY_VIEW;
         state.backdrop = {mode: 'scrolls', speed: 50};
         resetPlay();
         emitter.emit('levels', state.saved);

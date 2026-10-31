@@ -82,6 +82,7 @@ const createCamera = options => {
             state.active = true;
         },
         reset () {
+            holds.clear();
             Object.assign(state, {
                 active: false,
                 x: 0,
