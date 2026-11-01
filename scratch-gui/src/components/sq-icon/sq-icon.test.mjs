@@ -121,7 +121,7 @@ for (const file of srcFiles) {
         const nameAttr = tag.match(/name=(?:"([A-Za-z]+)"|\{([^}]*)\})/);
         if (!nameAttr) continue;
         if (nameAttr[1]) used.add(nameAttr[1]);
-        else for (const [, quoted] of nameAttr[2].matchAll(/'([A-Za-z]+)'/g)) used.add(quoted);
+        else for (const [, quoted] of nameAttr[2].matchAll(/[?:]\s*'([A-Za-z]+)'/g)) used.add(quoted);
     }
     const table = text.match(/const TAB_ICONS = \{([\s\S]*?)\};/);
     if (table) for (const [, quoted] of table[1].matchAll(/'([A-Za-z]+)'/g)) used.add(quoted);

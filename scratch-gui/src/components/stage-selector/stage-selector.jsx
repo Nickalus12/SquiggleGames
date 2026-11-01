@@ -21,24 +21,24 @@ const messages = defineMessages({
         description: 'Title of the sheet on phones that lists the ways to add a backdrop'
     },
     addBackdropFromLibrary: {
-        id: 'gui.spriteSelector.addBackdropFromLibrary',
+        id: 'sq.stageSelector.choose',
         description: 'Button to add a stage in the target pane from library',
-        defaultMessage: 'Choose a Backdrop'
+        defaultMessage: 'Choose a backdrop'
     },
     addBackdropFromPaint: {
-        id: 'gui.stageSelector.addBackdropFromPaint',
+        id: 'sq.stageSelector.draw',
         description: 'Button to add a stage in the target pane from paint',
-        defaultMessage: 'Paint'
+        defaultMessage: 'Draw a backdrop'
     },
     addBackdropFromSurprise: {
-        id: 'gui.stageSelector.addBackdropFromSurprise',
+        id: 'sq.stageSelector.surprise',
         description: 'Button to add a random stage in the target pane',
-        defaultMessage: 'Surprise'
+        defaultMessage: 'Surprise me'
     },
     addBackdropFromFile: {
-        id: 'gui.stageSelector.addBackdropFromFile',
+        id: 'sq.stageSelector.upload',
         description: 'Button to add a stage in the target pane from file',
-        defaultMessage: 'Upload Backdrop'
+        defaultMessage: 'Upload a backdrop'
     }
 });
 

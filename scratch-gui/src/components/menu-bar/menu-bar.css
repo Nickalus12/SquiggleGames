@@ -556,3 +556,7 @@
 .phone-sheet .menu-bar-item {
     font-size: var(--sq-text-md, 16px);
 }
+
+.phone-sheet .community-button-wrapper {
+    padding: 0 8px;
+}

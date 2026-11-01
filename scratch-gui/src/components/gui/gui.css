@@ -57,116 +57,118 @@
 }
 
 .tab-list {
+    box-sizing: border-box;
     height: $stage-menu-height;
-    width: 250px; /* Match width of the toolbox */
+    min-width: 250px;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
+    padding: 0 4px;
 
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
-    font-weight: 500;
-    font-size: 0.80rem;
+    font-weight: var(--sq-weight-bold, 700);
+    font-size: var(--sq-text-sm, 14px);
 
-    /* Overrides for react-tabs styling */
     margin: 0 !important;
     border-bottom: 0 !important;
 
     color: $text-primary;
 }
 
-.tab {
-    flex-grow: 1;
-    height: 80%;
-    margin-bottom: 0;
+.tab-list .tab {
+    position: relative;
+    bottom: auto;
+    flex: none;
+    box-sizing: border-box;
+    height: var(--sq-target, 40px);
+    margin: 0;
+    padding: 0 12px;
+    gap: 6px;
 
-    border-radius: 1rem 1rem 0 0;
-    border: 1px solid $ui-black-transparent;
+    border: 0;
+    border-radius: var(--sq-radius-panel, 10px);
 
-    padding: 0.125rem 1.25rem 0;
-    font-size: 0.75rem;
-
-    background-color: $ui-tertiary;
-    color: $text-primary-transparent;
+    font-size: var(--sq-text-sm, 14px);
+    background-color: transparent;
+    color: var(--sq-text-muted, $text-primary-transparent);
 
     display: flex;
     justify-content: center;
     align-items: center;
 
+    cursor: pointer;
     user-select: none;
     white-space: nowrap;
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out),
+        color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
 }
 
-[dir="ltr"] .tab {
-    margin-left: -0.5rem;
+.tab-list .tab:hover {
+    background-color: var(--sq-tint-card);
+    color: var(--sq-text, $text-primary);
 }
 
-[dir="rtl"] .tab {
-    margin-right: -0.5rem;
-}
-
-[dir="ltr"] .tab:nth-of-type(1) {
-    margin-left: 0;
-}
-
-[dir="rtl"] .tab:nth-of-type(1) {
-    margin-right: 0;
-}
-
-/* Use z-indices to force left-on-top for tabs */
-.tab:nth-of-type(1) {
-    z-index: 3;
-}
-.tab:nth-of-type(2) {
-    z-index: 2;
-}
-.tab:nth-of-type(3) {
-    z-index: 1;
-}
-
-.tab:hover {
-  background-color: $ui-primary;
-}
-
-.tab.is-selected {
-    height: 90%;
+.tab-list .tab.is-selected {
     color: var(--sq-accent-text, $looks-secondary);
-    background-color: $ui-white;
-    z-index: 4; /* Make sure selected is always above */
+    background-color: var(--sq-tint);
 }
 
-.tab-icon {
+.tab-list .tab.is-selected::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 3px;
+    height: 3px;
+    border-radius: var(--sq-radius-pill, 999px);
+    background-color: var(--sq-brand-500, $looks-secondary);
+}
+
+.tab-list .tab-icon {
     flex-shrink: 0;
 }
 
-[dir="ltr"] .tab-icon {
-    margin-right: 0.25rem;
-}
-
-[dir="rtl"] .tab-icon {
-    margin-left: 0.25rem;
-}
-
-[dir="rtl"] .tab:nth-of-type(1) .tab-icon,
-[dir="rtl"] .tab:nth-of-type(3) .tab-icon {
+[dir="rtl"] .tab-list .tab:nth-of-type(1) .tab-icon,
+[dir="rtl"] .tab-list .tab:nth-of-type(3) .tab-icon {
     transform: scaleX(-1);
 }
 
-/* Tab style overrides from react-tabs */
-.tab.is-selected:after {
+.tab-list .tab.is-selected:after {
     display: none;
 }
 
-.tab.is-selected:focus {
+.tab-list .tab:focus {
     outline: none;
     box-shadow: none;
-    border-color: $ui-black-transparent;
+    border-color: transparent;
 }
 
-.tab.is-selected:focus:after {
+.tab-list .tab:focus:after {
     display: none;
 }
 
-/* Body of the tabs */
+.tab-list .tab:focus-visible {
+    outline: 2px solid var(--sq-focus-ring, var(--sq-focus));
+    outline-offset: 2px;
+}
+
+.tab-list .tab.is-selected:focus:after {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    .tab-list .tab {
+        height: var(--sq-target-touch, 44px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-list .tab {
+        transition: none;
+    }
+}
+
 .tabs {
     position: relative;
     flex-grow: 1;

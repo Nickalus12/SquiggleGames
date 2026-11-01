@@ -50,7 +50,10 @@ const SOURCES = {
     imagePlus: 'lucide/image-plus',
     language: 'lucide/globe',
     maximize: 'lucide/maximize',
+    costume: 'lucide/shirt',
     menu: 'lucide/menu',
+    mic: 'lucide/mic',
+    music: 'lucide/music',
     outline: 'lucide/list-tree',
     minimize: 'lucide/minimize',
     moveHorizontal: 'lucide/move-horizontal',
@@ -99,6 +102,10 @@ const ASSETS = [
     {file: 'src/components/sprite-info/icon--y.svg', icon: 'moveVertical', color: INK, size: 16},
     {file: 'src/components/delete-button/icon--delete.svg', icon: 'trash', color: WHITE, size: 20},
     {file: 'src/components/close-button/icon--close.svg', icon: 'plus', color: WHITE, size: null},
+    {file: 'src/components/asset-panel/icon--add-costume-lib.svg', icon: 'costume', color: WHITE, size: 20},
+    {file: 'src/components/asset-panel/icon--add-backdrop-lib.svg', icon: 'imagePlus', color: WHITE, size: 20},
+    {file: 'src/components/asset-panel/icon--add-sound-lib.svg', icon: 'music', color: WHITE, size: 20},
+    {file: 'src/components/asset-panel/icon--add-sound-record.svg', icon: 'mic', color: WHITE, size: 20},
     {file: 'src/lib/assets/icon--back.svg', icon: 'arrowLeft', color: WHITE, size: 20},
     {file: 'src/lib/assets/icon--help.svg', icon: 'help', color: WHITE, size: 20}
 ];

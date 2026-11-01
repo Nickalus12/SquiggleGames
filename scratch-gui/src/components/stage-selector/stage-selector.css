@@ -50,11 +50,9 @@ $header-height: calc($stage-menu-height - 2px);
 }
 
 .header-title {
-    font-size: 0.625rem;
-    font-weight: bold;
+    font-size: var(--sq-text-xs, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     color: $text-primary;
-
-    /* @todo: make this a mixin for all UI text labels */
     user-select: none;
     transition: color 0.25s ease;
 }
@@ -69,14 +67,15 @@ $header-height: calc($stage-menu-height - 2px);
 
 .count {
     padding: 0.3rem 0.75rem;
-    font-size: 0.625rem;
+    font-size: var(--sq-text-xs, 14px);
     color: $text-primary;
     user-select: none;
 }
 
 .label {
     margin: 0.75rem 0 0.25rem;
-    font-size: 0.6rem;
+    font-size: var(--sq-text-xs, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     color: $text-primary;
     user-select: none;
     text-align: center;
