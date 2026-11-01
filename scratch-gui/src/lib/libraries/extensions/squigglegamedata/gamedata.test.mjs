@@ -278,8 +278,12 @@ section('the extension');
     ok('it has the ten blocks', JSON.stringify(opcodes) === JSON.stringify(['save', 'saved', 'forget', 'whenReady',
         'isReady', 'isSignedIn', 'postScore', 'myBest', 'top', 'topIntoList']), opcodes);
     const labels = info.blocks.filter(b => b && b.blockType === 'label').map(b => b.text);
-    ok('the palette says the limits', labels.some(t => t.includes('16')) && labels.some(t => t.includes('4096')) &&
-        labels.some(t => t.includes('64')), labels);
+    ok('the first label says the limits', labels[0] === 'Up to 16 saves per player, 4096 letters in all', labels);
+    ok('no two labels sit together, so the toolbox keeps both', info.blocks.every((b, i) => !b || b.blockType !==
+        'label' || !info.blocks[i + 1] || info.blocks[i + 1].blockType !== 'label') && labels.length === 2, labels);
+    const post = info.blocks.find(b => b && b.opcode === 'postScore');
+    ok('post score reads post score 100 to Ninjas highest wins', post.text === 'post score [SCORE] to [BOARD] [ORDER]' &&
+        info.menus.order.items.map(i => i.text).join() === 'highest wins,lowest wins');
     ok('no em dash in any block text', info.blocks.every(b => !b || !/—/.test(b.text || '')));
     ok('every block has a method', opcodes.every(op => typeof ext[op] === 'function'));
     ok('loading fires when saves are ready', hats.includes('gamedata_whenReady') && contexts === 1);

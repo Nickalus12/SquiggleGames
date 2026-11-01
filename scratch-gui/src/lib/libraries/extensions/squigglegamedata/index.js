@@ -90,7 +90,7 @@ const makeGameDataBlocks = ({store, resolve, notifyParent = () => {}, now = Date
                 blocks: [
                     {
                         blockType: 'label',
-                        text: `Keeps up to ${LIMITS.keys} things for each player`
+                        text: `Up to ${LIMITS.keys} saves per player, ${LIMITS.bytes} letters in all`
                     },
                     {
                         opcode: 'save',
@@ -130,10 +130,6 @@ const makeGameDataBlocks = ({store, resolve, notifyParent = () => {}, now = Date
                         blockType: 'Boolean',
                         text: 'signed in?'
                     },
-                    {
-                        blockType: 'label',
-                        text: `Names up to ${LIMITS.name} letters, ${LIMITS.bytes} letters in all`
-                    },
                     '---',
                     {
                         blockType: 'label',
@@ -142,7 +138,7 @@ const makeGameDataBlocks = ({store, resolve, notifyParent = () => {}, now = Date
                     {
                         opcode: 'postScore',
                         blockType: 'command',
-                        text: 'post score [SCORE] to [BOARD], [ORDER] wins',
+                        text: 'post score [SCORE] to [BOARD] [ORDER]',
                         arguments: {
                             SCORE: {type: 'number', defaultValue: 100},
                             BOARD: {type: 'string', defaultValue: 'Ninjas'},
@@ -178,7 +174,7 @@ const makeGameDataBlocks = ({store, resolve, notifyParent = () => {}, now = Date
                 menus: {
                     order: {
                         acceptReporters: false,
-                        items: [{text: 'highest score', value: 'max'}, {text: 'lowest score', value: 'min'}]
+                        items: [{text: 'highest wins', value: 'max'}, {text: 'lowest wins', value: 'min'}]
                     },
                     lists: {acceptReporters: true, items: 'listMenu'}
                 }

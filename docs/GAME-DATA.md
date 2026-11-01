@@ -17,7 +17,7 @@ library. Its blocks are in the **Game data** category of the block palette.
 | `when saves are ready` | Runs when the player's saves have loaded. Start your game from here, or check `saves ready?` first |
 | `saves ready?` | True once the saves have loaded |
 | `signed in?` | True when the player is signed in, so their saves follow them to every device |
-| `post score [100] to [Ninjas], [highest score] wins` | Puts a score on a board. Pick **lowest score** for a race against the clock. Only the player's best score stays on the board |
+| `post score [100] to [Ninjas] [highest wins]` | Puts a score on a board. Pick **lowest wins** for a race against the clock. Only the player's best score stays on the board |
 | `my best on [Ninjas]` | The player's best score on that board |
 | `top [10] on [Ninjas]` | The top scores as one line, like `1. Fred 120, 2. a player 90, 3. you 50`. Put it in a `say` block |
 | `put top [10] on [Ninjas] in list [top scores]` | Fills a list with the top scores, one place per item, so the list shows on the stage |
@@ -33,7 +33,7 @@ say (join [You are on level ] (saved [level]))
 
 when I receive [level done]
 save [level] as ((saved [level]) + (1))
-post score (score) to [Ninjas], [highest score] wins
+post score (score) to [Ninjas] [highest wins]
 put top (10) on [Ninjas] in list [top scores]
 ```
 
