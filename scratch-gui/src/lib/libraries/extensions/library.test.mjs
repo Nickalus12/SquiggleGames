@@ -47,7 +47,6 @@ const registry = load(path.join(src, 'lib/kits/registry.js'));
 const helpers = load(path.join(src, 'components/extension-library/extension-cards.js'));
 
 const library = cards.default;
-const galleryCards = [cards.galleryLoading, cards.galleryMore, cards.galleryError];
 const pills = tags.default;
 const {TAG_IDS, isSquiggleItem} = tags;
 const {squiggleFirst, tagChipsFor, isTogetherRequired, MAX_TAG_CHIPS} = helpers;
@@ -82,6 +81,19 @@ ok('card ids are unique', new Set(ids).size === ids.length, ids.filter((id, i) =
 ok('every reserved kit id has a card', registry.listKits().every(kit => byId.has(kit.id)),
     registry.listKits().filter(kit => !byId.has(kit.id)).map(kit => kit.id));
 ok('the Together card is present', byId.has(registry.TOGETHER_ID));
+
+section('no third-party scripts');
+ok('no gallery cards are exported', ['galleryLoading', 'galleryMore', 'galleryError'].every(name => !(name in cards)));
+const fromUrl = library.filter(card => card.extensionURL)
+    .map(card => card.extensionId);
+ok('no card loads from a URL', fromUrl.length === 0, fromUrl);
+ok('no card links to turbowarp.org', library.every(card => !/turbowarp\.org/.test(String(card.href || ''))));
+ok('no Load custom extension card', !byId.has('custom_extension'));
+ok('no Face Sensing card', !byId.has('faceSensing'));
+ok('no Translate card, it went through a TurboWarp proxy', !byId.has('translate'));
+const containerText = fs.readFileSync(path.join(src, 'containers/extension-library.jsx'), 'utf8');
+ok('the library never fetches a gallery', !/extensions\.turbowarp\.org/.test(containerText) &&
+    !/fetch\(/.test(containerText));
 
 section('togetherRequired');
 const required = library.filter(card => card.togetherRequired).map(card => card.extensionId);
@@ -123,7 +135,7 @@ ok('squiggleFirst keeps order inside each group', JSON.stringify(sorted.filter(i
 ok('squiggleFirst keeps separators and strings out of the Squiggle group', !isSquiggleItem('---'));
 
 section('tags');
-library.concat(galleryCards).forEach(card => {
+library.forEach(card => {
     const bad = (card.tags || []).filter(tag => TAG_IDS.indexOf(tag) === -1);
     ok(`${card.extensionId} tags are in the tag table`, Array.isArray(card.tags) && card.tags.length > 0 &&
         bad.length === 0, bad);

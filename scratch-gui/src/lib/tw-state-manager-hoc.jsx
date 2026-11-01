@@ -362,7 +362,9 @@ const TWStateManager = function (WrappedComponent) {
             }
 
             for (const extension of urlParams.getAll('extension')) {
-                this.props.vm.extensionManager.loadExtensionURL(extension);
+                if (this.props.vm.extensionManager.isBuiltinExtension(extension)) {
+                    this.props.vm.extensionManager.loadExtensionURL(extension);
+                }
             }
 
             const routerCallbacks = {
