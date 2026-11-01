@@ -284,7 +284,7 @@ section('the extension');
     const post = info.blocks.find(b => b && b.opcode === 'postScore');
     ok('post score reads post score 100 to Ninjas highest wins', post.text === 'post score [SCORE] to [BOARD] [ORDER]' &&
         info.menus.order.items.map(i => i.text).join() === 'highest wins,lowest wins');
-    ok('no em dash in any block text', info.blocks.every(b => !b || !/—/.test(b.text || '')));
+    ok('no em dash in any block text', info.blocks.every(b => !b || !/\u2014/.test(b.text || '')));
     ok('every block has a method', opcodes.every(op => typeof ext[op] === 'function'));
     ok('loading fires when saves are ready', hats.includes('gamedata_whenReady') && contexts === 1);
     ok('the ready blocks answer', ext.isReady() === true && ext.isSignedIn() === false);
