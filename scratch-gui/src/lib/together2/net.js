@@ -113,6 +113,7 @@ const createGameSession = ({
     let heartbeatTimer = null;
     let lastInboundAt = -Infinity;
     let lastPingAt = -Infinity;
+    let lastOutboundAt = -Infinity;
     let silenced = 0;
 
     const stopHeartbeat = () => {
@@ -130,6 +131,7 @@ const createGameSession = ({
         if (!ws) return false;
         try {
             ws.send(JSON.stringify(frame));
+            lastOutboundAt = now();
             return true;
         } catch (e) {
             return false;
@@ -300,7 +302,8 @@ const createGameSession = ({
             return;
         }
         heartbeatTimer = setTimer(heartbeat, HEARTBEAT_MS);
-        if (t - lastInboundAt < PING_IDLE_MS || t - lastPingAt < PING_IDLE_MS) return;
+        const quiet = t - lastInboundAt >= PING_IDLE_MS || t - lastOutboundAt >= PING_IDLE_MS;
+        if (!quiet || t - lastPingAt < PING_IDLE_MS) return;
         lastPingAt = t;
         sendRaw({type: 'ping'});
     };
