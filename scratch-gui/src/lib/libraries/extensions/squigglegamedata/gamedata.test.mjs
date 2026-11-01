@@ -278,7 +278,7 @@ section('the extension');
     ok('it has the ten blocks', JSON.stringify(opcodes) === JSON.stringify(['save', 'saved', 'forget', 'whenReady',
         'isReady', 'isSignedIn', 'postScore', 'myBest', 'top', 'topIntoList']), opcodes);
     const labels = info.blocks.filter(b => b && b.blockType === 'label').map(b => b.text);
-    ok('the first label says the limits', labels[0] === 'Up to 16 saves per player, 4096 letters in all', labels);
+    ok('the first label says the limits', labels[0] === 'Up to 16 saves, 4096 letters in all', labels);
     ok('no two labels sit together, so the toolbox keeps both', info.blocks.every((b, i) => !b || b.blockType !==
         'label' || !info.blocks[i + 1] || info.blocks[i + 1].blockType !== 'label') && labels.length === 2, labels);
     const post = info.blocks.find(b => b && b.opcode === 'postScore');

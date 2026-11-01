@@ -90,7 +90,7 @@ const makeGameDataBlocks = ({store, resolve, notifyParent = () => {}, now = Date
                 blocks: [
                     {
                         blockType: 'label',
-                        text: `Up to ${LIMITS.keys} saves per player, ${LIMITS.bytes} letters in all`
+                        text: `Up to ${LIMITS.keys} saves, ${LIMITS.bytes} letters in all`
                     },
                     {
                         opcode: 'save',
