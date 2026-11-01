@@ -198,6 +198,13 @@ const ICONS = {
             '8.268 8.268c.344-.215.825-.004.803.401'
         ].join('')}]
     ],
+    outline: [
+        ['path', {d: 'M8 5h13'}],
+        ['path', {d: 'M13 12h8'}],
+        ['path', {d: 'M13 19h8'}],
+        ['path', {d: 'M3 10a2 2 0 0 0 2 2h3'}],
+        ['path', {d: 'M3 5v12a2 2 0 0 0 2 2h3'}]
+    ],
     panelLeft: [['rect', {x: '3', y: '3', width: '18', height: '18', rx: '2'}], ['path', {d: 'M9 3v18'}]],
     panelRight: [['rect', {x: '3', y: '3', width: '18', height: '18', rx: '2'}], ['path', {d: 'M15 3v18'}]],
     plus: [['path', {d: 'M5 12h14'}], ['path', {d: 'M12 5v14'}]],

@@ -51,6 +51,7 @@ const SOURCES = {
     language: 'lucide/globe',
     maximize: 'lucide/maximize',
     menu: 'lucide/menu',
+    outline: 'lucide/list-tree',
     minimize: 'lucide/minimize',
     moveHorizontal: 'lucide/move-horizontal',
     moveVertical: 'lucide/move-vertical',

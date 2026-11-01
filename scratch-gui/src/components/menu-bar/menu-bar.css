@@ -9,26 +9,13 @@
     flex-wrap: nowrap;
     gap: 0.5rem;
 
-    /*
-        For most things, we shouldn't explicitly set height, and let the
-        content push the element to whatever fits. Using a fixed height
-        instead, will help us subtract the value we assign from the body,
-        adding up to a perfect 100%. This means we don't need to set
-        overflow: hidden, which makes it hard to debug. border-box
-        simplifies by all of this by removing padding from the equation.
-    */
     box-sizing: border-box;
     height: $menu-bar-height;
-    padding: 0 0.5rem;
+    padding: 0 8px;
 
-    /*
-        @todo: This adds ~20px in Chrome, when scrolling to the right,
-        but fixes [FFx + Safari] [resize window down + scroll to the right] bug.
-        width: 100%;
-    */
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
-    font-size: $menu-bar-standard-font-size;
-    font-weight: bold;
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     background-color: $menu-bar-background;
     background-image: $menu-bar-background-image;
     color: $menu-bar-foreground;
@@ -70,9 +57,119 @@
     cursor: pointer;
 }
 
+.menu-bar-item.hoverable {
+    box-sizing: border-box;
+    height: var(--sq-target, 40px);
+    border-radius: var(--sq-radius-panel, 10px);
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
 .menu-bar-item.active,
 .menu-bar-item.hoverable:hover {
-    background-color: $ui-black-transparent;
+    background-color: var(--sq-menu-bar-hover);
+}
+
+.brand {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    height: var(--sq-target, 40px);
+    padding: 0 10px 0 6px;
+    border-radius: var(--sq-radius-panel, 10px);
+    color: var(--sq-menu-bar-text, #ffffff);
+    font-size: 18px;
+    font-weight: var(--sq-weight-heavy, 800);
+    text-decoration: none;
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.brand:hover {
+    background-color: var(--sq-menu-bar-hover);
+}
+
+.brand-mark {
+    display: block;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    box-shadow: 0 0 0 1.5px var(--sq-menu-bar-ring);
+}
+
+.file-group .menu-bar-item.menu-label,
+.account-info-group .menu-bar-item.menu-label {
+    padding: 0;
+}
+
+.menu-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    height: 100%;
+    margin: 0;
+    padding: 0 10px;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.plain-button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.bar-link {
+    gap: 6px;
+    color: var(--sq-menu-bar-text, #ffffff);
+    text-decoration: none;
+}
+
+.bar-icon {
+    flex: none;
+}
+
+.caret {
+    flex: none;
+    opacity: 0.85;
+}
+
+.bar-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    height: var(--sq-target, 40px);
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sq-radius-panel, 10px);
+    background-color: var(--sq-menu-bar-control);
+    color: var(--sq-menu-bar-text, #ffffff);
+    font-family: var(--sq-font);
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.bar-pill:hover,
+.bar-pill-open {
+    background-color: var(--sq-menu-bar-control-active);
+}
+
+.bar-pill-count {
+    opacity: 0.75;
+    font-weight: var(--sq-weight-heavy, 800);
 }
 
 .menu-bar-item.growable {
@@ -97,7 +194,11 @@
 }
 
 .menu-bar-menu {
-    margin-top: $menu-bar-height;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 6px;
     z-index: $z-index-menu-bar;
 }
 
@@ -108,7 +209,8 @@
 
 .menu-bar .feedback-button,
 .menu-bar .menu-bar-button {
-    height: 34px;
+    height: var(--sq-target, 40px);
+    padding: 0 14px;
     border-radius: var(--sq-radius-panel, 10px);
     background-color: var(--sq-menu-bar-control);
     box-shadow: none;
@@ -132,7 +234,8 @@
 }
 
 .divider {
-    height: 34px;
+    height: 28px;
+    opacity: 0.5;
 }
 
 .author-info {
@@ -160,11 +263,12 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    gap: 4px;
 }
 
 .account-info-group .menu-bar-item {
-    margin: 0 .25rem;
-    padding: 0 0.75rem;
+    margin: 0;
+    padding: 0 10px;
 }
 
 .mystuff-icon {
@@ -223,10 +327,6 @@
 }
 .mystuff > a:hover {
   background-size: 50%;
-}
-
-.mystuff > a {
-  /* background-image: url("/images/mystuff.png"); */
 }
 
 .about-icon {
@@ -335,6 +435,7 @@
 }
 
 .phone-sheet .menu-bar-menu {
+    position: static;
     flex-basis: 100%;
     margin: 0 0 8px;
 }
@@ -381,4 +482,77 @@
 
 .phone-sheet .feedback-link {
     display: flex;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .menu-bar-item.hoverable,
+    .bar-pill,
+    .brand {
+        transition: none;
+    }
+}
+
+@media (pointer: coarse) {
+    .menu-bar-item.hoverable,
+    .bar-pill,
+    .brand {
+        height: var(--sq-target-touch, 44px);
+    }
+}
+
+@media only screen and (max-width: 1124px) {
+    .brand-name {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
+.phone-sheet .brand {
+    height: 48px;
+    margin: 0 8px 4px;
+}
+
+.phone-sheet .brand-name {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+}
+
+.phone-sheet .menu-trigger {
+    width: 100%;
+    min-height: 48px;
+    padding: 0;
+}
+
+.phone-sheet .menu-bar-item.hoverable {
+    height: auto;
+}
+
+.phone-sheet .bar-pill,
+.phone-sheet .menu-bar-button {
+    width: 100%;
+    height: 48px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 0 8px;
+    background-color: transparent;
+    font-size: var(--sq-text-md, 16px);
+}
+
+.phone-sheet .bar-pill:hover,
+.phone-sheet .bar-pill-open,
+.phone-sheet .menu-bar-button:hover {
+    background-color: var(--sq-menu-bar-hover);
+}
+
+.phone-sheet .menu-bar-item {
+    font-size: var(--sq-text-md, 16px);
 }

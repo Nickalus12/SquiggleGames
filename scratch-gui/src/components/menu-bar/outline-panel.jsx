@@ -1,9 +1,26 @@
+import classNames from 'classnames';
 import PropTypes from 'prop-types';
 import React from 'react';
+import {defineMessages, injectIntl, intlShape} from 'react-intl';
 import {connect} from 'react-redux';
 
 import {isSection, parse, summarize, typeInfo} from '../../lib/annotations';
 import {revealComment} from '../../lib/annotations/workspace-ref';
+import SqIcon from '../sq-icon';
+import barStyles from './menu-bar.css';
+
+const messages = defineMessages({
+    outline: {
+        id: 'sq.menuBar.outline',
+        defaultMessage: 'Outline',
+        description: 'Menu bar button that lists the notes and sections in this sprite'
+    },
+    outlineTitle: {
+        id: 'sq.menuBar.outlineTitle',
+        defaultMessage: 'Every note and section in this sprite',
+        description: 'Tooltip on the Outline button'
+    }
+});
 
 const T = {
     surface: '#161c36',
@@ -23,8 +40,6 @@ const label = {
     color: T.faint
 };
 
-// A comment counts as belonging to a section when it sits inside its frame —
-// the same rule the eye uses when looking at the canvas.
 const within = (section, c) => (
     c.x >= section.x && c.y >= section.y &&
     c.x <= section.x + section.width &&
@@ -149,10 +164,6 @@ class OutlinePanel extends React.Component {
         this.handleQuery = this.handleQuery.bind(this);
     }
     componentDidMount () {
-        // Comments change through Blockly, not through redux, so the panel
-        // re-reads them on a timer rather than trying to subscribe to every
-        // path that can edit one. It ticks even while closed, otherwise the
-        // badge count stays stale until the panel is opened once.
         this.timer = setInterval(this.handleRefresh, 900);
     }
     componentWillUnmount () {
@@ -174,34 +185,22 @@ class OutlinePanel extends React.Component {
 
         return (
             <div style={{position: 'relative'}}>
-                <div
+                <button
+                    aria-expanded={!!open}
+                    className={classNames(barStyles.barPill, {[barStyles.barPillOpen]: open})}
+                    title={this.props.intl.formatMessage(messages.outlineTitle)}
+                    type="button"
                     onClick={this.handleToggle}
-                    role="button"
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        height: '34px',
-                        boxSizing: 'border-box',
-                        padding: '0 12px',
-                        borderRadius: 'var(--sq-radius-panel, 10px)',
-                        cursor: 'pointer',
-                        background: open ? 'var(--sq-menu-bar-control-active)' : 'var(--sq-menu-bar-control)',
-                        color: 'var(--sq-menu-bar-text, #ffffff)',
-                        fontFamily: T.font,
-                        fontSize: 'var(--sq-text-sm, 14px)',
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap'
-                    }}
-                    tabIndex={0}
-                    title={'Outline — every note and section in this sprite'}
                 >
-                    <span>{'☰'}</span>
-                    <span>{'Outline'}</span>
+                    <SqIcon
+                        name="outline"
+                        size={20}
+                    />
+                    <span>{this.props.intl.formatMessage(messages.outline)}</span>
                     {total ? (
-                        <span style={{opacity: 0.75, fontWeight: 800}}>{total}</span>
+                        <span className={barStyles.barPillCount}>{total}</span>
                     ) : null}
-                </div>
+                </button>
 
                 {open ? (
                     <div
@@ -324,6 +323,7 @@ class OutlinePanel extends React.Component {
 }
 
 OutlinePanel.propTypes = {
+    intl: intlShape,
     vm: PropTypes.object
 };
 
@@ -331,4 +331,4 @@ const mapStateToProps = state => ({
     vm: state.scratchGui.vm
 });
 
-export default connect(mapStateToProps)(OutlinePanel);
+export default injectIntl(connect(mapStateToProps)(OutlinePanel));

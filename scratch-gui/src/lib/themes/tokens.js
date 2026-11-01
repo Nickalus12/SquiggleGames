@@ -78,6 +78,8 @@ const SCALE = {
     'sq-menu-bar-control': MENU_BAR_CONTROL,
     'sq-menu-bar-control-active': MENU_BAR_CONTROL_ACTIVE,
     'sq-menu-bar-focus': '#ffffff',
+    'sq-menu-bar-hover': 'rgba(0, 0, 0, 0.18)',
+    'sq-menu-bar-ring': 'rgba(255, 255, 255, 0.55)',
     'sq-peer-outline-bar': '#ffffff',
     'sq-stage-surface': '#ffffff',
 

@@ -14,11 +14,7 @@ import TWDesktopSettings from './tw-desktop-settings.jsx';
 import menuBarStyles from './menu-bar.css';
 import styles from './settings-menu.css';
 
-import dropdownCaret from './dropdown-caret.svg';
-import {sqIconDataUri} from '../sq-icon';
-
-const settingsIcon = sqIconDataUri('settings', {color: '#ffffff'});
-const gameSettingsIcon = sqIconDataUri('advanced', {color: '#ffffff'});
+import SqIcon from '../sq-icon';
 
 const SettingsMenu = ({
     canChangeLanguage,
@@ -32,33 +28,32 @@ const SettingsMenu = ({
     settingsMenuOpen
 }) => (
     <MenuLabel
+        barId="settings"
         open={settingsMenuOpen}
         onOpen={onRequestOpen}
         onClose={onRequestClose}
     >
-        <img
-            src={settingsIcon}
-            draggable={false}
-            width={20}
-            height={20}
+        <SqIcon
+            className={menuBarStyles.barIcon}
+            name="settings"
+            size={20}
         />
-        <span className={styles.dropdownLabel}>
+        <span className={menuBarStyles.collapsibleLabel}>
             <FormattedMessage
                 defaultMessage="Settings"
                 description="Settings menu"
                 id="gui.menuBar.settings"
             />
         </span>
-        <img
-            src={dropdownCaret}
-            draggable={false}
-            width={8}
-            height={5}
+        <SqIcon
+            className={menuBarStyles.caret}
+            name="chevronDown"
+            size={16}
         />
         <MenuBarMenu
             className={menuBarStyles.menuBarMenu}
             open={settingsMenuOpen}
-            place={isRtl ? 'left' : 'right'}
+            place={isRtl ? 'right' : 'left'}
         >
             <MenuSection>
                 {canChangeLanguage && <LanguageMenu onRequestCloseSettings={onRequestClose} />}
@@ -77,12 +72,10 @@ const SettingsMenu = ({
                 <MenuSection>
                     <MenuItem onClick={onOpenGameSettings}>
                         <div className={styles.option}>
-                            <img
-                                src={gameSettingsIcon}
-                                draggable={false}
-                                width={24}
-                                height={24}
-                                alt=""
+                            <SqIcon
+                                className={styles.icon}
+                                name="advanced"
+                                size={20}
                             />
                             <FormattedMessage
                                 defaultMessage="Game settings"

@@ -4,8 +4,10 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import Button from '../button/button.jsx';
 
-import communityIcon from './icon--see-community.svg';
+import {sqIconDataUri} from '../sq-icon';
 import styles from './community-button.css';
+
+const buttonIcon = sqIconDataUri('eye', {color: '#ffffff'});
 
 const CommunityButton = ({
     className,
@@ -17,15 +19,15 @@ const CommunityButton = ({
             styles.communityButton
         )}
         iconClassName={styles.communityButtonIcon}
-        iconSrc={communityIcon}
+        iconSrc={buttonIcon}
         iconWidth={20}
         iconHeight={20}
         onClick={onClick}
     >
         <FormattedMessage
-            defaultMessage="See Project Page"
-            description="Label for see project page button"
-            id="gui.menuBar.seeProjectPage"
+            defaultMessage="Preview"
+            description="Menu bar button that shows the game the way players see it"
+            id="sq.menuBar.preview"
         />
     </Button>
 );
