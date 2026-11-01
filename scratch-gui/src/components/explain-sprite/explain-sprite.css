@@ -1,0 +1,52 @@
+@import "../../css/colors.css";
+@import "../../css/units.css";
+
+.modal-content {
+    width: 380px;
+}
+
+.body {
+    background: $ui-modal-background;
+    padding: 1.25rem 1.75rem 1.5rem;
+}
+
+.status {
+    font-size: .875rem;
+    text-align: center;
+    padding: 1rem 0 1.5rem;
+}
+
+.row {
+    margin-bottom: 1rem;
+}
+
+.label {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: $looks-secondary;
+    margin-bottom: .25rem;
+}
+
+.text {
+    font-size: .9375rem;
+    line-height: 1.4;
+    color: $text-primary;
+}
+
+.button-row {
+    text-align: right;
+    margin-top: .5rem;
+}
+
+.close-button {
+    padding: .75rem 1.25rem;
+    border-radius: .25rem;
+    background: $looks-secondary;
+    border: 1px solid $looks-secondary;
+    color: $ui-white;
+    font-weight: 600;
+    font-size: .875rem;
+    cursor: pointer;
+}
