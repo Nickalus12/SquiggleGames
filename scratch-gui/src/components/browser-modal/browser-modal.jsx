@@ -23,14 +23,39 @@ const messages = defineMessages({
         id: 'tw.browserModal.desktopTitle',
         defaultMessage: 'System is not supported',
         description: 'Title of error message in desktop app when system does not support required API, such as WebGL'
+    },
+    webglOff: {
+        id: 'sq.browserModal.webglTitle',
+        defaultMessage: '{APP_NAME} cannot draw your game yet',
+        description: 'Title of the message shown when the browser has WebGL turned off'
     }
 });
 
+const HELP_URL = 'https://squigglegames.app/webgl';
+
 const noop = () => {};
 
+const webglReason = () => {
+    try {
+        const canvas = document.createElement('canvas');
+        let reason = '';
+        canvas.addEventListener('webglcontextcreationerror', e => {
+            reason = e.statusMessage || '';
+        });
+        if (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) return '';
+        return reason;
+    } catch (e) {
+        return '';
+    }
+};
+
 const BrowserModal = ({intl, ...props}) => {
-    const title = props.onClickDesktopSettings ? messages.systemNotSupported : messages.browserNotSupported;
+    const rendererSupported = isRendererSupported();
     const incompatibleUserscripts = findIncompatibleUserscripts();
+    const webglOnly = !rendererSupported && isNewFunctionSupported() && incompatibleUserscripts.length === 0;
+    let title = props.onClickDesktopSettings ? messages.systemNotSupported : messages.browserNotSupported;
+    if (webglOnly && !props.onClickDesktopSettings) title = messages.webglOff;
+    const reason = rendererSupported ? '' : webglReason();
     return (
         <ReactModal
             isOpen
@@ -49,7 +74,10 @@ const BrowserModal = ({intl, ...props}) => {
 
                 <Box className={styles.body}>
                     <h2 className={styles.title}>
-                        <FormattedMessage {...title} />
+                        <FormattedMessage
+                            {...title}
+                            values={{APP_NAME}}
+                        />
                     </h2>
 
                     {/* eslint-disable max-len */}
@@ -70,16 +98,23 @@ const BrowserModal = ({intl, ...props}) => {
                         </React.Fragment>
                     )}
 
-                    {!isRendererSupported() && (
+                    {!rendererSupported && (
                         <React.Fragment>
                             <p>
                                 <FormattedMessage
-                                    defaultMessage="{APP_NAME} requires WebGL, however your computer does not seem to support it. This is often a temporary error that can be fixed by restarting your computer."
-                                    description="Error message when browser does not support WebGL."
-                                    id="tw.browserModal.webgl1"
+                                    defaultMessage="{APP_NAME} draws your sprites with a part of the browser called WebGL. This browser has it turned off right now, so nothing can be drawn."
+                                    description="First line of the message shown when the browser has WebGL turned off"
+                                    id="sq.browserModal.webglOff"
                                     values={{
                                         APP_NAME
                                     }}
+                                />
+                            </p>
+                            <p>
+                                <FormattedMessage
+                                    defaultMessage="Try this first: close the browser all the way, then open it again. Your work is safe. If that does not help, the page below shows the switch for every browser."
+                                    description="Second line of the message shown when the browser has WebGL turned off"
+                                    id="sq.browserModal.webglTry"
                                 />
                             </p>
 
@@ -106,14 +141,45 @@ const BrowserModal = ({intl, ...props}) => {
                                     </div>
                                 </React.Fragment>
                             ) : (
-                                <p>
+                                <div className={styles.buttonRow}>
+                                    <a
+                                        className={styles.primaryButton}
+                                        href={HELP_URL}
+                                    >
+                                        <FormattedMessage
+                                            defaultMessage="Show me how to turn it on"
+                                            description="Button that opens the page explaining how to turn WebGL on in each browser"
+                                            id="sq.browserModal.webglHelp"
+                                        />
+                                    </a>
+                                    <a
+                                        className={styles.ghostButton}
+                                        href="/"
+                                    >
+                                        <FormattedMessage
+                                            defaultMessage="Back to {APP_NAME}"
+                                            description="Button that leaves the editor for the home page"
+                                            id="sq.browserModal.webglBack"
+                                            values={{
+                                                APP_NAME
+                                            }}
+                                        />
+                                    </a>
+                                </div>
+                            )}
+
+                            {reason ? (
+                                <p className={styles.reason}>
                                     <FormattedMessage
-                                        defaultMessage={'Use a recent version of Chrome, Firefox, or Safari, and ensure your graphics drivers are up to date. You can also try toggling the "graphics acceleration" or "hardware acceleration" option in your browser\'s settings.'}
-                                        description="Error message when browser does not support WebGL (browser version). Chrome calls it graphics acceleration and Firefox calls it hardware acceleration; consider seeing how they actually translate these"
-                                        id="tw.browserModal.webglBrowser"
+                                        defaultMessage="What the browser said: {reason}"
+                                        description="Small grey line quoting the browser's own WebGL error for a grown-up or support"
+                                        id="sq.browserModal.webglReason"
+                                        values={{
+                                            reason
+                                        }}
                                     />
                                 </p>
-                            )}
+                            ) : null}
                         </React.Fragment>
                     )}
 
