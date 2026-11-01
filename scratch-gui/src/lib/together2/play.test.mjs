@@ -37,8 +37,14 @@ const fakeRuntime = extra => {
     }, extra);
 };
 
+const rulesSprite = blocks => ({isOriginal: true, isStage: false, extensionStorage: {together: {role: 'rules', v: 1}},
+    blocks: {_blocks: blocks}});
+
+const withRules = () => fakeRuntime({targets: [{isOriginal: true, isStage: true, extensionStorage: {}},
+    rulesSprite({h: {opcode: 'together_ruleWhenGameStarts'}})]});
+
 const fakeVm = (loaded, runtime) => ({
-    runtime: runtime || fakeRuntime(),
+    runtime: runtime || withRules(),
     extensionManager: {isExtensionLoaded: id => loaded.indexOf(id) !== -1}
 });
 
@@ -106,6 +112,10 @@ section('the mode follows the blocks the project uses');
     ok('flag on with together loaded joins the game', playMode(fakeVm(['together']), true) === 'game');
     ok('flag on with an Arena project joins the game', playMode(fakeVm(['squigglearena', 'pen']), true) === 'game');
     ok('flag on without any of them drives', playMode(fakeVm(['pen', 'squiggleworld']), true) === 'drive');
+    ok('flag on with Together but no Game Rules sprite still drives, as before the switch',
+        playMode(fakeVm(['together'], fakeRuntime()), true) === 'drive');
+    const emptyRules = fakeRuntime({targets: [rulesSprite({})]});
+    ok('an empty Game Rules sprite still drives', playMode(fakeVm(['together'], emptyRules), true) === 'drive');
 }
 
 section('initPlay picks drive or game once the project is in');
@@ -122,6 +132,7 @@ section('initPlay picks drive or game once the project is in');
     const waiting = initPlay(fakeVm(['together'], empty), {code: 'ab12'}, {ready: () => true, drive, game});
     await flush();
     ok('flag on waits for the project to load', calls.length === 0 && empty.count('PROJECT_LOADED') === 1);
+    empty.targets = withRules().targets;
     empty.emit('PROJECT_LOADED');
     ok('then joins the game with the code in capitals', await waiting === 'game' && calls[0].join() === 'game,AB12,',
         calls);

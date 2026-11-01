@@ -4,7 +4,7 @@ process.removeAllListeners('warning');
 
 const {ruleOpcodes, ruleOpcodeSet, OPEN_RULES_FUNC} = await import('./rule-blocks.js');
 const {KIT_COLORS} = await import('../themes/tokens.js');
-const {filterCategory, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
+const {filterCategory, MODE_RULES, MODE_DEVICE, MODE_PLAIN} = await import('./toolbox-mode.js');
 const {deviceOpcodes} = await import('../together2/device-blocks.js');
 const {gameServerReady} = await import('./flags.js');
 
@@ -74,6 +74,9 @@ const checkExpansion = async id => {
         device.xml);
     ok('with the game server off a device sprite sees only the button', gameServerReady() ||
         !device.xml.includes('<block'), device.xml);
+    const plain = filterCategory(categoryOf(shown), MODE_PLAIN);
+    ok('with no Game Rules sprite a device sprite sees only the button',
+        plain.xml.includes(OPEN_RULES_FUNC) && !plain.xml.includes('<block'), plain.xml);
     const live = filterCategory(categoryOf(opcodes), MODE_DEVICE);
     ok('with the game server on a device sprite sees the device blocks',
         deviceOps.every(opcode => live.xml.includes(`${id}_${opcode}"`)), live.xml);

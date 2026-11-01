@@ -45,6 +45,8 @@ import {findTopBlock} from '../lib/backpack/code-payload.js';
 import {gentlyRequestPersistentStorage} from '../lib/tw-persistent-storage.js';
 import collab from '../lib/collab';
 import {isRulesTarget} from '../lib/collab/project-seam.js';
+import {findRulesTarget} from '../lib/rules/rule-blocks.js';
+import {toolboxModeFor} from '../lib/rules/toolbox-mode.js';
 import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 
@@ -471,7 +473,7 @@ class Blocks extends React.Component {
                 stageCostumes[stageCostumes.length - 1].name,
                 targetSounds.length > 0 ? targetSounds[targetSounds.length - 1].name : '',
                 this.props.theme.getBlockColors(),
-                isRulesTarget(target) ? 'rules' : 'device'
+                toolboxModeFor(isRulesTarget(target), !!findRulesTarget(runtime))
             );
         } catch {
             return null;

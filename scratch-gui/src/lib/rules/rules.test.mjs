@@ -14,7 +14,7 @@ const {installProjectSeam, isRulesTarget, RULES_KEY} = await import('../collab/p
 const {ensureRulesSprite, RULES_NAME} = await import('./ensure-sprite.js');
 const {installRulesGuard, settle} = await import('./guard.js');
 const {ruleOpcodeSet, menuItems} = await import('./rule-blocks.js');
-const {filterCategories, tokenize, MODE_RULES, MODE_DEVICE} = await import('./toolbox-mode.js');
+const {filterCategories, tokenize, toolboxModeFor, MODE_RULES, MODE_DEVICE, MODE_PLAIN} = await import('./toolbox-mode.js');
 const {createRulesStatus, kidText, parseRulesStatus, rulesStatus} = await import('./status.js');
 const {buildRulesUpload, createRulesUploader, levelOpcodes, putRules, uploadLevels, uploadRules,
     OPCODE_SET} = await import('./package.js');
@@ -127,14 +127,24 @@ const deviceTypes = typesIn(deviceView);
 ok('rules mode shows only rule blocks', rulesTypes.length > 0 && rulesTypes.every(t => ruleSet.has(t)), rulesTypes.filter(t => !ruleSet.has(t)));
 ok('rules mode shows every rule block', rulesTypes.length === ruleSet.size, [rulesTypes.length, ruleSet.size]);
 ok('device mode shows no rule blocks', deviceTypes.every(t => !ruleSet.has(t)));
-ok('device mode keeps the 16 legacy blocks', deviceTypes.filter(t => t.startsWith('together_')).length === 16,
-    deviceTypes.filter(t => t.startsWith('together_')));
-ok('the game server blocks stay hidden until the game socket lands',
-    !deviceTypes.some(t => /^together_(tellGame|whenGameSays|gameValue|myPlayerValue|gameRound|myTeam|timeLeft|inGame)$/
-        .test(t)) && !/Game server/.test(xml.map(c => c.xml).join('')));
-ok('expansions in device mode show only the Open Game Rules button', deviceView
+const GAME_BLOCK = /^together_(tellGame|whenGameSays|gameValue|myPlayerValue|gameRound|myTeam|timeLeft|inGame|whenGameValueChanges|playerValueOf|nameOfPlayer)$/;
+const plainView = filterCategories(xml, MODE_PLAIN);
+const plainTypes = typesIn(plainView);
+ok('device mode keeps the 16 legacy blocks and adds the 11 game server blocks',
+    deviceTypes.filter(t => t.startsWith('together_') && !GAME_BLOCK.test(t)).length === 16 &&
+    deviceTypes.filter(t => GAME_BLOCK.test(t)).length === 11, deviceTypes.filter(t => t.startsWith('together_')));
+ok('with no Game Rules sprite the palette keeps the 16 legacy blocks and no game server block',
+    plainTypes.filter(t => t.startsWith('together_')).length === 16 && !plainTypes.some(t => GAME_BLOCK.test(t)) &&
+    plainTypes.every(t => !ruleSet.has(t)), plainTypes.filter(t => t.startsWith('together_')));
+ok('expansions in device mode show the Open Game Rules button and their device blocks', deviceView
+    .filter(c => c.id !== 'together')
+    .every(c => /<block/.test(c.xml) && /callbackData="[a-z]+_openGameRules"/.test(c.xml)));
+ok('expansions with no Game Rules sprite show only the Open Game Rules button', plainView
     .filter(c => c.id !== 'together')
     .every(c => !/<block/.test(c.xml) && /callbackData="[a-z]+_openGameRules"/.test(c.xml)));
+ok('the rules sprite gets rules mode', toolboxModeFor(true, true) === MODE_RULES);
+ok('another sprite gets device mode once a Game Rules sprite exists', toolboxModeFor(false, true) === MODE_DEVICE);
+ok('a project with no Game Rules sprite gets plain mode', toolboxModeFor(false, false) === MODE_PLAIN);
 ok('rules mode drops the Open Game Rules button', rulesView.every(c => !/openGameRules/.test(c.xml)));
 {
     const makeToolboxXML = (await import('../make-toolbox-xml.js')).default;
