@@ -114,7 +114,6 @@ const aboutIcon = sqIconDataUri('help', MENU_ICON);
 const fileIcon = sqIconDataUri('file', MENU_ICON);
 const editIcon = sqIconDataUri('edit', MENU_ICON);
 const addonsIcon = sqIconDataUri('addons', MENU_ICON);
-const advancedIcon = sqIconDataUri('advanced', MENU_ICON);
 
 const ariaMessages = defineMessages({
     tutorials: {
@@ -558,7 +557,11 @@ class MenuBar extends React.Component {
                                 </MenuBarMenu>
                             </MenuLabel>
                         </div>}
-                        {(this.props.canChangeTheme || this.props.canChangeLanguage) && (<SettingsMenu
+                        {(
+                            this.props.canChangeTheme ||
+                            this.props.canChangeLanguage ||
+                            this.props.onClickSettingsModal
+                        ) && (<SettingsMenu
                             canChangeLanguage={this.props.canChangeLanguage}
                             canChangeTheme={this.props.canChangeTheme}
                             isRtl={this.props.isRtl}
@@ -571,6 +574,7 @@ class MenuBar extends React.Component {
                                 this.props.onClickAddonSettings &&
                                 this.props.onClickAddonSettings.bind(null, 'editor-theme3')
                             }
+                            onOpenGameSettings={this.props.onClickSettingsModal}
                             onRequestClose={this.props.onRequestCloseSettings}
                             onRequestOpen={this.props.onClickSettings}
                             settingsMenuOpen={this.props.settingsMenuOpen}
@@ -847,9 +851,9 @@ class MenuBar extends React.Component {
                                 <MenuSection>
                                     <MenuItem onClick={this.props.onClickSettingsModal}>
                                         <FormattedMessage
-                                            defaultMessage="Advanced Settings"
-                                            description="Menu bar item for advanced settings"
-                                            id="tw.menuBar.moreSettings"
+                                            defaultMessage="Game settings"
+                                            description="Edit menu item that opens the game settings modal"
+                                            id="sq.menuBar.gameSettings"
                                         />
                                     </MenuItem>
                                 </MenuSection>
@@ -915,26 +919,6 @@ class MenuBar extends React.Component {
                                         defaultMessage="Addons"
                                         description="Button to open addon settings"
                                         id="tw.menuBar.addons"
-                                    />
-                                </span>
-                            </div>
-                        )}
-                        {this.props.onClickSettingsModal && (
-                            <div
-                                className={classNames(styles.menuBarItem, styles.hoverable, styles.focusExtra)}
-                                onClick={this.props.onClickSettingsModal}
-                            >
-                                <img
-                                    src={advancedIcon}
-                                    draggable={false}
-                                    width={24}
-                                    height={24}
-                                />
-                                <span className={styles.collapsibleLabel}>
-                                    <FormattedMessage
-                                        defaultMessage="Advanced"
-                                        description="Button to open advanced settings menu"
-                                        id="tw.menuBar.advanced"
                                     />
                                 </span>
                             </div>

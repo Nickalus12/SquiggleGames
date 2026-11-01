@@ -1,95 +1,105 @@
 import PropTypes from 'prop-types';
 import React from 'react';
-import {defineMessages, injectIntl, intlShape} from 'react-intl';
+import {injectIntl, intlShape} from 'react-intl';
 import bindAll from 'lodash.bindall';
 import {connect} from 'react-redux';
 import {closeSettingsModal} from '../reducers/modals';
 import SettingsModalComponent from '../components/tw-settings-modal/settings-modal.jsx';
-import {defaultStageSize} from '../reducers/custom-stage-size';
+import {STAGE_PRESETS, presetFor, clampFramerate, storeGameSettings} from '../lib/game-settings.js';
 
-const messages = defineMessages({
-    newFramerate: {
-        defaultMessage: 'New framerate:',
-        description: 'Prompt shown to choose a new framerate',
-        id: 'tw.menuBar.newFramerate'
-    }
-});
-
-class UsernameModal extends React.Component {
+class GameSettingsModal extends React.Component {
     constructor (props) {
         super(props);
         bindAll(this, [
             'handleFramerateChange',
-            'handleCustomizeFramerate',
+            'handleFramerateValue',
             'handleHighQualityPenChange',
             'handleInterpolationChange',
             'handleInfiniteClonesChange',
             'handleRemoveFencingChange',
             'handleRemoveLimitsChange',
             'handleWarpTimerChange',
+            'handleStagePreset',
             'handleStageWidthChange',
             'handleStageHeightChange',
-            'handleDisableCompilerChange',
-            'handleStoreProjectOptions'
+            'handleDisableCompilerChange'
         ]);
+    }
+    store () {
+        if (this.props.isEmbedded) return;
+        storeGameSettings(this.props.vm);
     }
     handleFramerateChange (e) {
         this.props.vm.setFramerate(e.target.checked ? 60 : 30);
+        this.store();
     }
-    async handleCustomizeFramerate () {
-        // prompt() returns Promise in desktop app
-        // eslint-disable-next-line no-alert
-        const newFramerate = await prompt(this.props.intl.formatMessage(messages.newFramerate), this.props.framerate);
-        const parsed = parseFloat(newFramerate);
-        if (isFinite(parsed)) {
-            this.props.vm.setFramerate(parsed);
-        }
+    handleFramerateValue (value) {
+        const fps = clampFramerate(value);
+        if (fps === null) return;
+        this.props.vm.setFramerate(fps);
+        this.store();
     }
     handleHighQualityPenChange (e) {
         this.props.vm.renderer.setUseHighQualityRender(e.target.checked);
+        this.store();
     }
     handleInterpolationChange (e) {
         this.props.vm.setInterpolation(e.target.checked);
+        this.store();
     }
     handleInfiniteClonesChange (e) {
         this.props.vm.setRuntimeOptions({
             maxClones: e.target.checked ? Infinity : 300
         });
+        this.store();
     }
     handleRemoveFencingChange (e) {
         this.props.vm.setRuntimeOptions({
             fencing: !e.target.checked
         });
+        this.store();
     }
     handleRemoveLimitsChange (e) {
         this.props.vm.setRuntimeOptions({
             miscLimits: !e.target.checked
         });
+        this.store();
     }
     handleWarpTimerChange (e) {
         this.props.vm.setCompilerOptions({
             warpTimer: e.target.checked
         });
     }
+    handleStagePreset (e) {
+        const id = e.currentTarget.getAttribute('data-preset');
+        const preset = STAGE_PRESETS.find(p => p.id === id);
+        if (!preset) {
+            this.props.vm.setStageSize(this.props.customStageSize.width + 1, this.props.customStageSize.height);
+            this.store();
+            return;
+        }
+        this.props.vm.setStageSize(preset.width, preset.height);
+        this.store();
+    }
+    handleStageWidthChange (value) {
+        this.props.vm.setStageSize(Number(value), this.props.customStageSize.height);
+        this.store();
+    }
+    handleStageHeightChange (value) {
+        this.props.vm.setStageSize(this.props.customStageSize.width, Number(value));
+        this.store();
+    }
     handleDisableCompilerChange (e) {
         this.props.vm.setCompilerOptions({
             enabled: !e.target.checked
         });
-    }
-    handleStageWidthChange (value) {
-        this.props.vm.setStageSize(value, this.props.customStageSize.height);
-    }
-    handleStageHeightChange (value) {
-        this.props.vm.setStageSize(this.props.customStageSize.width, value);
-    }
-    handleStoreProjectOptions () {
-        this.props.vm.storeProjectOptions();
     }
     render () {
         const {
             /* eslint-disable no-unused-vars */
             onClose,
             vm,
+            customStageSize,
             /* eslint-enable no-unused-vars */
             ...props
         } = this.props;
@@ -97,30 +107,27 @@ class UsernameModal extends React.Component {
             <SettingsModalComponent
                 onClose={this.props.onClose}
                 onFramerateChange={this.handleFramerateChange}
-                onCustomizeFramerate={this.handleCustomizeFramerate}
+                onFramerateValue={this.handleFramerateValue}
                 onHighQualityPenChange={this.handleHighQualityPenChange}
                 onInterpolationChange={this.handleInterpolationChange}
                 onInfiniteClonesChange={this.handleInfiniteClonesChange}
                 onRemoveFencingChange={this.handleRemoveFencingChange}
                 onRemoveLimitsChange={this.handleRemoveLimitsChange}
                 onWarpTimerChange={this.handleWarpTimerChange}
+                onStagePreset={this.handleStagePreset}
                 onStageWidthChange={this.handleStageWidthChange}
                 onStageHeightChange={this.handleStageHeightChange}
                 onDisableCompilerChange={this.handleDisableCompilerChange}
                 stageWidth={this.props.customStageSize.width}
                 stageHeight={this.props.customStageSize.height}
-                customStageSizeEnabled={
-                    this.props.customStageSize.width !== defaultStageSize.width ||
-                    this.props.customStageSize.height !== defaultStageSize.height
-                }
-                onStoreProjectOptions={this.handleStoreProjectOptions}
+                stagePreset={presetFor(this.props.customStageSize.width, this.props.customStageSize.height)}
                 {...props}
             />
         );
     }
 }
 
-UsernameModal.propTypes = {
+GameSettingsModal.propTypes = {
     intl: intlShape,
     onClose: PropTypes.func,
     vm: PropTypes.shape({
@@ -170,4 +177,4 @@ const mapDispatchToProps = dispatch => ({
 export default injectIntl(connect(
     mapStateToProps,
     mapDispatchToProps
-)(UsernameModal));
+)(GameSettingsModal));

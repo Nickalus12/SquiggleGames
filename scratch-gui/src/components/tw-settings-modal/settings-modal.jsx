@@ -2,16 +2,13 @@ import {defineMessages, FormattedMessage, intlShape, injectIntl} from 'react-int
 import PropTypes from 'prop-types';
 import React from 'react';
 import classNames from 'classnames';
-import bindAll from 'lodash.bindall';
 import Box from '../box/box.jsx';
 import Modal from '../../containers/modal.jsx';
 import FancyCheckbox from '../tw-fancy-checkbox/checkbox.jsx';
 import Input from '../forms/input.jsx';
 import BufferedInputHOC from '../forms/buffered-input-hoc.jsx';
-import DocumentationLink from '../tw-documentation-link/documentation-link.jsx';
+import {STAGE_PRESETS, MIN_FPS, MAX_FPS} from '../../lib/game-settings.js';
 import styles from './settings-modal.css';
-import helpIcon from './help-icon.svg';
-import {APP_NAME} from '../../lib/brand.js';
 
 /* eslint-disable react/no-multi-comp */
 
@@ -19,417 +16,197 @@ const BufferedInput = BufferedInputHOC(Input);
 
 const messages = defineMessages({
     title: {
-        defaultMessage: 'Advanced Settings',
-        description: 'Title of settings modal',
-        id: 'tw.settingsModal.title'
+        defaultMessage: 'Game settings',
+        description: 'Title of the game settings modal',
+        id: 'sq.settings.title'
     },
-    help: {
-        defaultMessage: 'Click for help',
-        description: 'Hover text of help icon in settings',
-        id: 'tw.settingsModal.help'
+    normal: {
+        defaultMessage: 'Normal',
+        description: 'Stage shape preset, the Scratch default',
+        id: 'sq.settings.stage.normal'
+    },
+    wide: {
+        defaultMessage: 'Wide',
+        description: 'Stage shape preset, widescreen',
+        id: 'sq.settings.stage.wide'
+    },
+    tall: {
+        defaultMessage: 'Tall',
+        description: 'Stage shape preset, portrait for phones',
+        id: 'sq.settings.stage.tall'
+    },
+    custom: {
+        defaultMessage: 'Custom',
+        description: 'Stage shape preset, pick your own size',
+        id: 'sq.settings.stage.custom'
     }
 });
 
-const LearnMore = props => (
-    <React.Fragment>
-        {' '}
-        <DocumentationLink {...props}>
-            <FormattedMessage
-                defaultMessage="Learn more."
-                id="gui.alerts.cloudInfoLearnMore"
+const Setting = ({value, onChange, label, detail, children}) => (
+    <div className={classNames(styles.setting, {[styles.active]: value})}>
+        <label className={styles.label}>
+            <FancyCheckbox
+                className={styles.checkbox}
+                checked={value}
+                onChange={onChange}
             />
-        </DocumentationLink>
-    </React.Fragment>
-);
-
-class UnwrappedSetting extends React.Component {
-    constructor (props) {
-        super(props);
-        bindAll(this, [
-            'handleClickHelp'
-        ]);
-        this.state = {
-            helpVisible: false
-        };
-    }
-    componentDidUpdate (prevProps) {
-        if (this.props.active && !prevProps.active) {
-            // eslint-disable-next-line react/no-did-update-set-state
-            this.setState({
-                helpVisible: true
-            });
-        }
-    }
-    handleClickHelp () {
-        this.setState(prevState => ({
-            helpVisible: !prevState.helpVisible
-        }));
-    }
-    render () {
-        return (
-            <div
-                className={classNames(styles.setting, {
-                    [styles.active]: this.props.active
-                })}
-            >
-                <div className={styles.label}>
-                    {this.props.primary}
-                    <button
-                        className={styles.helpIcon}
-                        onClick={this.handleClickHelp}
-                        title={this.props.intl.formatMessage(messages.help)}
-                    >
-                        <img
-                            src={helpIcon}
-                            draggable={false}
-                        />
-                    </button>
-                </div>
-                {this.state.helpVisible && (
-                    <div className={styles.detail}>
-                        {this.props.help}
-                        {this.props.slug && <LearnMore slug={this.props.slug} />}
-                    </div>
-                )}
-                {this.props.secondary}
-            </div>
-        );
-    }
-}
-UnwrappedSetting.propTypes = {
-    intl: intlShape,
-    active: PropTypes.bool,
-    help: PropTypes.node,
-    primary: PropTypes.node,
-    secondary: PropTypes.node,
-    slug: PropTypes.string
-};
-const Setting = injectIntl(UnwrappedSetting);
-
-const BooleanSetting = ({value, onChange, label, ...props}) => (
-    <Setting
-        {...props}
-        active={value}
-        primary={
-            <label className={styles.label}>
-                <FancyCheckbox
-                    className={styles.checkbox}
-                    checked={value}
-                    onChange={onChange}
-                />
-                {label}
-            </label>
-        }
-    />
-);
-BooleanSetting.propTypes = {
-    onChange: PropTypes.func.isRequired,
-    value: PropTypes.bool.isRequired,
-    label: PropTypes.node.isRequired
-};
-
-const HighQualityPen = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="High Quality Pen"
-                description="High quality pen setting"
-                id="tw.settingsModal.highQualityPen"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Allows pen projects to render at higher resolutions and disables some coordinate rounding in the editor. Not all projects benefit from this setting and it may impact performance."
-                description="High quality pen setting help"
-                id="tw.settingsModal.highQualityPenHelp"
-            />
-        }
-        slug="high-quality-pen"
-    />
-);
-
-const CustomFPS = props => (
-    <BooleanSetting
-        value={props.framerate !== 30}
-        onChange={props.onChange}
-        label={
-            <FormattedMessage
-                defaultMessage="60 FPS (Custom FPS)"
-                description="FPS setting"
-                id="tw.settingsModal.fps"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Runs scripts 60 times per second instead of 30. Most projects will not work properly with this enabled. You should try Interpolation with 60 FPS mode disabled if that is the case. {customFramerate}."
-                description="FPS setting help"
-                id="tw.settingsModal.fpsHelp"
-                values={{
-                    customFramerate: (
-                        <a
-                            onClick={props.onCustomizeFramerate}
-                            tabIndex="0"
-                        >
-                            <FormattedMessage
-                                defaultMessage="Click to use a framerate other than 30 or 60"
-                                description="FPS settings help"
-                                id="tw.settingsModal.fpsHelp.customFramerate"
-                            />
-                        </a>
-                    )
-                }}
-            />
-        }
-        slug="custom-fps"
-    />
-);
-CustomFPS.propTypes = {
-    framerate: PropTypes.number,
-    onChange: PropTypes.func,
-    onCustomizeFramerate: PropTypes.func
-};
-
-const Interpolation = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Interpolation"
-                description="Interpolation setting"
-                id="tw.settingsModal.interpolation"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Makes projects appear smoother by interpolating sprite motion. Interpolation should not be used on 3D projects, raytracers, pen projects, and laggy projects as interpolation will make them run slower without making them appear smoother."
-                description="Interpolation setting help"
-                id="tw.settingsModal.interpolationHelp"
-            />
-        }
-        slug="interpolation"
-    />
-);
-
-const InfiniteClones = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Infinite Clones"
-                description="Infinite Clones setting"
-                id="tw.settingsModal.infiniteClones"
-            />
-        }
-        help={
-            <FormattedMessage
-                defaultMessage="Disables Scratch's 300 clone limit."
-                description="Infinite Clones setting help"
-                id="tw.settingsModal.infiniteClonesHelp"
-            />
-        }
-        slug="infinite-clones"
-    />
-);
-
-const RemoveFencing = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Remove Fencing"
-                description="Remove Fencing setting"
-                id="tw.settingsModal.removeFencing"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Allows sprites to move offscreen, become as large or as small as they want, and makes touching blocks work offscreen."
-                description="Remove Fencing setting help"
-                id="tw.settingsModal.removeFencingHelp"
-            />
-        }
-        slug="remove-fencing"
-    />
-);
-
-const RemoveMiscLimits = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Remove Miscellaneous Limits"
-                description="Remove Miscellaneous Limits setting"
-                id="tw.settingsModal.removeMiscLimits"
-            />
-        }
-        help={
-            <FormattedMessage
-                defaultMessage="Removes sound effect limits and pen size limits."
-                description="Remove Miscellaneous Limits setting help"
-                id="tw.settingsModal.removeMiscLimitsHelp"
-            />
-        }
-        slug="remove-misc-limits"
-    />
-);
-
-const WarpTimer = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Warp Timer"
-                description="Warp Timer setting"
-                id="tw.settingsModal.warpTimer"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Makes scripts check if they are stuck in a long or infinite loop and run at a low framerate instead of getting stuck until the loop finishes. This fixes most crashes but has a significant performance impact, so it's only enabled by default in the editor."
-                description="Warp Timer help"
-                id="tw.settingsModal.warpTimerHelp"
-            />
-        }
-        slug="warp-timer"
-    />
-);
-
-const DisableCompiler = props => (
-    <BooleanSetting
-        {...props}
-        label={
-            <FormattedMessage
-                defaultMessage="Disable Compiler"
-                description="Disable Compiler setting"
-                id="tw.settingsModal.disableCompiler"
-            />
-        }
-        help={
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Disables the {APP_NAME} compiler. You may want to enable this while editing projects so that scripts update immediately. Otherwise, you should never enable this."
-                description="Disable Compiler help"
-                id="tw.settingsModal.disableCompilerHelp"
-                values={{
-                    APP_NAME
-                }}
-            />
-        }
-        slug="disable-compiler"
-    />
-);
-
-const CustomStageSize = ({
-    customStageSizeEnabled,
-    stageWidth,
-    onStageWidthChange,
-    stageHeight,
-    onStageHeightChange
-}) => (
-    <Setting
-        active={customStageSizeEnabled}
-        primary={(
-            <div className={classNames(styles.label, styles.customStageSize)}>
-                <FormattedMessage
-                    defaultMessage="Custom Stage Size:"
-                    description="Custom Stage Size option"
-                    id="tw.settingsModal.customStageSize"
-                />
-                <BufferedInput
-                    value={stageWidth}
-                    onSubmit={onStageWidthChange}
-                    className={styles.customStageSizeInput}
-                    type="number"
-                    min="0"
-                    max="1024"
-                    step="1"
-                />
-                <span>{'×'}</span>
-                <BufferedInput
-                    value={stageHeight}
-                    onSubmit={onStageHeightChange}
-                    className={styles.customStageSizeInput}
-                    type="number"
-                    min="0"
-                    max="1024"
-                    step="1"
-                />
-            </div>
-        )}
-        secondary={
-            (stageWidth >= 1000 || stageHeight >= 1000) && (
-                <div className={styles.warning}>
-                    <FormattedMessage
-                        // eslint-disable-next-line max-len
-                        defaultMessage="Using a custom stage size this large is not recommended! Instead, use a lower size with the same aspect ratio and let fullscreen mode upscale it to match the user's display."
-                        description="Warning about using stages that are too large in settings modal"
-                        id="tw.settingsModal.largeStageWarning"
-                    />
-                    <LearnMore slug="custom-stage-size" />
-                </div>
-            )
-        }
-        help={(
-            <FormattedMessage
-                // eslint-disable-next-line max-len
-                defaultMessage="Changes the size of the Scratch stage from 480x360 to something else. Try 640x360 to make the stage widescreen. Very few projects will handle this properly."
-                description="Custom Stage Size option"
-                id="tw.settingsModal.customStageSizeHelp"
-            />
-        )}
-        slug="custom-stage-size"
-    />
-);
-CustomStageSize.propTypes = {
-    customStageSizeEnabled: PropTypes.bool,
-    stageWidth: PropTypes.number,
-    onStageWidthChange: PropTypes.func,
-    stageHeight: PropTypes.number,
-    onStageHeightChange: PropTypes.func
-};
-
-const StoreProjectOptions = ({onStoreProjectOptions}) => (
-    <div className={styles.setting}>
-        <div>
-            <button
-                onClick={onStoreProjectOptions}
-                className={styles.button}
-            >
-                <FormattedMessage
-                    defaultMessage="Store settings in project"
-                    description="Button in settings modal"
-                    id="tw.settingsModal.storeProjectOptions"
-                />
-            </button>
-            <p>
-                <FormattedMessage
-                    // eslint-disable-next-line max-len
-                    defaultMessage="Stores the selected settings in the project so they will be automatically applied when TurboWarp loads this project. Warp timer and disable compiler will not be saved."
-                    description="Help text for the store settings in project button"
-                    id="tw.settingsModal.storeProjectOptionsHelp"
-                />
-            </p>
-        </div>
+            {label}
+        </label>
+        <p className={styles.detail}>{detail}</p>
+        {children}
     </div>
 );
-StoreProjectOptions.propTypes = {
-    onStoreProjectOptions: PropTypes.func
+Setting.propTypes = {
+    value: PropTypes.bool.isRequired,
+    onChange: PropTypes.func.isRequired,
+    label: PropTypes.node.isRequired,
+    detail: PropTypes.node.isRequired,
+    children: PropTypes.node
 };
 
-const Header = props => (
+const Header = ({children}) => (
     <div className={styles.header}>
-        {props.children}
+        {children}
         <div className={styles.divider} />
     </div>
 );
 Header.propTypes = {
     children: PropTypes.node
+};
+
+const Framerate = ({framerate, onChange, onValue}) => (
+    <Setting
+        value={framerate !== 30}
+        onChange={onChange}
+        label={
+            <FormattedMessage
+                defaultMessage="60 frames a second"
+                description="Setting that doubles the script rate"
+                id="sq.settings.fps"
+            />
+        }
+        detail={
+            <FormattedMessage
+                defaultMessage="Scripts run twice as fast. Many games get too fast to play. Try Smooth motion first."
+                description="Help for the 60 frames a second setting"
+                id="sq.settings.fpsDetail"
+            />
+        }
+    >
+        {framerate !== 30 && (
+            <label className={styles.inline}>
+                <FormattedMessage
+                    defaultMessage="Frames a second:"
+                    description="Label for the custom framerate field"
+                    id="sq.settings.fpsValue"
+                />
+                <BufferedInput
+                    value={framerate}
+                    onSubmit={onValue}
+                    className={styles.numberInput}
+                    type="number"
+                    min={MIN_FPS}
+                    max={MAX_FPS}
+                    step="1"
+                />
+            </label>
+        )}
+    </Setting>
+);
+Framerate.propTypes = {
+    framerate: PropTypes.number,
+    onChange: PropTypes.func,
+    onValue: PropTypes.func
+};
+
+const StageShape = ({stageWidth, stageHeight, preset, onPreset, onStageWidthChange, onStageHeightChange, intl}) => (
+    <React.Fragment>
+        <div
+            className={styles.presets}
+            role="group"
+            aria-label={intl.formatMessage({
+                defaultMessage: 'Stage shape',
+                description: 'Section of the game settings about the stage size',
+                id: 'sq.settings.stage'
+            })}
+        >
+            {STAGE_PRESETS.map(p => (
+                <button
+                    key={p.id}
+                    type="button"
+                    data-preset={p.id}
+                    className={classNames(styles.preset, {[styles.selected]: preset === p.id})}
+                    aria-pressed={preset === p.id}
+                    onClick={onPreset}
+                >
+                    {intl.formatMessage(messages[p.id])}
+                    <small>{`${p.width} × ${p.height}`}</small>
+                </button>
+            ))}
+            <button
+                type="button"
+                data-preset="custom"
+                className={classNames(styles.preset, {[styles.selected]: preset === 'custom'})}
+                aria-pressed={preset === 'custom'}
+                onClick={onPreset}
+            >
+                {intl.formatMessage(messages.custom)}
+                <small>{preset === 'custom' ? `${stageWidth} × ${stageHeight}` : '…'}</small>
+            </button>
+        </div>
+        {preset === 'custom' && (
+            <div className={styles.customStageSize}>
+                <BufferedInput
+                    value={stageWidth}
+                    onSubmit={onStageWidthChange}
+                    className={styles.numberInput}
+                    type="number"
+                    min="0"
+                    max="1024"
+                    step="1"
+                    aria-label="Width"
+                />
+                <span>{'×'}</span>
+                <BufferedInput
+                    value={stageHeight}
+                    onSubmit={onStageHeightChange}
+                    className={styles.numberInput}
+                    type="number"
+                    min="0"
+                    max="1024"
+                    step="1"
+                    aria-label="Height"
+                />
+            </div>
+        )}
+        <p className={styles.detail}>
+            <FormattedMessage
+                // eslint-disable-next-line max-len
+                defaultMessage="Tall fits a phone held upright. A game built for one shape usually needs changes to fit another."
+                description="Help for the stage shape presets"
+                id="sq.settings.stageDetail"
+            />
+        </p>
+        {(stageWidth >= 1000 || stageHeight >= 1000) && (
+            <div className={styles.warning}>
+                <FormattedMessage
+                    // eslint-disable-next-line max-len
+                    defaultMessage="That is very big. Pick a smaller size with the same shape and let full screen scale it up."
+                    description="Warning about a very large custom stage size"
+                    id="sq.settings.largeStage"
+                />
+            </div>
+        )}
+    </React.Fragment>
+);
+StageShape.propTypes = {
+    intl: intlShape,
+    stageWidth: PropTypes.number,
+    stageHeight: PropTypes.number,
+    preset: PropTypes.string,
+    onPreset: PropTypes.func,
+    onStageWidthChange: PropTypes.func,
+    onStageHeightChange: PropTypes.func
 };
 
 const SettingsModalComponent = props => (
@@ -440,70 +217,207 @@ const SettingsModalComponent = props => (
         id="settingsModal"
     >
         <Box className={styles.body}>
+            {!props.isEmbedded && (
+                <p className={styles.intro}>
+                    <FormattedMessage
+                        // eslint-disable-next-line max-len
+                        defaultMessage="Tune how your game runs. These settings save with your game, so friends play it the way you made it."
+                        description="Intro line of the game settings modal"
+                        id="sq.settings.intro"
+                    />
+                </p>
+            )}
+
             <Header>
                 <FormattedMessage
-                    defaultMessage="Featured"
-                    description="Settings modal section"
-                    id="tw.settingsModal.featured"
+                    defaultMessage="Make it smoother"
+                    description="Game settings section"
+                    id="sq.settings.smoother"
                 />
             </Header>
-            <CustomFPS
-                framerate={props.framerate}
-                onChange={props.onFramerateChange}
-                onCustomizeFramerate={props.onCustomizeFramerate}
-            />
-            <Interpolation
+            <Setting
                 value={props.interpolation}
                 onChange={props.onInterpolationChange}
+                label={
+                    <FormattedMessage
+                        defaultMessage="Smooth motion"
+                        description="Interpolation setting"
+                        id="sq.settings.interpolation"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        // eslint-disable-next-line max-len
+                        defaultMessage="Sprites glide instead of jumping between frames. Skip this for pen drawings and 3D games."
+                        description="Help for the interpolation setting"
+                        id="sq.settings.interpolationDetail"
+                    />
+                }
             />
-            <HighQualityPen
+            <Framerate
+                framerate={props.framerate}
+                onChange={props.onFramerateChange}
+                onValue={props.onFramerateValue}
+            />
+            <Setting
                 value={props.highQualityPen}
                 onChange={props.onHighQualityPenChange}
+                label={
+                    <FormattedMessage
+                        defaultMessage="Sharp pen"
+                        description="High quality pen setting"
+                        id="sq.settings.hqpen"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        defaultMessage="Pen lines stay crisp when the stage is big. A little slower on old computers."
+                        description="Help for the high quality pen setting"
+                        id="sq.settings.hqpenDetail"
+                    />
+                }
             />
-            <WarpTimer
-                value={props.warpTimer}
-                onChange={props.onWarpTimerChange}
-            />
+
             <Header>
                 <FormattedMessage
-                    defaultMessage="Remove Limits"
-                    description="Settings modal section"
-                    id="tw.settingsModal.removeLimits"
+                    defaultMessage="Take off the limits"
+                    description="Game settings section"
+                    id="sq.settings.limits"
                 />
             </Header>
-            <InfiniteClones
+            <Setting
                 value={props.infiniteClones}
                 onChange={props.onInfiniteClonesChange}
+                label={
+                    <FormattedMessage
+                        defaultMessage="More than 300 clones"
+                        description="Infinite clones setting"
+                        id="sq.settings.clones"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        defaultMessage="Scratch stops at 300 clones. This lets you make as many as you like."
+                        description="Help for the infinite clones setting"
+                        id="sq.settings.clonesDetail"
+                    />
+                }
             />
-            <RemoveFencing
+            <Setting
                 value={props.removeFencing}
                 onChange={props.onRemoveFencingChange}
+                label={
+                    <FormattedMessage
+                        defaultMessage="Sprites can leave the stage"
+                        description="Remove fencing setting"
+                        id="sq.settings.fencing"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        // eslint-disable-next-line max-len
+                        defaultMessage="Sprites can go past the edge, grow huge or tiny, and still touch things out there."
+                        description="Help for the remove fencing setting"
+                        id="sq.settings.fencingDetail"
+                    />
+                }
             />
-            <RemoveMiscLimits
+            <Setting
                 value={props.removeLimits}
                 onChange={props.onRemoveLimitsChange}
+                label={
+                    <FormattedMessage
+                        defaultMessage="Louder effects and bigger pen"
+                        description="Remove miscellaneous limits setting"
+                        id="sq.settings.misc"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        defaultMessage="Takes the caps off sound effects and pen size."
+                        description="Help for the remove miscellaneous limits setting"
+                        id="sq.settings.miscDetail"
+                    />
+                }
             />
-            <Header>
-                <FormattedMessage
-                    defaultMessage="Danger Zone"
-                    description="Settings modal section"
-                    id="tw.settingsModal.dangerZone"
-                />
-            </Header>
+
             {!props.isEmbedded && (
-                <CustomStageSize
-                    {...props}
-                />
+                <React.Fragment>
+                    <Header>
+                        <FormattedMessage
+                            defaultMessage="Stage shape"
+                            description="Section of the game settings about the stage size"
+                            id="sq.settings.stage"
+                        />
+                    </Header>
+                    <StageShape
+                        intl={props.intl}
+                        stageWidth={props.stageWidth}
+                        stageHeight={props.stageHeight}
+                        preset={props.stagePreset}
+                        onPreset={props.onStagePreset}
+                        onStageWidthChange={props.onStageWidthChange}
+                        onStageHeightChange={props.onStageHeightChange}
+                    />
+                </React.Fragment>
             )}
-            <DisableCompiler
-                value={props.disableCompiler}
-                onChange={props.onDisableCompilerChange}
-            />
-            {!props.isEmbedded && (
-                <StoreProjectOptions
-                    {...props}
+
+            <details className={styles.experts}>
+                <summary>
+                    <FormattedMessage
+                        defaultMessage="For experts"
+                        description="Collapsed section of the game settings with editor-only switches"
+                        id="sq.settings.experts"
+                    />
+                </summary>
+                <Setting
+                    value={props.warpTimer}
+                    onChange={props.onWarpTimerChange}
+                    label={
+                        <FormattedMessage
+                            defaultMessage="Stuck-loop guard"
+                            description="Warp timer setting"
+                            id="sq.settings.warpTimer"
+                        />
+                    }
+                    detail={
+                        <FormattedMessage
+                            // eslint-disable-next-line max-len
+                            defaultMessage="Catches forever loops that never end so the editor does not freeze. It costs speed, so it is on here and off when your game is played."
+                            description="Help for the warp timer setting"
+                            id="sq.settings.warpTimerDetail"
+                        />
+                    }
                 />
-            )}
+                <Setting
+                    value={props.disableCompiler}
+                    onChange={props.onDisableCompilerChange}
+                    label={
+                        <FormattedMessage
+                            defaultMessage="Turn off the compiler"
+                            description="Disable compiler setting"
+                            id="sq.settings.compiler"
+                        />
+                    }
+                    detail={
+                        <FormattedMessage
+                            // eslint-disable-next-line max-len
+                            defaultMessage="Runs scripts the slow way so a change shows the instant you make it. Leave this off unless a block acts strangely."
+                            description="Help for the disable compiler setting"
+                            id="sq.settings.compilerDetail"
+                        />
+                    }
+                />
+                {!props.isEmbedded && (
+                    <p className={styles.footnote}>
+                        <FormattedMessage
+                            defaultMessage="These two are for this editor only. Everything above saves with your game."
+                            description="Footnote under the expert settings"
+                            id="sq.settings.expertsNote"
+                        />
+                    </p>
+                )}
+            </details>
         </Box>
     </Modal>
 );
@@ -514,7 +428,7 @@ SettingsModalComponent.propTypes = {
     isEmbedded: PropTypes.bool,
     framerate: PropTypes.number,
     onFramerateChange: PropTypes.func,
-    onCustomizeFramerate: PropTypes.func,
+    onFramerateValue: PropTypes.func,
     highQualityPen: PropTypes.bool,
     onHighQualityPenChange: PropTypes.func,
     interpolation: PropTypes.bool,
@@ -528,7 +442,13 @@ SettingsModalComponent.propTypes = {
     warpTimer: PropTypes.bool,
     onWarpTimerChange: PropTypes.func,
     disableCompiler: PropTypes.bool,
-    onDisableCompilerChange: PropTypes.func
+    onDisableCompilerChange: PropTypes.func,
+    stageWidth: PropTypes.number,
+    stageHeight: PropTypes.number,
+    stagePreset: PropTypes.string,
+    onStagePreset: PropTypes.func,
+    onStageWidthChange: PropTypes.func,
+    onStageHeightChange: PropTypes.func
 };
 
 export default injectIntl(SettingsModalComponent);

@@ -4,7 +4,7 @@ import {FormattedMessage} from 'react-intl';
 
 import LanguageMenu from './language-menu.jsx';
 import MenuBarMenu from './menu-bar-menu.jsx';
-import {MenuSection} from '../menu/menu.jsx';
+import {MenuItem, MenuSection} from '../menu/menu.jsx';
 import MenuLabel from './tw-menu-label.jsx';
 import TWAccentThemeMenu from './tw-theme-accent.jsx';
 import TWGuiThemeMenu from './tw-theme-gui.jsx';
@@ -18,6 +18,7 @@ import dropdownCaret from './dropdown-caret.svg';
 import {sqIconDataUri} from '../sq-icon';
 
 const settingsIcon = sqIconDataUri('settings', {color: '#ffffff'});
+const gameSettingsIcon = sqIconDataUri('advanced', {color: '#ffffff'});
 
 const SettingsMenu = ({
     canChangeLanguage,
@@ -25,6 +26,7 @@ const SettingsMenu = ({
     isRtl,
     onClickDesktopSettings,
     onOpenCustomSettings,
+    onOpenGameSettings,
     onRequestClose,
     onRequestOpen,
     settingsMenuOpen
@@ -71,6 +73,26 @@ const SettingsMenu = ({
                 )}
                 {onClickDesktopSettings && <TWDesktopSettings onClick={onClickDesktopSettings} />}
             </MenuSection>
+            {onOpenGameSettings && (
+                <MenuSection>
+                    <MenuItem onClick={onOpenGameSettings}>
+                        <div className={styles.option}>
+                            <img
+                                src={gameSettingsIcon}
+                                draggable={false}
+                                width={24}
+                                height={24}
+                                alt=""
+                            />
+                            <FormattedMessage
+                                defaultMessage="Game settings"
+                                description="Menu item under Settings that opens the game settings modal"
+                                id="sq.menuBar.gameSettings"
+                            />
+                        </div>
+                    </MenuItem>
+                </MenuSection>
+            )}
         </MenuBarMenu>
     </MenuLabel>
 );
@@ -81,6 +103,7 @@ SettingsMenu.propTypes = {
     isRtl: PropTypes.bool,
     onClickDesktopSettings: PropTypes.func,
     onOpenCustomSettings: PropTypes.func,
+    onOpenGameSettings: PropTypes.func,
     onRequestClose: PropTypes.func,
     onRequestOpen: PropTypes.func,
     settingsMenuOpen: PropTypes.bool
