@@ -20,9 +20,10 @@
 .modal-content {
     margin: 100px auto;
     outline: none;
-    border: 4px solid $ui-white-transparent;
+    border: 1px solid var(--sq-line, $ui-white-transparent);
     padding: 0;
-    border-radius: $space;
+    border-radius: var(--sq-radius-card, 16px);
+    box-shadow: var(--sq-elevation-3);
     user-select: none;
 
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
@@ -42,20 +43,12 @@
 
     background-color: $ui-secondary;
 
-    /* Default modal resets */
     margin: 0;
     border: none;
     border-radius: 0;
 }
 
 
-/*
-    Modal header has 3 items:
-    |filter     title       x|
-
-    Use the same width for both side item containers,
-    so that title remains centered
-*/
 $sides: 20rem;
 
 .header {
@@ -67,18 +60,19 @@ $sides: 20rem;
 
     box-sizing: border-box;
     width: 100%;
+    border-bottom: 1px solid var(--sq-line, $ui-black-transparent);
     background-color: $ui-modal-header-background;
     color: $ui-modal-header-foreground;
 
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
-    font-size: 1rem;
-    font-weight: normal;
+    font-size: var(--sq-text-lg, 22px);
+    font-weight: var(--sq-weight-heavy, 800);
 }
 
 .header-item {
     display: flex;
     align-items: center;
-    padding: 1rem;
+    padding: 0 12px;
     text-decoration: none;
     user-select: none;
 }
@@ -102,7 +96,6 @@ $sides: 20rem;
     flex-shrink: 0;
     justify-content: center;
     user-select: none;
-    letter-spacing: 0.4px;
     cursor: default;
 }
 
@@ -133,13 +126,37 @@ $sides: 20rem;
     justify-content: flex-start;
 }
 
-.back-button {
-    font-weight: normal;
-    padding-right: 0;
-    padding-left: 0;
+.back-button,
+.help-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--sq-target, 40px);
+    padding: 0 12px;
+    border-radius: var(--sq-radius-panel, 10px);
+    background: transparent;
+    color: inherit;
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
 }
 
-[dir="rtl"] .back-button img {
+.back-button:hover,
+.help-button:hover {
+    background-color: var(--sq-tint-card, $ui-black-transparent);
+}
+
+.back-button > div,
+.help-button > div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.button-icon {
+    flex: none;
+}
+
+[dir="rtl"] .back-button .button-icon {
     transform: scaleX(-1);
 }
 
@@ -154,11 +171,6 @@ $sides: 20rem;
 
 [dir="rtl"] .header-item-help {
     margin-left: -4.75rem;
-}
-
-.help-button {
-    font-weight: normal;
-    font-size: 0.75rem;
 }
 
 [dir="ltr"] .help-button {

@@ -1188,6 +1188,7 @@ const mapDispatchToProps = dispatch => ({
     onClickSettings: () => dispatch(openSettingsMenu()),
     onClickSettingsModal: () => {
         dispatch(closeEditMenu());
+        dispatch(closeSettingsMenu());
         dispatch(openSettingsModal());
     },
     onRequestCloseSettings: () => dispatch(closeSettingsMenu()),
