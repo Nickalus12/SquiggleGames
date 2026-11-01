@@ -560,3 +560,7 @@
 .phone-sheet .community-button-wrapper {
     padding: 0 8px;
 }
+
+.phone-sheet .menu-bar-button [class*="button_icon_"] {
+    margin: 0;
+}
