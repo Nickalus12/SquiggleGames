@@ -10,8 +10,8 @@ const guiColors = {
     'ui-modal-overlay': DAY['sq-scrim'],
     'ui-modal-background': DAY['sq-panel'],
     'ui-modal-foreground': DAY['sq-text'],
-    'ui-modal-header-background': 'var(--looks-secondary)',
-    'ui-modal-header-foreground': '#ffffff',
+    'ui-modal-header-background': DAY['sq-panel'],
+    'ui-modal-header-foreground': DAY['sq-text'],
 
     'ui-white': DAY['sq-panel'],
     'ui-white-dim': 'rgba(255, 255, 255, 0.75)',

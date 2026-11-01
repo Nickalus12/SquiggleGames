@@ -3,79 +3,77 @@
 
 .close-button {
     display: flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-
-    overflow: hidden;  /* Mask the icon animation */
-    background-color: $ui-black-transparent;
-    border-radius: 50%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    color: var(--sq-text-muted, $text-primary);
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     user-select: none;
     cursor: pointer;
-    transition: all 0.15s ease-out;
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out),
+        color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
 }
 
-.close-button.large:hover {
-    transform: scale(1.1, 1.1);
-    box-shadow: 0 0 0 4px $ui-black-transparent;
+.close-button:hover {
+    background-color: var(--sq-tint-card, $ui-black-transparent);
+    color: var(--sq-text, $text-primary);
 }
 
-.close-button.large.orange:hover {
-    transform: scale(1.1, 1.1);
-    box-shadow: 0px 0px 0px 4px hsla(29, 100%, 54%, 0.2);
+.close-button:focus-visible {
+    outline: 2px solid var(--sq-focus-ring, var(--sq-focus));
+    outline-offset: 2px;
 }
 
-.small {
-    width: 0.825rem;
-    height: 0.825rem;
-    background-color: $looks-secondary;
-    color: $ui-white;
+.icon {
+    display: block;
+    flex: none;
 }
 
 .large {
-    width: 1.75rem;
-    height: 1.75rem;
-    box-shadow: 0 0 0 2px $ui-black-transparent;
+    width: var(--sq-target, 40px);
+    height: var(--sq-target, 40px);
+    border-radius: var(--sq-radius-panel, 10px);
 }
 
- .large.orange {
-    background-color: hsla(29, 100%, 54%, 0.2);
-    box-shadow: 0px 0px 0px 2px hsla(29, 100%, 54%, 0.2);
+.small {
+    width: 20px;
+    height: 20px;
+    border-radius: var(--sq-radius-pill, 999px);
+    background-color: $looks-secondary;
+    color: #ffffff;
 }
 
-.close-icon {
-    position: relative;
-    margin: 0.25rem;
-    user-select: none;
-    transform-origin: 50%;
-    transform: rotate(45deg);
+.small:hover {
+    background-color: $looks-secondary-dark;
+    color: #ffffff;
 }
 
-.close-icon.orange {
-    transform: rotate(45deg);
-    transform: scale(1.4);
+.orange {
+    color: var(--sq-warn);
 }
 
-.small .close-icon {
-    width: 50%;
+.green {
+    color: var(--sq-success);
 }
 
-.large .close-icon {
-    width: 0.75rem;
-    height: 0.75rem;
+[dir="rtl"] .close-button .icon {
+    transform: scaleX(-1);
 }
 
-.back-icon {
-  position: relative;
-  margin: 0.25rem;
-  user-select: none;
+@media (pointer: coarse) {
+    .large {
+        width: var(--sq-target-touch, 44px);
+        height: var(--sq-target-touch, 44px);
+    }
 }
 
-.small .back-icon {
-    width: 50%;
-}
-
-.large .back-icon {
-    width: 2rem;
-    height: 2rem;
+@media (prefers-reduced-motion: reduce) {
+    .close-button {
+        transition: none;
+    }
 }

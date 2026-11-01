@@ -336,7 +336,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="code"
-                                        size={24}
+                                        size={20}
                                     />
                                     <FormattedMessage
                                         defaultMessage="Code"
@@ -351,7 +351,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="art"
-                                        size={24}
+                                        size={20}
                                     />
                                     {targetIsStage ? (
                                         <FormattedMessage
@@ -374,7 +374,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="sounds"
-                                        size={24}
+                                        size={20}
                                     />
                                     <FormattedMessage
                                         defaultMessage="Sounds"

@@ -31,7 +31,6 @@ import SettingsStore from '../addons/settings-store-singleton';
 import '../lib/tw-fix-history-api';
 import GUI from './render-gui.jsx';
 import MenuBar from '../components/menu-bar/menu-bar.jsx';
-import ProjectInput from '../components/tw-project-input/project-input.jsx';
 import Description from '../components/tw-description/description.jsx';
 import BrowserModal from '../components/browser-modal/browser-modal.jsx';
 import TWWindchimeSubmitter from '../containers/tw-windchime-submitter.jsx';
@@ -47,7 +46,6 @@ import styles from './interface.css';
 const isInvalidEmbed = window.parent !== window;
 
 const handleClickAddonSettings = addonId => {
-    // addonId might be a string of the addon to focus on, undefined, or an event (treat like undefined)
     const path = process.env.ROUTING_STYLE === 'wildcard' ? 'addons' : 'addons.html';
     const url = `${process.env.ROOT}${path}${typeof addonId === 'string' ? `#${addonId}` : ''}`;
     window.open(url);
@@ -55,9 +53,9 @@ const handleClickAddonSettings = addonId => {
 
 const messages = defineMessages({
     defaultTitle: {
-        defaultMessage: 'Run Scratch projects faster',
+        defaultMessage: 'Make and play games',
         description: 'Title of homepage',
-        id: 'tw.guiDefaultTitle'
+        id: 'sq.guiDefaultTitle'
     }
 });
 
@@ -85,36 +83,24 @@ const Footer = () => (
         <div className={styles.footerContent}>
             <div className={styles.footerText}>
                 <FormattedMessage
-                    // eslint-disable-next-line max-len
+                    defaultMessage="{APP_NAME} is made by Lumina Games LLC. It is built on TurboWarp and Scratch, which are free software under the GPL."
+                    description="Footer line on the player page that credits the projects Squiggle is built on"
+                    id="sq.footer.builtOn"
+                    values={{
+                        APP_NAME
+                    }}
+                />
+            </div>
+            <div className={styles.footerText}>
+                <FormattedMessage
                     defaultMessage="{APP_NAME} is not affiliated with Scratch, the Scratch Team, or the Scratch Foundation."
-                    description="Disclaimer that TurboWarp is not connected to Scratch"
+                    description="Disclaimer that Squiggle is not connected to Scratch"
                     id="tw.footer.disclaimer"
                     values={{
                         APP_NAME
                     }}
                 />
             </div>
-
-            <div className={styles.footerText}>
-                <FormattedMessage
-                    // eslint-disable-next-line max-len
-                    defaultMessage="Scratch is a project of the Scratch Foundation. It is available for free at {scratchDotOrg}."
-                    description="A disclaimer that Scratch requires when referring to Scratch. {scratchDotOrg} is a link with text 'https://scratch.org/'"
-                    id="tw.footer.scratchDisclaimer"
-                    values={{
-                        scratchDotOrg: (
-                            <a
-                                href="https://scratch.org/"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                {'https://scratch.org/'}
-                            </a>
-                        )
-                    }}
-                />
-            </div>
-
             <div className={styles.footerColumns}>
                 <div className={styles.footerSection}>
                     <a href="credits.html">
@@ -126,56 +112,27 @@ const Footer = () => (
                     </a>
                 </div>
                 <div className={styles.footerSection}>
-                    <a href="https://desktop.turbowarp.org/">
-                        {/* Do not translate */}
-                        {'TurboWarp Desktop'}
-                    </a>
-                    <a href="https://packager.turbowarp.org/">
-                        {/* Do not translate */}
-                        {'TurboWarp Packager'}
-                    </a>
-                    <a href="https://docs.turbowarp.org/embedding">
+                    <a href="https://github.com/Nickalus12/SquiggleGames">
                         <FormattedMessage
-                            defaultMessage="Embedding"
-                            description="Link in footer to embedding documentation for embedding link"
-                            id="tw.footer.embed"
-                        />
-                    </a>
-                    <a href="https://docs.turbowarp.org/url-parameters">
-                        <FormattedMessage
-                            defaultMessage="URL Parameters"
-                            description="Link in footer to URL parameters documentation"
-                            id="tw.footer.parameters"
-                        />
-                    </a>
-                    <a href="https://docs.turbowarp.org/">
-                        <FormattedMessage
-                            defaultMessage="Documentation"
-                            description="Link in footer to additional documentation"
-                            id="tw.footer.documentation"
+                            defaultMessage="Source code"
+                            description="Link to the editor source code"
+                            id="sq.footer.code"
                         />
                     </a>
                 </div>
                 <div className={styles.footerSection}>
-                    <a href="https://scratch.mit.edu/users/GarboMuffin/#comments">
+                    <a href="/#help">
                         <FormattedMessage
-                            defaultMessage="Feedback & Bugs"
-                            description="Link to feedback/bugs page"
-                            id="tw.feedback"
+                            defaultMessage="Help"
+                            description="Link to the help page"
+                            id="sq.footer.help"
                         />
                     </a>
-                    <a href="https://github.com/TurboWarp/">
+                    <a href="/privacy">
                         <FormattedMessage
-                            defaultMessage="Source Code"
-                            description="Link to source code"
-                            id="tw.code"
-                        />
-                    </a>
-                    <a href="privacy.html">
-                        <FormattedMessage
-                            defaultMessage="Privacy Policy"
-                            description="Link to privacy policy"
-                            id="tw.privacy"
+                            defaultMessage="Privacy"
+                            description="Link to the privacy page"
+                            id="sq.footer.privacy"
                         />
                     </a>
                 </div>
@@ -244,7 +201,6 @@ class Interface extends React.Component {
                 <div
                     className={styles.center}
                     style={isPlayerOnly ? ({
-                        // + 2 accounts for 1px border on each side of the stage
                         width: `${Math.max(480, props.customStageSize.width) + 2}px`
                     }) : null}
                 >
@@ -260,57 +216,6 @@ class Interface extends React.Component {
                             {isBrowserSupported() ? null : (
                                 <BrowserModal isRtl={isRtl} />
                             )}
-                            <div className={styles.section}>
-                                <ProjectInput />
-                            </div>
-                            {(
-                                // eslint-disable-next-line max-len
-                                description.instructions === 'unshared' || description.credits === 'unshared'
-                            ) && (
-                                <div className={classNames(styles.infobox, styles.unsharedUpdate)}>
-                                    <p>
-                                        <FormattedMessage
-                                            defaultMessage="Unshared projects are no longer visible."
-                                            description="Appears on unshared projects"
-                                            id="tw.unshared2.1"
-                                        />
-                                    </p>
-                                    <p>
-                                        <FormattedMessage
-                                            defaultMessage="For more information, visit: {link}"
-                                            description="Appears on unshared projects"
-                                            id="tw.unshared.2"
-                                            values={{
-                                                link: (
-                                                    <a
-                                                        href="https://docs.turbowarp.org/unshared-projects"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                    >
-                                                        {'https://docs.turbowarp.org/unshared-projects'}
-                                                    </a>
-                                                )
-                                            }}
-                                        />
-                                    </p>
-                                    <p>
-                                        <FormattedMessage
-                                            // eslint-disable-next-line max-len
-                                            defaultMessage="If the project was shared recently, this message may appear incorrectly for a few minutes."
-                                            description="Appears on unshared projects"
-                                            id="tw.unshared.cache"
-                                        />
-                                    </p>
-                                    <p>
-                                        <FormattedMessage
-                                            // eslint-disable-next-line max-len
-                                            defaultMessage="If this project is actually shared, please report a bug."
-                                            description="Appears on unshared projects"
-                                            id="tw.unshared.bug"
-                                        />
-                                    </p>
-                                </div>
-                            )}
                             {description.instructions || description.credits ? (
                                 <div className={styles.section}>
                                     <Description
@@ -323,13 +228,9 @@ class Interface extends React.Component {
                             <div className={styles.section}>
                                 <p>
                                     <FormattedMessage
-                                        // eslint-disable-next-line max-len
-                                        defaultMessage="{APP_NAME} is a Scratch mod that compiles projects to JavaScript to make them run really fast. Try it out by inputting a project ID or URL above."
-                                        description="Description of TurboWarp on the homepage"
-                                        id="tw.home.description"
-                                        values={{
-                                            APP_NAME
-                                        }}
+                                        defaultMessage="Click the green flag to play. Want to change it? Open it in the editor and make it yours."
+                                        description="Line under the game on the player page"
+                                        id="sq.home.description"
                                     />
                                 </p>
                             </div>

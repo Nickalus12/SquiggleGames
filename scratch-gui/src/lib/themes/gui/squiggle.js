@@ -9,10 +9,10 @@ const guiColors = {
     'ui-tertiary': NIGHT['sq-raised'],
 
     'ui-modal-overlay': NIGHT['sq-scrim'],
-    'ui-modal-background': '#131831',
+    'ui-modal-background': NIGHT['sq-panel'],
     'ui-modal-foreground': NIGHT['sq-text'],
-    'ui-modal-header-background': '#1c2342',
-    'ui-modal-header-foreground': '#ffffff',
+    'ui-modal-header-background': NIGHT['sq-panel'],
+    'ui-modal-header-foreground': NIGHT['sq-text'],
 
     'ui-white': '#131831',
     'ui-white-dim': 'rgba(19, 24, 49, 0.75)',

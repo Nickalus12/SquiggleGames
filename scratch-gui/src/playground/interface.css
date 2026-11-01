@@ -1,6 +1,5 @@
 @import "../css/colors.css";
 
-/* Base styles used by Scratch https://github.com/LLK/scratch-www/blob/develop/src/main.scss */
 h1,
 h2,
 h3,
@@ -53,13 +52,23 @@ a {
 }
 
 .player-only .center {
+    box-sizing: border-box;
+    max-width: 100%;
     margin: auto;
 }
 .menu {
     margin-bottom: 8px;
 }
 .section {
-    margin: 8px 0 8px 0;
+    margin: 8px 0;
+    font-size: var(--sq-text-md, 16px);
+    line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+    .section {
+        padding: 0 16px;
+    }
 }
 
 .footer {

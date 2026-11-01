@@ -2,14 +2,20 @@
 
 .menu {
     position: absolute;
-    border: 1px solid $ui-black-transparent;
-    border-radius: 0 0 8px 8px;
-    background-color: $menu-bar-background;
-    padding: 0;
+    box-sizing: border-box;
+    min-width: 232px;
     margin: 0;
-    min-width: 186px;
+    padding: 6px;
     overflow: visible;
-    box-shadow: 0 8px 8px 0 $shadow;
+    list-style: none;
+    border: 1px solid var(--sq-line);
+    border-radius: var(--sq-radius-panel, 10px);
+    background-color: var(--sq-panel);
+    color: var(--sq-text);
+    box-shadow: var(--sq-elevation-3);
+    font-family: var(--sq-font);
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
 }
 
 .menu.left {
@@ -21,20 +27,40 @@
 }
 
 .menu-item {
-    display: block;
-    line-height: 34px;
-    white-space: nowrap;
-    padding: 0 10px;
-    font-size: .75rem;
-    margin: 0;
-    font-weight: bold;
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-sizing: border-box;
+    min-height: var(--sq-target, 40px);
+    margin: 0;
+    padding: 0 12px;
+    border-radius: var(--sq-radius-chip, 4px);
+    line-height: 1.25;
+    white-space: nowrap;
+    outline: none;
+    transition: background-color var(--sq-motion-fast, 140ms) var(--sq-ease, ease-out);
+}
+
+.menu-item > div,
+.menu-item > button {
+    flex: 1 1 auto;
+    align-self: stretch;
 }
 
 .menu-item.active,
 .menu-item:hover,
-.menu-item.expanded {
-    background-color: $ui-black-transparent;
+.menu-item.expanded,
+.menu-item:focus-visible,
+.menu-item:has(> :focus-visible) {
+    background-color: var(--sq-tint);
+}
+
+.menu-item:focus-visible,
+.menu-item > :focus-visible {
+    outline: 2px solid var(--sq-focus);
+    outline-offset: -2px;
+    border-radius: var(--sq-radius-chip, 4px);
 }
 
 .menu-item.hoverable {
@@ -42,33 +68,42 @@
 }
 
 .menu-section {
-    border-top: 1px solid $ui-black-transparent;
+    margin-top: 7px;
+}
+
+.menu-section::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 4px;
+    right: 4px;
+    height: 1px;
+    background-color: var(--sq-line);
 }
 
 .submenu {
     display: none;
     position: absolute;
-    top: -1px;
-    min-width: 186px;
+    top: -7px;
+    min-width: 232px;
     height: max-content;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: var(--sq-radius-panel, 10px);
 }
 
 .submenu.right {
-    left: 100%;
+    left: calc(100% + 6px);
 }
 
 .submenu.left {
-    right: 100%;
+    right: calc(100% + 6px);
 }
 
 .submenu > .menu {
     position: relative;
-    overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-color: $menu-bar-foreground $menu-bar-background;
-    border-radius: 8px;
+    overflow-y: auto;
+    scrollbar-color: var(--sq-line-hi) transparent;
 }
 
 .menu-item.expanded > .submenu {
@@ -79,18 +114,28 @@
     display: block;
 }
 
-/* Fallback styling for webkit browsers that don't support scrollbar-color */
-
 .submenu > .menu::-webkit-scrollbar {
-    width: 12px;
+    width: 10px;
 }
 
 .submenu > .menu::-webkit-scrollbar-track {
-    background: $menu-bar-background;
+    background: transparent;
 }
 
 .submenu > .menu::-webkit-scrollbar-thumb {
-    background-color: $menu-bar-foreground;
-    border-radius: 12px;
-    border: 3px solid $menu-bar-background;
+    background-color: var(--sq-line-hi);
+    border-radius: var(--sq-radius-pill, 999px);
+    border: 3px solid var(--sq-panel);
+}
+
+@media (pointer: coarse) {
+    .menu-item {
+        min-height: var(--sq-target-touch, 44px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .menu-item {
+        transition: none;
+    }
 }

@@ -1,7 +1,24 @@
+import classNames from 'classnames';
 import React from 'react';
+import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
+import SqIcon from '../sq-icon';
+import barStyles from './menu-bar.css';
 import {collabRoomName} from '../gui/collab-handle.js';
 import {historySummary, restoreVersion, roomHistory} from '../../lib/collab/room-api.js';
+
+const messages = defineMessages({
+    history: {
+        id: 'sq.menuBar.history',
+        defaultMessage: 'History',
+        description: 'Menu bar button that opens earlier versions of this room'
+    },
+    historyTitle: {
+        id: 'sq.menuBar.historyTitle',
+        defaultMessage: 'Earlier versions of this room',
+        description: 'Tooltip on the History button'
+    }
+});
 
 const rowKey = v => (typeof v.v === 'number' ? `v${v.v}` : `f${v.file}`);
 
@@ -154,33 +171,17 @@ class HistoryPanel extends React.Component {
                 style={{position: 'relative', fontFamily: T.font}}
             >
                 <button
+                    aria-expanded={!!open}
+                    className={classNames(barStyles.barPill, {[barStyles.barPillOpen]: open})}
+                    title={this.props.intl.formatMessage(messages.historyTitle)}
+                    type="button"
                     onClick={this.handleToggle}
-                    title="Earlier versions of this room"
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        height: '34px',
-                        boxSizing: 'border-box',
-                        padding: '0 12px',
-                        borderRadius: 'var(--sq-radius-panel, 10px)',
-                        cursor: 'pointer',
-                        background: open ? 'var(--sq-menu-bar-control-active)' : 'var(--sq-menu-bar-control)',
-                        border: '1px solid transparent',
-                        color: 'var(--sq-menu-bar-text, #ffffff)',
-                        font: 'inherit',
-                        fontSize: 'var(--sq-text-sm, 14px)',
-                        fontWeight: 700
-                    }}
                 >
-                    <svg
-                        viewBox="0 0 24 24"
-                        style={{width: '15px', height: '15px', fill: 'currentColor'}}
-                    >
-                        <path d="M13 3a9 9 0 1 0 8.9 10.5l-2-.3A7 7 0 1 1 13 5v3l4.5-4L13 0z" />
-                        <path d="M12 8h1.5v4.3l3.4 2-0.8 1.3L12 13z" />
-                    </svg>
-                    {'History'}
+                    <SqIcon
+                        name="history"
+                        size={20}
+                    />
+                    <span>{this.props.intl.formatMessage(messages.history)}</span>
                 </button>
 
                 {open && (
@@ -279,4 +280,8 @@ class HistoryPanel extends React.Component {
     }
 }
 
-export default HistoryPanel;
+HistoryPanel.propTypes = {
+    intl: intlShape
+};
+
+export default injectIntl(HistoryPanel);

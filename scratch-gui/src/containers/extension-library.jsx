@@ -17,9 +17,9 @@ import extensionIcon from '../components/action-menu/icon--sprite.svg';
 
 const messages = defineMessages({
     extensionTitle: {
-        defaultMessage: 'Choose an Extension',
+        defaultMessage: 'Choose an extension',
         description: 'Heading for the extension library',
-        id: 'gui.extensionLibrary.chooseAnExtension'
+        id: 'sq.library.chooseExtension'
     }
 });
 

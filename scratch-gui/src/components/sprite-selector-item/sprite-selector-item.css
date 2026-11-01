@@ -66,16 +66,13 @@
     border-bottom-left-radius: 0.25rem;
     border-bottom-right-radius: 0.25rem;
 
-    font-size: 0.625rem;
+    font-size: var(--sq-text-xs, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     color: $text-primary;
     user-select: none;
 }
 
 .sprite-name, .sprite-details {
-    /*
-        For truncating overflowing text gracefully
-        Min-width is for a bug: https://css-tricks.com/flexbox-truncated-text
-    */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -84,7 +81,8 @@
 
 .sprite-details {
     margin-top: 0.125rem;
-    font-size: 0.5rem;
+    font-size: var(--sq-text-xs, 14px);
+    font-weight: var(--sq-weight-regular, 600);
 }
 
 .is-selected .sprite-info {

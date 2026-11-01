@@ -8,7 +8,8 @@
     flex-direction: row;
     overflow: hidden;
     justify-content: flex-start;
-    border-radius: $space;
+    box-sizing: border-box;
+    border-radius: var(--sq-radius-panel, 10px);
     padding-top: .875rem;
     padding-bottom: .875rem;
     padding-left: 1rem;
@@ -19,15 +20,15 @@
 }
 
 .alert.warn {
-    background: #FFF0DF;
-    border: 1px solid #FF8C1A;
-    box-shadow: 0px 0px 0px 2px rgba(255, 140, 26, 0.25);
+    background: var(--sq-panel, #FFF0DF);
+    border: 1px solid var(--sq-warn, #FF8C1A);
+    box-shadow: var(--sq-elevation-3);
 }
 
 .alert.success {
-    background: $extensions-light;
-    border: 1px solid $extensions-tertiary;
-    box-shadow: 0px 0px 0px 2px $extensions-light;
+    background: var(--sq-panel, $extensions-light);
+    border: 1px solid var(--sq-success, $extensions-tertiary);
+    box-shadow: var(--sq-elevation-3);
 }
 
 .alert-spinner {
@@ -46,10 +47,10 @@
 }
 
 .alert-message {
-    color: #555;
-    font-weight: bold;
-    font-size: .8125rem;
-    line-height: .875rem;
+    color: var(--sq-text, #555);
+    font-weight: var(--sq-weight-bold, 700);
+    font-size: var(--sq-text-sm, 14px);
+    line-height: 1.35;
     display: flex;
     align-items: center;
     padding-right: .5rem;
@@ -65,21 +66,18 @@
 }
 
 .alert-close-button-container {
-    outline-style: none;
-    width: 30px;
-    height: 30px;
     align-self: center;
 }
 
 .alert-connection-button {
-    min-height: 2rem;
-    width: 6.5rem;
-    padding: 0.55rem 0.9rem;
-    border-radius: 0.35rem;
-    background: #FF8C1A;
+    min-height: var(--sq-target, 40px);
+    min-width: 6.5rem;
+    padding: 0 14px;
+    border-radius: var(--sq-radius-panel, 10px);
+    background: var(--sq-brand-700, #FF8C1A);
     color: white;
-    font-weight: 700;
-    font-size: 0.77rem;
+    font-weight: var(--sq-weight-bold, 700);
+    font-size: var(--sq-text-sm, 14px);
     border: none;
     cursor: pointer;
     display: flex;
@@ -97,7 +95,6 @@
     margin-left: 13px;
 }
 
-/* prevent last button in list from too much margin to edge of alert */
 .alert-buttons > :last-child {
     margin-left: 0;
     margin-right: 0;
