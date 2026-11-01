@@ -200,3 +200,27 @@ Every changed user-visible string gets a new `sq.` id so other locales fall back
 | Paint and sound editors | Upstream editors with their own toolbars; a separate pass |
 | Block palette category column | Drawn by scratch-blocks; block colours are fixed |
 | A new default sprite | Needs art from the mascot work |
+
+## 7. Status after implementation
+
+| Step | Commit | Notes |
+|---|---|---|
+| Plan | 7a9a033 | |
+| Icons | b059f01 | Generator lives at `src/components/sq-icon/build-icons.mjs` because the root `.gitignore` ignores `scripts/`. Later steps added outline, costume, music and mic |
+| Tokens | a4944ff | Day success and info keep their darker AA values. `theme-tokens.test.mjs` pins the map |
+| Menus | 0295e3b | Outline and History triggers joined the shared bar pill and gained translatable labels |
+| Panes | 7741626 | |
+| Modals, alerts, loader | f05c6c3 | Library titles moved to sentence case too |
+| Player, splash, embed | 6131ecc | Outline and History are hidden on the player page |
+
+Checked in headless Chrome: menu keyboard flow (Down opens and focuses New game, End, wrap, Escape returns focus to File; Right enters the Theme submenu on Night, Left returns to Theme, Escape returns to Settings), Night and Day modals, the library, the phone sheet, the player page, fullscreen and embed.
+
+### Left for later
+
+| Item | Why |
+|---|---|
+| Paint and sound editor toolbars ("Convert to Bitmap", Scratch glyphs) | Upstream editors with their own icon sets; a pass of their own |
+| Block palette category labels at 12px | Drawn by scratch-blocks |
+| Outline panel body copy ("Right-click the canvas → Add Comment") | Panel content, not chrome; needs a device-neutral rewrite |
+| The Addons page itself | No longer linked from the chrome; still reachable at `addons.html` |
+| Extension library gallery | See Not in scope |
