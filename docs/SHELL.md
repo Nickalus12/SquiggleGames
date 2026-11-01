@@ -99,7 +99,7 @@ Command: `rg -n -i "turbowarp|scratch\.mit\.edu|\bAddons?\b|See Project Page" sr
 | b. Keep and clean sq-icon | Already ours | 37 glyphs drawn ad hoc: mixed solid dots, uneven optical weight (gamepad, tools, rules are busy), no guide behind them. This is the "AI slop" risk Nick named |
 | c. Material Symbols | Apache 2.0, huge | Variable font or 20+ KB per weight; filled grammar by default; reads as Google |
 
-**Decision: a.** Lucide 1.56.0 (published 2026-10-13), ISC. SVG sources are vendored into `src/components/sq-icon/svg/lucide/` with the Lucide `LICENSE` beside them and a `NOTICE` in `src/components/sq-icon/svg/`. Squiggle-specific marks that Lucide has no answer for (the sprite character, the world kit pin, the rules shield, the animate mark) are redrawn to Lucide's guide in `svg/squiggle/`. One script, `scripts/sq-icons.mjs`, reads both folders and writes the registry `src/components/sq-icon/icons.js` and every shell asset SVG that used to be Scratch art. A node test fails if any output drifts from its source.
+**Decision: a.** Lucide 1.56.0 (published 2026-10-13), ISC. SVG sources are vendored into `src/components/sq-icon/svg/lucide/` with the Lucide `LICENSE` beside them and a `NOTICE` in `src/components/sq-icon/svg/`. Squiggle-specific marks that Lucide has no answer for (the sprite character, the world kit pin, the rules shield, the animate mark) are redrawn to Lucide's guide in `svg/squiggle/`. One script, `src/components/sq-icon/build-icons.mjs`, reads both folders and writes the registry `src/components/sq-icon/icons.js` and every shell asset SVG that used to be Scratch art. A node test fails if any output drifts from its source.
 
 ### Icon rules
 
@@ -178,7 +178,7 @@ Why the dark editor still reads as the light site: the same purple bar gradient 
 | Step | Files | Risk | How it is checked |
 |---|---|---|---|
 | 1. Plan | `docs/SHELL.md` | | Commit on its own |
-| 2. Icons | `scripts/sq-icons.mjs`, `src/components/sq-icon/svg/**`, `icons.js`, asset SVGs in `action-menu`, `gui`, `stage-header`, `sprite-info`, `close-button`, `delete-button`, `lib/assets`, `menu-bar` | Recolour loader keys on `#855cd6`; sizes of replaced files | `sq-icon/sq-icon.test.mjs` (registry rules, sync, every used name exists); screenshots of every bar |
+| 2. Icons | `src/components/sq-icon/build-icons.mjs`, `src/components/sq-icon/svg/**`, `icons.js`, asset SVGs in `action-menu`, `gui`, `stage-header`, `sprite-info`, `close-button`, `delete-button`, `lib/assets`, `menu-bar` | Recolour loader keys on `#855cd6`; sizes of replaced files | `sq-icon/sq-icon.test.mjs` (registry rules, sync, every used name exists); screenshots of every bar |
 | 3. Tokens | `lib/themes/tokens.js`, `gui/squiggle*.js` | 12px to 14px may wrap labels in narrow panes | Screenshots at 1024 |
 | 4. Menus | `components/menu/*`, `menu-bar/tw-menu-label.jsx`, `menu-bar.jsx`, `settings-menu.jsx`, `tw-theme-blocks.jsx`, `community-button.jsx`, `tw-see-inside.jsx`, `menu-bar.css`, `menu-structure.js` | 25 existing lint errors in menu-bar.jsx; translations; phone sheet reuses the bar | `menu-bar/menu-structure.test.mjs`; eslint on touched files; Settings open screenshot; phone sheet screenshot |
 | 5. Tabs, stage header, sprite pane, add buttons, backpack | `gui.css`, `gui-editor.jsx`, `stage-header.*`, `tw-framerate-indicator`, `sprite-info.*`, `sprite-selector.jsx`, `stage-selector.jsx`, `backpack.css` | Phone layout overrides tab CSS by data attribute | 1280, 1024 and 412 screenshots |

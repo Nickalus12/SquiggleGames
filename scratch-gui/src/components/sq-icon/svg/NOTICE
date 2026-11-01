@@ -1,0 +1,16 @@
+Squiggle editor icons
+
+lucide/
+  Icons from Lucide, lucide-static 1.56.0 (https://lucide.dev), published 2026-10-13.
+  Licence: ISC, with the Feather-derived icons under MIT. The full text is in
+  lucide/LICENSE. Each file is the upstream SVG with its one-line licence
+  header removed; the geometry is unchanged.
+
+squiggle/
+  Marks drawn for Squiggle by Lumina Games LLC on Lucide's grid and rules
+  (24px canvas, 1px safe area, 2px round strokes, 2px corner radius).
+  Same licence as the rest of this repository.
+
+src/components/sq-icon/build-icons.mjs builds src/components/sq-icon/icons.js and the shell
+asset SVGs from these sources. Edit the sources, then run:
+  node src/components/sq-icon/build-icons.mjs
