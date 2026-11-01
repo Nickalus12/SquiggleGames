@@ -28,7 +28,8 @@ const KIT_COLORS = {
     squigglescores: {color1: '#f25f5c', color2: '#d94e4b', color3: '#b83d3a'},
     squiggleteams: {color1: '#2a9d8f', color2: '#23877b', color3: '#1c6e64'},
     squigglearena: {color1: '#b8336a', color2: '#9e2b5b', color3: '#82234b'},
-    together: {color1: BRAND[500], color2: BRAND[600], color3: BRAND[700]}
+    together: {color1: BRAND[500], color2: BRAND[600], color3: BRAND[700]},
+    gamedata: {color1: '#3b8fd9', color2: '#3179bd', color3: '#28639b'}
 };
 
 const EXPANSION_IDS = ['squigglescores', 'squiggleteams', 'squigglearena'];

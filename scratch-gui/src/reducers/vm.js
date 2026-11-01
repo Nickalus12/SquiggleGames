@@ -8,6 +8,7 @@ import ThunderboltText from '../lib/libraries/extensions/textengine';
 import ThunderboltVFX from '../lib/libraries/extensions/vfx';
 import ThunderboltSystem from '../lib/libraries/extensions/particles';
 import installBuiltinKits from '../lib/kits/builtin.js';
+import GameDataBlocks, {GAME_DATA_ID} from '../lib/libraries/extensions/squigglegamedata/index.js';
 import {installRulesGuard} from '../lib/rules/guard.js';
 
 const SET_VM = 'scratch-gui/vm/SET_VM';
@@ -24,6 +25,8 @@ defaultVM.extensionManager.addBuiltinExtension('thunderbolttext', ThunderboltTex
 defaultVM.extensionManager.addBuiltinExtension('thunderboltvfx', ThunderboltVFX);
 defaultVM.extensionManager.addBuiltinExtension('thunderboltparticlesystem', ThunderboltSystem);
 installBuiltinKits(defaultVM.extensionManager);
+defaultVM.extensionManager.addBuiltinExtension(GAME_DATA_ID, GameDataBlocks);
+defaultVM.extensionManager.loadExtensionIdSync(GAME_DATA_ID);
 installRulesGuard(defaultVM);
 const initialState = defaultVM;
 

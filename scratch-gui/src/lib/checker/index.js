@@ -99,9 +99,11 @@ const worldContext = win => {
     };
 };
 
+const GAME_DATA = 'gamedata';
+
 const squiggleOnly = () => {
-    const ids = new Set([TOGETHER_ID].concat(THUNDERBOLT_IDS));
-    const kitNames = {};
+    const ids = new Set([TOGETHER_ID, GAME_DATA].concat(THUNDERBOLT_IDS));
+    const kitNames = {[GAME_DATA]: 'Game data'};
     listKits().forEach(kit => {
         ids.add(kit.id);
         kitNames[kit.id] = kit.name;

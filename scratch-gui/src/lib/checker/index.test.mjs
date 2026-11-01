@@ -116,6 +116,8 @@ ok('context reads hats and reporters from the runtime', ctx.hatOpcodes.has('even
     ctx.reporterOpcodes.has('squiggletools_distanceTo'));
 ok('squiggle-only covers kits, together and the Thunderbolt builtins', ctx.squiggleOnlyIds.has('squiggletools') &&
     ctx.squiggleOnlyIds.has('together') && ctx.squiggleOnlyIds.has('thunderboltvfx'));
+ok('squiggle-only covers Game data by name', ctx.squiggleOnlyIds.has('gamedata') &&
+    ctx.kitNames.gamedata === 'Game data');
 ok('without a world seam there is no world', ctx.world === null && ctx.worldMode === false);
 ok('rules lint idles until a schema source exists', ctx.rules === null && ctx.rulesStatus === null);
 const seamCtx = buildContext(makeVm([]).runtime, {win: {SquiggleWorld: {
