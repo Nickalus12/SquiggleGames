@@ -137,6 +137,7 @@ Editor tokens live in `src/lib/themes/tokens.js` (`--sq-*`), the gui themes (`gu
 | `--sq-tint` | missing | `rgba(153,102,255,.14)` Night, `rgba(119,77,203,.09)` Day | added | Selected tab and menu item fill |
 | `--sq-radius-sheet` | missing | 20px (design.md) | added | Phone sheets |
 | `--sq-bg`, `--sq-panel`, `--sq-raised`, `--sq-line`, `--sq-text`, `--sq-text-muted`, `--sq-link`, `--sq-focus`, status colours | equal to site | | stay | Already the site's values |
+| Day `--sq-success`, `--sq-info` | `#167443`, `#0a7089` | `#1a7f4b`, `#0b7f99` | stay | Darker on purpose (6b5c176): they pass 4.5 to 1 on the raised Day surface the editor uses for rows |
 | `--sq-menu-bar*` | site `--sq-menu-a` and `--sq-menu-b` gradient | | stay | The top bar gradient is design.md's one allowed gradient |
 | `ui-modal-header-background` (Night) | `#1c2342` | | `--sq-panel` | The header is part of the card, not a second bar |
 | `ui-modal-header-background` (Day) | `var(--looks-secondary)` purple | | `--sq-panel` | Same, and Day loses its purple slab |
