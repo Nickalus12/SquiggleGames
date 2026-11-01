@@ -40,6 +40,7 @@ class StageSelector extends React.Component {
         super(props);
         bindAll(this, [
             'handleClick',
+            'handleExplain',
             'handleNewBackdrop',
             'handleSurpriseBackdrop',
             'handleEmptyBackdrop',
@@ -157,6 +158,10 @@ class StageSelector extends React.Component {
                 });
         }
     }
+    handleExplain (e) {
+        e.stopPropagation();
+        this.props.onExplainSprite(this.props.id);
+    }
     setFileInput (input) {
         this.fileInput = input;
     }
@@ -166,7 +171,7 @@ class StageSelector extends React.Component {
     render () {
         const componentProps = omit(this.props, [
             'asset', 'dispatchSetHoveredSprite', 'id', 'intl',
-            'onActivateTab', 'onSelect', 'onShowImporting', 'onCloseImporting',
+            'onActivateTab', 'onExplainSprite', 'onSelect', 'onShowImporting', 'onCloseImporting',
             'isRtl', 'workspaceMetrics'
         ]);
         return (
@@ -178,6 +183,7 @@ class StageSelector extends React.Component {
                 onClick={this.handleClick}
                 onDrop={this.handleDrop}
                 onEmptyBackdropClick={this.handleEmptyBackdrop}
+                onExplainClick={this.props.onExplainSprite ? this.handleExplain : null}
                 onMouseEnter={this.handleMouseEnter}
                 onMouseLeave={this.handleMouseLeave}
                 onSurpriseBackdropClick={this.handleSurpriseBackdrop}
@@ -192,6 +198,7 @@ StageSelector.propTypes = {
     intl: intlShape.isRequired,
     isRtl: PropTypes.bool,
     onCloseImporting: PropTypes.func,
+    onExplainSprite: PropTypes.func,
     onSelect: PropTypes.func,
     onShowImporting: PropTypes.func,
     workspaceMetrics: PropTypes.shape({

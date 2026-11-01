@@ -89,6 +89,7 @@ const TargetPane = ({
                 backdropCount={stage.costumeCount}
                 id={stage.id}
                 selected={stage.id === editingTarget}
+                onExplainSprite={onExplainSprite}
                 onSelect={onSelectSprite}
             />}
             <div>
