@@ -973,8 +973,8 @@ class MenuBar extends React.Component {
 
                 <div className={styles.accountInfoGroup}>
                     {this.props.rightSlot}
-                    <OutlinePanel />
-                    <HistoryPanel />
+                    {this.props.isPlayerOnly ? null : <OutlinePanel />}
+                    {this.props.isPlayerOnly ? null : <HistoryPanel />}
                     <MessagesButton sheet={this.props.isPhoneSheet} />
                     <CollabPresence phoneSheet={this.props.isPhoneSheet} />
                     <TWSaveStatus
