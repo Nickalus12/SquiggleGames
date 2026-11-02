@@ -228,7 +228,9 @@ const createPlayClient = ({
             };
         },
         get playerName () {
-            return (link.slot !== null && known[String(link.slot)]) || name;
+            if (link.slot !== null && known[String(link.slot)]) return known[String(link.slot)];
+            if (name) return name;
+            return link.slot === null ? '' : `Player ${link.slot}`;
         },
         get peers () {
             return peers;

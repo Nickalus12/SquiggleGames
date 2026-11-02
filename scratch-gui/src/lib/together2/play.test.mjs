@@ -86,12 +86,12 @@ const socketKit = () => {
     return {sockets, FakeSocket};
 };
 
-const playFixture = () => {
+const playFixture = (name = 'Guest') => {
     const clock = fakeClock();
     const win = fakeWin();
     const {sockets, FakeSocket} = socketKit();
     const runtime = fakeRuntime();
-    const client = createPlayClient({vm: {runtime}, code: 'AB12', name: 'Guest', win, WebSocketImpl: FakeSocket,
+    const client = createPlayClient({vm: {runtime}, code: 'AB12', name, win, WebSocketImpl: FakeSocket,
         now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer}).install();
     const posted = event => win.posts.filter(p => p.data.event === event).map(p => p.data.detail);
     const open = slot => {
@@ -310,6 +310,24 @@ section('each close code has its kid-safe sentence');
     ok('a full game says so and keeps trying', JSON.stringify(full.posted('error')) ===
         '[{"error":"session-full","message":"This game is full right now."}]' && full.clock.pending() === 1,
     full.posted('error'));
+}
+
+section('a private one player session');
+{
+    const solo = playFixture('');
+    ok('before a welcome there is no slot and no name', solo.net.slot === null && solo.net.playerName === '');
+    const ws = solo.open(1);
+    ok('with no name in the link or the roster the player is Player 1', solo.net.playerName === 'Player 1' &&
+        solo.net.inGame === true);
+    ws.deliver({type: 'tick', t: 1, kf: 1, ack: 0, y: {names: {1: 'Nick'}}});
+    const roster = solo.posted('roster')[0];
+    ok('the roster name wins once the server sends it', solo.net.playerName === 'Nick');
+    ok('one player is a roster of one with no peers and no join posts', roster && roster.players.length === 1 &&
+        roster.me.name === 'Nick' && solo.net.peersText === '' && solo.net.peers.length === 0 &&
+        solo.posted('joined').length === 0, roster);
+    const guest = playFixture();
+    guest.open(3);
+    ok('a name from the link beats the slot fallback', guest.net.playerName === 'Guest');
 }
 
 section('the page hears joined, left and ended from the game socket');
