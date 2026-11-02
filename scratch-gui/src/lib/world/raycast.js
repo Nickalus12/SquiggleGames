@@ -632,6 +632,7 @@ const createFrame = (width, height) => {
         colRx: new Float64Array(w),
         colRy: new Float64Array(w),
         skyTx: new Int32Array(w),
+        skyRow: new Uint32Array(w),
         lightBuffer: null,
         colHitCount: new Uint8Array(w),
         hitDist: new Float64Array(w * MAX_COL_HITS),
@@ -659,6 +660,9 @@ const createFrame = (width, height) => {
         _surfEye: -1,
         _surfFocal: -1,
         _surfHorizon: NaN,
+        _skyDir: NaN,
+        _skyFov: NaN,
+        _skyTex: null,
         _rayMap: null,
         _rayWallKey: -1,
         _rayDoorRev: -1,
@@ -701,7 +705,7 @@ const isTexOpaque = tex => {
 };
 
 const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
-    const {pixels, rowColors, skyTx} = frame;
+    const {pixels, rowColors, skyTx, skyRow} = frame;
     const w = frame.width || WIDTH;
     const h = frame.height || HEIGHT;
     const half = horizonOf(frame, scene);
@@ -764,22 +768,28 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const ry1 = vDir.y + plane.y;
     const invW = 1 / w;
 
-    let skyTex = null;
     let skyData = null;
-    let skyW = 0;
-    let skyH = 0;
     if (isSky) {
-        skyTex = scene.skyTex || defaultSkyTexture();
+        const skyTex = scene.skyTex || defaultSkyTexture();
         skyData = skyTex.data;
-        skyW = skyTex.width | 0;
-        skyH = skyTex.height | 0;
+        const skyW = skyTex.width | 0;
+        const skyH = skyTex.height | 0;
         const dirDeg = scene.player ? Number(scene.player.direction) || 0 : 0;
-        const yawOffset = (((dirDeg % 360) + 360) % 360) / 360;
-        const fovTurn = clampFov(scene.fov) / 360;
-        for (let x = 0; x < w; x++) {
-            const u = yawOffset + (((x / w) - 0.5) * fovTurn);
-            const wrapped = u - Math.floor(u);
-            skyTx[x] = ((wrapped * skyW) | 0) % skyW;
+        const fovClamped = clampFov(scene.fov);
+        if (frame._skyDir !== dirDeg || frame._skyFov !== fovClamped || frame._skyTex !== skyTex) {
+            frame._skyDir = dirDeg;
+            frame._skyFov = fovClamped;
+            frame._skyTex = skyTex;
+            const yawOffset = (((dirDeg % 360) + 360) % 360) / 360;
+            const fovTurn = fovClamped / 360;
+            const stripOff = Math.min(skyH - 1, Math.floor(skyH * 0.3125) | 0) * skyW;
+            for (let x = 0; x < w; x++) {
+                const u = yawOffset + (((x / w) - 0.5) * fovTurn);
+                const wrapped = u - Math.floor(u);
+                const tx = ((wrapped * skyW) | 0) % skyW;
+                skyTx[x] = tx;
+                skyRow[x] = (skyData[stripOff + tx] | OPAQUE) >>> 0;
+            }
         }
     }
 
@@ -813,16 +823,8 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
 
     const skyEnd = Math.max(0, Math.min(h, Math.min(coverY0, Math.floor(half))));
     if (isSky && skyData) {
-        const denomH = Math.max(1, half);
-        for (let y = 0; y < skyEnd; y++) {
-            let ty = Math.floor((y / denomH) * skyH) | 0;
-            if (ty < 0) ty = 0;
-            else if (ty >= skyH) ty = skyH - 1;
-            const skyRow = ty * skyW;
-            const rowStart = y * w;
-            for (let x = 0; x < w; x++) {
-                pixels[rowStart + x] = (skyData[skyRow + skyTx[x]] | OPAQUE) >>> 0;
-            }
+        for (let y = 0, rowStart = 0; y < skyEnd; y++, rowStart += w) {
+            pixels.set(skyRow, rowStart);
         }
     }
 
