@@ -158,7 +158,26 @@ const teamTone = name => {
     return 'purple';
 };
 
-const statusBarLayout = (vitals, leaderboard) => {
+const OWN_HUD_SPRITES = {bar: 'StatusHUD', timer: 'TimerHUD'};
+const OWN_HUD_KITS = ['squigglearena', 'squigglescores'];
+
+const targetName = target => {
+    if (!target) return '';
+    return (target.getName && target.getName()) || (target.sprite && target.sprite.name) || '';
+};
+
+const hasSprite = (runtime, name) => Array.isArray(runtime.targets) &&
+    runtime.targets.some(target => target && target.isOriginal && !target.isStage && targetName(target) === name);
+
+const usesHudKits = (vm, runtime) => {
+    const manager = (vm && vm.extensionManager) || (runtime && runtime.extensionManager);
+    if (!manager || typeof manager.isExtensionLoaded !== 'function') return false;
+    return OWN_HUD_KITS.some(id => manager.isExtensionLoaded(id));
+};
+
+const resolveOwnHud = (vm, runtime, mode) => mode === 'replace' || (mode !== 'keep' && usesHudKits(vm, runtime));
+
+const statusBarLayout = (vitals, leaderboard, liveFrags) => {
     if (!vitals) return null;
     const filled = [
         typeof vitals.hp === 'number',
@@ -168,7 +187,12 @@ const statusBarLayout = (vitals, leaderboard) => {
     ].filter(Boolean).length;
     if (filled === 0) return null;
     const me = leaderboard && leaderboard.rows ? leaderboard.rows.find(row => row.isMe) : null;
-    const frags = me ? {label: leaderboard.boardName, value: me.score, place: me.rank} : null;
+    let frags = null;
+    if (leaderboard && liveFrags !== null) {
+        frags = {label: leaderboard.boardName, value: liveFrags, place: me ? me.rank : 0};
+    } else if (me) {
+        frags = {label: leaderboard.boardName, value: me.score, place: me.rank};
+    }
     const soloBoard = !!leaderboard && leaderboard.rows.length <= 1;
     return {
         layout: filled >= 2 ? 'band' : 'compact',
@@ -196,7 +220,9 @@ export const extractHudState = (vm, netOverride) => {
             teams: [],
             vitals: null,
             leaderboard: null,
-            statusPill: ''
+            statusPill: '',
+            bar: null,
+            replaces: {bar: false, timer: false}
         };
     }
 
@@ -223,6 +249,10 @@ export const extractHudState = (vm, netOverride) => {
     }
 
     const sources = [myValues, gameValues, vars, defaults];
+    const declaredBoards = Array.isArray(mark && mark.boards) ? mark.boards : [];
+    const liveBoards = game && Array.isArray(game.boards) ? game.boards : [];
+    const boardSource = declaredBoards[0] || liveBoards[0] || null;
+    const boardKey = boardSource ? String(boardSource.name || boardSource.n || '').toLowerCase() : '';
 
     let timer = null;
     if (sections.timer !== false) {
@@ -259,10 +289,17 @@ export const extractHudState = (vm, netOverride) => {
                     [gameValues, myValues, vars],
                     [`${low}_score`, `${low}_pts`, `${low}_points`, low]
                 );
+                let score = scoreHit ? scoreHit.value : 0;
+                if (!scoreHit && game && game.teams && boardKey) {
+                    score = Object.keys(game.teams || {})
+                        .filter(slot => teamName(game, slot, declaredTeams) === name)
+                        .reduce((sum, slot) => sum + (numOrNull(playerValue(game, slot, boardKey)) || 0), 0);
+                }
                 teams.push({
                     name,
-                    score: scoreHit ? scoreHit.value : 0,
-                    tone: teamTone(name)
+                    score,
+                    tone: teamTone(name),
+                    mine: !!(game && game.teams) && teamName(game, mySlot, declaredTeams) === name
                 });
             });
         } else if ('red_score' in vars || 'blue_score' in vars || 'red_score' in gameValues) {
@@ -342,11 +379,10 @@ export const extractHudState = (vm, netOverride) => {
                 };
             });
             leaderboard = {
-                boardName: String(first.n || first.name || 'Score'),
+                boardName: titleCase(String(first.n || first.name || 'Score')),
                 rows
             };
         } else {
-            const declaredBoards = Array.isArray(mark && mark.boards) ? mark.boards : [];
             const primaryBoard = declaredBoards[0] ?
                 String(declaredBoards[0].name || declaredBoards[0].n || 'Score') :
                 '';
@@ -398,8 +434,15 @@ export const extractHudState = (vm, netOverride) => {
         }
     }
 
-    const hasHudContent = !!(timer || teams.length > 0 || vitals || leaderboard || statusPill);
-    const bar = statusBarLayout(vitals, leaderboard);
+    const replaceOwn = resolveOwnHud(vm, runtime, settings.ownHud);
+    const ownBar = hasSprite(runtime, OWN_HUD_SPRITES.bar);
+    const ownTimer = hasSprite(runtime, OWN_HUD_SPRITES.timer);
+    if (ownTimer && !replaceOwn) timer = null;
+    const liveFragsHit = boardKey ? pickFirstNumber([myValues], [boardKey]) : null;
+    let bar = statusBarLayout(vitals, leaderboard, liveFragsHit ? liveFragsHit.value : null);
+    if (ownBar && !replaceOwn) bar = null;
+    const replaces = {bar: ownBar && replaceOwn && !!bar, timer: ownTimer && replaceOwn && !!timer};
+    const hasHudContent = !!(timer || teams.length > 0 || bar || leaderboard || statusPill);
 
     return {
         enabled: true,
@@ -410,11 +453,14 @@ export const extractHudState = (vm, netOverride) => {
         vitals,
         leaderboard,
         statusPill,
-        bar
+        bar,
+        replaces
     };
 };
 
 export {
+    OWN_HUD_KITS,
+    OWN_HUD_SPRITES,
     formatClock,
     moodFor
 };

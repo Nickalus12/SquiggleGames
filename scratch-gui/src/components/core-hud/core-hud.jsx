@@ -181,7 +181,8 @@ const TopCenter = ({timer, teams, statusPill}) => {
                     {teams.map(team => (
                         <span
                             key={team.name}
-                            className={classNames(styles.teamChip, TONE_CLASS[team.tone])}
+                            className={classNames(styles.teamChip, TONE_CLASS[team.tone],
+                                {[styles.teamMine]: team.mine})}
                         >
                             <span className={styles.teamDot} />
                             <span className={styles.teamName}>{team.name}</span>
@@ -213,7 +214,8 @@ TopCenter.propTypes = {
     teams: PropTypes.arrayOf(PropTypes.shape({
         name: PropTypes.string,
         score: PropTypes.number,
-        tone: PropTypes.string
+        tone: PropTypes.string,
+        mine: PropTypes.bool
     })),
     statusPill: PropTypes.string
 };
@@ -614,8 +616,8 @@ class CoreHud extends React.Component {
     syncLegacy (hud) {
         const runtime = this.props.vm && this.props.vm.runtime;
         if (!runtime || !Array.isArray(runtime.targets)) return;
-        const shows = !!(hud && hud.enabled && hud.hasHudContent);
-        const owns = {bar: shows && !!hud.bar, timer: shows && !!hud.timer};
+        const shows = !!(hud && hud.enabled && hud.hasHudContent && hud.replaces);
+        const owns = {bar: shows && !!hud.replaces.bar, timer: shows && !!hud.replaces.timer};
         for (const target of runtime.targets) {
             const role = this.legacyRole(target);
             if (!role || typeof target.setVisible !== 'function') continue;

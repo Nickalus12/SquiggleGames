@@ -73,7 +73,8 @@ const hudOf = (v, bar) => ({
     vitals: v,
     leaderboard: {boardName: 'Frags', rows: [{rank: 1, slot: 1, name: 'You', score: 2, isMe: true}]},
     statusPill: '',
-    bar: Object.assign({layout: 'band', frags: {label: 'Frags', value: 2, place: 1}, foldsBoard: true}, bar)
+    bar: Object.assign({layout: 'band', frags: {label: 'Frags', value: 2, place: 1}, foldsBoard: true}, bar),
+    replaces: {bar: !!v, timer: false}
 });
 
 const render = el => renderToStaticMarkup(React.createElement(IntlProvider, {locale: 'en'}, el));
@@ -160,6 +161,10 @@ ok('an unchanged game does not set state', hud.state.hud === same);
 fixture = Object.assign(hudOf(null), {bar: null});
 hud.handleForceRefresh();
 ok('when the band goes away the game\'s own StatusHUD comes back', status.visible === true);
+
+fixture = Object.assign(hudOf(vitals()), {replaces: {bar: false, timer: false}});
+hud.handleForceRefresh();
+ok('a band that keeps the game\'s own HUD leaves StatusHUD alone', status.visible === true);
 
 fixture = hudOf(vitals());
 hud.handleForceRefresh();

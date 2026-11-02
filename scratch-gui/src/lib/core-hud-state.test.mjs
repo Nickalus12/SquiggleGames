@@ -86,8 +86,10 @@ const vars = pairs => {
     return out;
 };
 
-const hangarVm = () => ({
+const hangarVm = (kits = ['squigglearena', 'squigglescores'], settings) => ({
+    extensionManager: {isExtensionLoaded: id => kits.indexOf(id) !== -1},
     runtime: {
+        _squiggleSettings: settings,
         targets: [
             {isStage: true, isOriginal: true, variables: {}, comments: {}},
             {
@@ -172,6 +174,47 @@ const scoreOnly = extractHudState({
 }, null);
 ok('a score only game gets no status bar, just the board',
     scoreOnly.bar === null && scoreOnly.leaderboard && scoreOnly.leaderboard.rows[0].score === 9);
+
+ok('Auto replaces the game\'s own StatusHUD when Arena or Scores is loaded',
+    solo.replaces.bar === true && solo.replaces.timer === false, solo.replaces);
+const plain = extractHudState(hangarVm([]), null);
+ok('Auto keeps the game\'s own StatusHUD when no Arena or Scores kit is loaded',
+    plain.bar === null && plain.replaces.bar === false, plain.replaces);
+const keep = extractHudState(hangarVm(undefined, {ownHud: 'keep'}), null);
+ok('Keep leaves the game\'s own StatusHUD even with Arena', keep.bar === null && keep.replaces.bar === false);
+const forced = extractHudState(hangarVm([], {ownHud: 'replace'}), null);
+ok('Replace takes over even without the kits', forced.bar && forced.replaces.bar === true);
+const noSprite = extractHudState({runtime: {targets: [{isStage: true, isOriginal: true, comments: {},
+    variables: vars({hp: 80, armor: 20})}]}}, null);
+ok('a game without its own HUD sprite gets the band and replaces nothing',
+    noSprite.bar && noSprite.bar.layout === 'band' && noSprite.replaces.bar === false);
+
+const soloRoom = {
+    slot: 4,
+    game: {
+        players: {4: {hp: 60, armor: 50, ammo: 22, weapon: 2, frags: 3, gold_key: 1}},
+        values: {},
+        names: {4: 'Nick'},
+        teams: {4: 2},
+        timers: {},
+        boards: [{n: 'frags', top: [[4, 2]]}]
+    }
+};
+const one = extractHudState(hangarVm(), soloRoom);
+ok('a one player session reads my slot even when it is not slot 1',
+    one.vitals.hp === 60 && one.vitals.ammo === 22 && one.vitals.weapon.slot === 2, one.vitals);
+ok('a one player board has one row, title cased, and folds into the band',
+    one.leaderboard.rows.length === 1 && one.leaderboard.boardName === 'Frags' &&
+    one.leaderboard.rows[0].name === 'Nick' && one.bar.foldsBoard === true, one.leaderboard);
+ok('the band shows my live frags, not the board\'s last post', one.bar.frags.value === 3, one.bar.frags);
+ok('a team with one member scores that member\'s frags and is marked mine',
+    one.teams[1].name === 'Blue' && one.teams[1].score === 3 && one.teams[1].mine === true &&
+    one.teams[0].score === 0 && one.teams[0].mine === false, one.teams);
+const fresh = extractHudState(hangarVm(), {slot: 1, game: {players: {1: {hp: 100}}, values: {}, names: {},
+    teams: {}, timers: {}, boards: []}});
+ok('a session before any names or posts still shows one You row',
+    fresh.leaderboard.rows.length === 1 && fresh.leaderboard.rows[0].name === 'You' && fresh.bar.foldsBoard === true,
+    fresh.leaderboard);
 
 ok('mood steps down with health',
     moodFor(100, 100) === 'great' && moodFor(60, 100) === 'good' && moodFor(35, 100) === 'worried' &&
