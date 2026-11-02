@@ -1,10 +1,13 @@
-import {DEFAULT_LIGHT, FLAGS, cellAt, cellCenter, getCell, inside} from './tilemap.js';
+import {
+    DEFAULT_HEIGHT, DEFAULT_LIGHT, FLAGS, cellAt, cellCenter, clampHeight, encodeHeight, flagBit, getCell, inside
+} from './tilemap.js';
 
 const BOXED = Object.freeze(['rect', 'bounds']);
 
-const TOOLS = Object.freeze(['paint', 'erase', 'fill', 'rect', 'pick', 'flag', 'spawn', 'bounds']);
+const TOOLS = Object.freeze(['paint', 'erase', 'fill', 'rect', 'pick', 'flag', 'height', 'spawn', 'bounds']);
 const PAINT_LAYERS = Object.freeze(['back', 'main', 'front', 'floor', 'ceiling']);
 const FLAG_NAMES = Object.freeze(Object.keys(FLAGS));
+const HEIGHT_CHOICES = Object.freeze([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]);
 const ORIGIN = 'painter';
 const MAX_UNDO = 100;
 const STAGE_W = 480;
@@ -171,16 +174,26 @@ const createPainter = options => {
         return true;
     };
 
+    const isHeightStroke = (tool, settings) => tool === 'height' ||
+        (tool === 'flag' && settings && settings.flag === 'height');
+
     const valueFor = (tool, settings, current) => {
         if (tool === 'erase') return settings.layer === 'light' ? DEFAULT_LIGHT : 0;
+        if (isHeightStroke(tool, settings)) {
+            return settings.heightOn ? settings.encodedHeight : 0;
+        }
         if (tool === 'flag') {
-            const bit = FLAGS[settings.flag] || FLAGS.solid;
+            const bit = flagBit(settings.flag) || FLAGS.solid;
             return settings.flagOn ? (current | bit) : (current & ~bit);
         }
         return settings.layer === 'light' && typeof settings.light === 'number' ? settings.light : settings.tile;
     };
 
-    const layerFor = (tool, settings) => (tool === 'flag' ? 'flags' : settings.layer);
+    const layerFor = (tool, settings) => {
+        if (isHeightStroke(tool, settings)) return 'heights';
+        if (tool === 'flag') return 'flags';
+        return settings.layer;
+    };
 
     const begin = (tool, settings, cell) => {
         const target = grid();
@@ -191,8 +204,13 @@ const createPainter = options => {
         }
         const entry = {level: target.id, layer, before: new Map(), after: new Map()};
         const opts = Object.assign({}, settings);
-        if (tool === 'flag') {
-            const bit = FLAGS[settings.flag] || FLAGS.solid;
+        if (isHeightStroke(tool, opts)) {
+            const h = clampHeight(typeof opts.height === 'number' ? opts.height : DEFAULT_HEIGHT);
+            const encoded = h === DEFAULT_HEIGHT ? 0 : encodeHeight(h);
+            opts.encodedHeight = encoded;
+            opts.heightOn = encoded !== 0 && getCell(target, 'heights', cell.col, cell.row) !== encoded;
+        } else if (tool === 'flag') {
+            const bit = flagBit(opts.flag) || FLAGS.solid;
             opts.flagOn = (getCell(target, 'flags', cell.col, cell.row) & bit) === 0;
         }
         const paintAt = cells => write(entry, cells.map(c => ({
@@ -206,7 +224,7 @@ const createPainter = options => {
             return {tool, done: true};
         }
         stroke = {tool, entry, start: cell, last: cell, paintAt};
-        if (tool === 'paint' || tool === 'erase' || tool === 'flag') paintAt([cell]);
+        if (tool === 'paint' || tool === 'erase' || tool === 'flag' || tool === 'height') paintAt([cell]);
         return {tool};
     };
 
@@ -326,6 +344,7 @@ export {
     TOOLS,
     PAINT_LAYERS,
     FLAG_NAMES,
+    HEIGHT_CHOICES,
     ORIGIN,
     MAX_UNDO,
     toStage,

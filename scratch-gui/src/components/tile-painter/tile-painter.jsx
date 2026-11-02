@@ -6,21 +6,28 @@ import ReactDOM from 'react-dom';
 import {connect} from 'react-redux';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
-import {FLAGS} from '../../lib/world/tilemap.js';
+import {FLAGS, decodeHeight} from '../../lib/world/tilemap.js';
 import {
-    FLAG_NAMES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom, createPainter, panBy, pinchView,
-    revealCell, toStage, zoomAround
+    FLAG_NAMES, HEIGHT_CHOICES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom, createPainter, panBy,
+    pinchView, revealCell, toStage, zoomAround
 } from '../../lib/world/painter.js';
 import {createTrayFocus, releasePointer} from '../../lib/world/painter-shell.js';
 import {peekScenes} from '../../lib/world/scenes.js';
 import {
-    setPainterFlag, setPainterGrid, setPainterLayer, setPainterOpen, setPainterTile, setPainterTool
+    setPainterFlag, setPainterGrid, setPainterHeight, setPainterLayer, setPainterOpen, setPainterTile, setPainterTool
 } from '../../reducers/world-ui';
 import styles from './tile-painter.css';
 
-const SHORTCUTS = {b: 'paint', e: 'erase', g: 'fill', r: 'rect', i: 'pick', f: 'flag', s: 'spawn', c: 'bounds'};
+const SHORTCUTS = {b: 'paint', e: 'erase', g: 'fill', r: 'rect', i: 'pick', f: 'flag', h: 'height', s: 'spawn', c: 'bounds'};
 const KEY_OF = Object.keys(SHORTCUTS).reduce((map, key) => Object.assign(map, {[SHORTCUTS[key]]: key}), {});
-const FLAG_COLORS = {solid: '#3a6ff0', oneway: '#2fa36b', hazard: '#e0483e', goal: '#e3a21a'};
+const FLAG_COLORS = {
+    solid: '#3a6ff0',
+    oneway: '#2fa36b',
+    hazard: '#e0483e',
+    goal: '#e3a21a',
+    door: '#9b59b6',
+    seethrough: '#1abc9c'
+};
 const HELP_ID = 'sq-tile-painter-help';
 const WHEEL_ZOOM = 0.0015;
 const KEY_ZOOM = 1.25;
@@ -55,6 +62,7 @@ const messages = defineMessages({
     rect: {id: 'sq.painter.tool.rect', defaultMessage: 'Box', description: 'Tile painter tool that fills a rectangle'},
     pick: {id: 'sq.painter.tool.pick', defaultMessage: 'Pick', description: 'Tile painter tool that picks a tile'},
     flag: {id: 'sq.painter.tool.flag', defaultMessage: 'Flag', description: 'Tile painter tool that marks cells'},
+    height: {id: 'sq.painter.tool.height', defaultMessage: 'Height', description: 'Tile painter tool that sets 3D wall height'},
     spawn: {
         id: 'sq.painter.tool.spawn',
         defaultMessage: 'Spawn',
@@ -81,6 +89,13 @@ const messages = defineMessages({
     oneway: {id: 'sq.painter.flag.oneway', defaultMessage: 'one way', description: 'Cell flag'},
     hazard: {id: 'sq.painter.flag.hazard', defaultMessage: 'hazard', description: 'Cell flag'},
     goal: {id: 'sq.painter.flag.goal', defaultMessage: 'goal', description: 'Cell flag'},
+    door: {id: 'sq.painter.flag.door', defaultMessage: 'door', description: 'Cell flag'},
+    seethrough: {id: 'sq.painter.flag.seethrough', defaultMessage: 'see-through', description: 'Cell flag'},
+    heightAmount: {
+        id: 'sq.painter.heightAmount',
+        defaultMessage: 'Wall height',
+        description: 'Label for which 3D wall height the Height tool sets'
+    },
     undo: {id: 'sq.painter.undo', defaultMessage: 'Undo', description: 'Undo the last tile stroke'},
     redo: {id: 'sq.painter.redo', defaultMessage: 'Redo', description: 'Redo a tile stroke'},
     grid: {id: 'sq.painter.grid', defaultMessage: 'Grid', description: 'Show or hide grid lines'},
@@ -142,6 +157,7 @@ class TilePainter extends React.Component {
             'handleKeyUp',
             'handleLayer',
             'handleFlag',
+            'handleHeight',
             'handlePointerDown',
             'handlePointerLeave',
             'handlePointerMove',
@@ -280,6 +296,7 @@ class TilePainter extends React.Component {
             ctx.setLineDash([]);
         }
         if (this.props.tool === 'flag' || this.props.tool === 'bounds') {
+            const flagStep = size / FLAG_NAMES.length;
             for (let r = firstRow; r <= lastRow; r++) {
                 for (let c = firstCol; c <= lastCol; c++) {
                     const bits = grid.flags[(r * grid.cols) + c];
@@ -288,9 +305,24 @@ class TilePainter extends React.Component {
                         if (!(bits & FLAGS[name])) return;
                         ctx.fillStyle = FLAG_COLORS[name];
                         ctx.globalAlpha = 0.45;
-                        const x = corner.left + (c * size) + (i * size / 4);
-                        ctx.fillRect(x, corner.top + (r * size), size / 4, size);
+                        const x = corner.left + (c * size) + (i * flagStep);
+                        ctx.fillRect(x, corner.top + (r * size), flagStep, size);
                     });
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+        if (this.props.tool === 'height' && grid.heights) {
+            for (let r = firstRow; r <= lastRow; r++) {
+                for (let c = firstCol; c <= lastCol; c++) {
+                    const raw = grid.heights[(r * grid.cols) + c];
+                    if (!raw) continue;
+                    const hVal = decodeHeight(raw);
+                    const frac = Math.min(1, hVal / 4);
+                    ctx.fillStyle = '#f39c12';
+                    ctx.globalAlpha = 0.45;
+                    const barH = Math.max(2, size * frac);
+                    ctx.fillRect(corner.left + (c * size), corner.top + ((r + 1) * size) - barH, size, barH);
                 }
             }
             ctx.globalAlpha = 1;
@@ -322,7 +354,7 @@ class TilePainter extends React.Component {
         ctx.setLineDash([]);
     }
     settings () {
-        return {layer: this.props.layer, tile: this.props.tile, flag: this.props.flag};
+        return {layer: this.props.layer, tile: this.props.tile, flag: this.props.flag, height: this.props.height};
     }
     cellAt (event) {
         return cellFromClient(this.grid(), this.view, this.state.rect, event.clientX, event.clientY);
@@ -558,6 +590,9 @@ class TilePainter extends React.Component {
     handleFlag (event) {
         this.props.onFlag(event.target.value);
     }
+    handleHeight (event) {
+        this.props.onHeight(Number(event.target.value));
+    }
     handleTile (event) {
         const name = event.currentTarget.getAttribute('data-name');
         const grid = this.grid();
@@ -640,6 +675,25 @@ class TilePainter extends React.Component {
                                 key={name}
                                 value={name}
                             >{intl.formatMessage(messages[name])}</option>
+                        ))}
+                    </select>
+                </label>
+            );
+        }
+        if (tool === 'height') {
+            return (
+                <label className={styles.group}>
+                    <span className={styles.label}>{intl.formatMessage(messages.heightAmount)}</span>
+                    <select
+                        className={styles.select}
+                        value={this.props.height}
+                        onChange={this.handleHeight}
+                    >
+                        {HEIGHT_CHOICES.map(val => (
+                            <option
+                                key={val}
+                                value={val}
+                            >{`${val}x`}</option>
                         ))}
                     </select>
                 </label>
@@ -742,7 +796,7 @@ class TilePainter extends React.Component {
                                 >{intl.formatMessage(messages.grid)}</button>
                             </div>
                         </div>
-                        {this.props.tool === 'flag' ? null : this.renderPalette()}
+                        {this.props.tool === 'flag' || this.props.tool === 'height' ? null : this.renderPalette()}
                     </React.Fragment>
                 ) : <p className={styles.note}>{intl.formatMessage(messages.noLevel)}</p>}
                 <div className={styles.row}>
@@ -809,11 +863,13 @@ TilePainter.propTypes = {
     canvas: PropTypes.shape({getBoundingClientRect: PropTypes.func}),
     docked: PropTypes.bool,
     flag: PropTypes.oneOf(FLAG_NAMES).isRequired,
+    height: PropTypes.number,
     intl: intlShape.isRequired,
     layer: PropTypes.oneOf(PAINT_LAYERS).isRequired,
     onClose: PropTypes.func.isRequired,
     onFlag: PropTypes.func.isRequired,
     onGrid: PropTypes.func.isRequired,
+    onHeight: PropTypes.func,
     onLayer: PropTypes.func.isRequired,
     onTile: PropTypes.func.isRequired,
     onTool: PropTypes.func.isRequired,
@@ -845,6 +901,8 @@ TilePainter.propTypes = {
 
 TilePainter.defaultProps = {
     docked: false,
+    height: 1,
+    onHeight: () => {},
     toolbarHost: null
 };
 
@@ -856,6 +914,7 @@ const mapStateToProps = state => {
         tile: ui.tile,
         layer: ui.layer,
         flag: ui.flag,
+        height: ui.height || 1,
         showGrid: ui.showGrid
     };
 };
@@ -864,6 +923,7 @@ const mapDispatchToProps = dispatch => ({
     onClose: () => dispatch(setPainterOpen(false)),
     onFlag: flag => dispatch(setPainterFlag(flag)),
     onGrid: show => dispatch(setPainterGrid(show)),
+    onHeight: height => dispatch(setPainterHeight(height)),
     onLayer: layer => dispatch(setPainterLayer(layer)),
     onTile: tile => dispatch(setPainterTile(tile)),
     onTool: tool => dispatch(setPainterTool(tool))

@@ -1,4 +1,8 @@
-import {FLAG_MASK, GRIDS, LAYERS, MAX_LIGHT, MAX_SIZE, MAX_TEXTURES} from './tilemap.js';
+import {
+    DEFAULT_HEIGHT, FLAG_MASK, GRIDS, HEIGHT_MAX, LAYERS, MAX_LIGHT, MAX_SIZE, MAX_TEXTURES, clampHeight
+} from './tilemap.js';
+
+const SYNC_GRIDS = Object.freeze(GRIDS.concat(['heights']));
 
 const PATCH_TYPE = 'tilemap-patch';
 const DELAY = 50;
@@ -73,7 +77,12 @@ const validPalette = palette => {
         const name = entry && typeof entry.name === 'string' ? entry.name.trim()
             .slice(0, MAX_NAME) : '';
         if (!name) return null;
-        out.push({name, flags: int(entry.flags, 0, FLAG_MASK) || 0});
+        const item = {name, flags: int(entry.flags, 0, FLAG_MASK) || 0};
+        if (entry && typeof entry.height === 'number') {
+            const h = clampHeight(entry.height);
+            if (h !== DEFAULT_HEIGHT) item.height = h;
+        }
+        out.push(item);
     }
     return out;
 };
@@ -90,8 +99,9 @@ const readPatch = patch => {
     }
     const layers = {};
     for (const layer of Object.keys(patch.layers)) {
-        if (GRIDS.indexOf(layer) === -1) return null;
-        const maxVal = layer === 'flags' ? FLAG_MASK : (layer === 'light' ? MAX_LIGHT : palette.length);
+        if (SYNC_GRIDS.indexOf(layer) === -1) return null;
+        const maxVal = layer === 'flags' ? FLAG_MASK :
+            (layer === 'light' ? MAX_LIGHT : (layer === 'heights' ? HEIGHT_MAX : palette.length));
         const cells = decodeSegments(patch.layers[layer], maxVal);
         if (!cells) return null;
         layers[layer] = cells;
@@ -109,7 +119,11 @@ const buildPatches = (grid, cells, author, nextSeq) => {
             const tile = grid.tiles[value - 1];
             if (!tile) continue;
             if (!toPalette.has(value)) {
-                palette.push({name: tile.name, flags: tile.flags || 0});
+                const entry = {name: tile.name, flags: tile.flags || 0};
+                if (tile.height && clampHeight(tile.height) !== DEFAULT_HEIGHT) {
+                    entry.height = clampHeight(tile.height);
+                }
+                palette.push(entry);
                 toPalette.set(value, palette.length);
             }
             value = toPalette.get(value);
@@ -122,7 +136,7 @@ const buildPatches = (grid, cells, author, nextSeq) => {
     let current = null;
     let runs = 0;
     let bytes = 0;
-    for (const layer of GRIDS) {
+    for (const layer of SYNC_GRIDS) {
         if (!byLayer[layer]) continue;
         for (const segment of encodeSegments(byLayer[layer])) {
             const size = runCount([segment]);

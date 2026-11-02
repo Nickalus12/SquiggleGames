@@ -1,6 +1,6 @@
 import {ok, near, section, done} from './harness.mjs';
 
-const {FLAGS, createGrid, addTexture, getCell, setCell} = await import('./tilemap.js');
+const {FLAGS, createGrid, addTexture, getCell, setCell, heightAt} = await import('./tilemap.js');
 const {
     TOOLS, MAX_UNDO, ORIGIN, toStage, toWorld, cellFromClient, cellToClient, line, floodCells, rectCells, createPainter,
     clampZoom, zoomAround, panBy, pinchView, revealCell
@@ -192,8 +192,25 @@ section('fill, rect, pick, flag, spawn');
     ok('bounds covers whole cells in world units', framed.bounds.left === -128 && framed.bounds.right === 32 &&
         framed.bounds.top === 80 && framed.bounds.bottom === -16, framed.bounds);
     ok('unknown tools are refused', painter.begin('lasso', settings, {col: 0, row: 0}) === null);
-    ok('all design tools are listed', ['paint', 'erase', 'fill', 'rect', 'pick', 'flag', 'spawn', 'bounds']
+    ok('all design tools are listed', ['paint', 'erase', 'fill', 'rect', 'pick', 'flag', 'height', 'spawn', 'bounds']
         .every(tool => TOOLS.indexOf(tool) !== -1));
+    painter.begin('flag', {layer: 'main', tile: 1, flag: 'door'}, {col: 3, row: 6});
+    painter.end();
+    ok('flag tool paints door flag', getCell(world.grid, 'flags', 3, 6) === FLAGS.door);
+    painter.begin('flag', {layer: 'main', tile: 1, flag: 'see-through'}, {col: 4, row: 6});
+    painter.end();
+    ok('flag tool paints see-through flag', getCell(world.grid, 'flags', 4, 6) === FLAGS.seethrough);
+    painter.begin('height', {layer: 'main', tile: 1, height: 2.5}, {col: 5, row: 6});
+    painter.move({col: 6, row: 6});
+    painter.end();
+    ok('height tool paints per-cell 3D wall height',
+        near(heightAt(world.grid, 5, 6), 2.5) && near(heightAt(world.grid, 6, 6), 2.5));
+    painter.begin('height', {layer: 'main', tile: 1, height: 2.5}, {col: 5, row: 6});
+    painter.end();
+    ok('repeating height stroke on a cell with that height toggles it back to default 1',
+        near(heightAt(world.grid, 5, 6), 1) && near(heightAt(world.grid, 6, 6), 2.5));
+    painter.undo();
+    ok('undo restores the toggled height', near(heightAt(world.grid, 5, 6), 2.5));
 }
 
 section('undo stack is bounded');
@@ -380,6 +397,13 @@ section('world-ui reducer');
     ok('tile is a positive integer', state.tile === 3);
     state = reduce(state, worldUi.setPainterFlag('goal'));
     ok('flag names come from tilemap FLAGS', state.flag === 'goal');
+    state = reduce(state, worldUi.setPainterFlag('door'));
+    ok('door flag is accepted in world-ui', state.flag === 'door');
+    state = reduce(state, worldUi.setPainterFlag('see-through'));
+    ok('see-through flag normalizes to seethrough in world-ui', state.flag === 'seethrough');
+    state = reduce(state, worldUi.setPainterTool('height'));
+    state = reduce(state, worldUi.setPainterHeight(0.5));
+    ok('height tool and height setting update in world-ui', state.tool === 'height' && state.height === 0.5);
     ok('bad flag is ignored', reduce(state, worldUi.setPainterFlag('lava')) === state);
 }
 

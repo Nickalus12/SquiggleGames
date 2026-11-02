@@ -13,7 +13,7 @@ globalThis.document = {hidden: true};
 
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
-const {FLAGS, createGrid, addTexture, setCell, encodeLevel, getCell} = await import('./tilemap.js');
+const {FLAGS, FLAG_MASK, createGrid, addTexture, setCell, encodeLevel, getCell, heightAt, setHeight} = await import('./tilemap.js');
 const {PATCH_TYPE, MAX_RUNS, MAX_BYTES, encodeSegments, decodeSegments, readPatch, compareStamp, createTilemapSync} =
     await import('./tilemap-sync.js');
 
@@ -93,11 +93,13 @@ ok('an unknown layer is rejected', readPatch(Object.assign({}, good, {layers: {s
 ok('a wrong type is rejected', readPatch(Object.assign({}, good, {type: 'snapshot'})) === null);
 ok('a missing base is rejected', readPatch(Object.assign({}, good, {base: '1'})) === null);
 ok('a palette entry without a name is rejected', readPatch(Object.assign({}, good, {palette: [{flags: 1}]})) === null);
-ok('flags values go up to the flag mask', readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, 15, 1]]}})) &&
-    readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, 16, 1]]}})) === null);
+ok('flags values go up to the flag mask', readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, FLAG_MASK, 1]]}})) &&
+    readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, FLAG_MASK + 1, 1]]}})) === null);
 ok('floor, ceiling, and light layers validate properly',
     readPatch(Object.assign({}, good, {layers: {floor: [[0, 0, 1, 2]], ceiling: [[0, 0, 1, 2]], light: [[0, 0, 80, 2]]}})) !== null &&
     readPatch(Object.assign({}, good, {layers: {light: [[0, 0, 101, 1]]}})) === null);
+ok('heights layer is accepted in patches', readPatch(Object.assign({}, good, {layers: {heights: [[0, 0, 120, 1]]}})) !== null &&
+    readPatch(Object.assign({}, good, {layers: {heights: [[0, 0, 241, 1]]}})) === null);
 
 section('local edits coalesce at 50 ms');
 const a = await peer('alice');
@@ -249,5 +251,26 @@ ok('SquiggleWorld.connectTilemap wires a sync to the live world', wire.length ==
 connected.dispose();
 getWorld(vm2.runtime).paintCells('yard', 'main', [{col: 1, row: 0, value: 1}]);
 ok('dispose stops listening', connected.pendingCells() === 0 && connected.flush() === 0);
+
+section('door, seethrough, and height sync');
+{
+    const pA = await peer('alice');
+    const pB = await peer('bob');
+    pA.world.paintCells('yard', 'flags', [
+        {col: 2, row: 2, value: FLAGS.door},
+        {col: 3, row: 2, value: FLAGS.seethrough}
+    ]);
+    pA.world.paintCells('yard', 'heights', [{col: 4, row: 2, value: 180}]);
+    pA.tick();
+    const patch = pA.outbox.shift();
+    const res = pB.sync.apply(patch);
+    const bGrid = pB.world.level('yard');
+    ok('door, seethrough, and height edits sync across peers', res.ok &&
+        getCell(bGrid, 'flags', 2, 2) === FLAGS.door &&
+        getCell(bGrid, 'flags', 3, 2) === FLAGS.seethrough &&
+        heightAt(bGrid, 4, 2) === 3);
+    setHeight(bGrid, 5, 2, 0.5);
+    ok('setHeight updates heightAt on the level', heightAt(bGrid, 5, 2) === 0.5);
+}
 
 done();
