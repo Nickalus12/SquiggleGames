@@ -1,14 +1,23 @@
 const DEFAULT_SNAP_RADIUS = 48;
 const DEFAULT_CONNECTING_RADIUS = 68;
 const DEFAULT_PREFERENCE = 20;
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 2.5;
+const MIN_APPROACH_SCREEN_PX = 36;
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 3;
 
 const clampScale = scale => {
     if (!Number.isFinite(scale) || scale <= 0) {
         return 1;
     }
     return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+};
+
+const computeApproachStartRadius = (scale, snapRadius = DEFAULT_SNAP_RADIUS) => {
+    const safeScale = clampScale(scale);
+    const baseSnap = Number.isFinite(snapRadius) && snapRadius > 0 ?
+        snapRadius :
+        DEFAULT_SNAP_RADIUS;
+    return Math.max(2 * baseSnap, MIN_APPROACH_SCREEN_PX / safeScale);
 };
 
 const computeZoomSnapRadii = (scale, options = {}) => {
@@ -23,19 +32,26 @@ const computeZoomSnapRadii = (scale, options = {}) => {
         DEFAULT_PREFERENCE;
 
     const clampedScale = clampScale(scale);
+    const approachStartRadius = computeApproachStartRadius(clampedScale, baseSnapRadius);
     let snapRadius;
     let connectingSnapRadius;
     let currentConnectionPreference;
 
-    if (clampedScale < 1) {
-        snapRadius = Math.round(baseSnapRadius / clampedScale);
-        connectingSnapRadius = Math.round(baseConnectingRadius / clampedScale);
-        currentConnectionPreference = Math.round(basePreference / clampedScale);
-    } else if (clampedScale > 1) {
-        const highFactor = 1 + ((clampedScale - 1) * 0.35);
-        snapRadius = Math.round(baseSnapRadius / highFactor);
-        connectingSnapRadius = Math.round(baseConnectingRadius / highFactor);
-        currentConnectionPreference = basePreference;
+    if (options.scaleSnapWithZoom) {
+        if (clampedScale < 1) {
+            snapRadius = Math.round(baseSnapRadius / clampedScale);
+            connectingSnapRadius = Math.round(baseConnectingRadius / clampedScale);
+            currentConnectionPreference = Math.round(basePreference / clampedScale);
+        } else if (clampedScale > 1) {
+            const highFactor = 1 + ((clampedScale - 1) * 0.35);
+            snapRadius = Math.round(baseSnapRadius / highFactor);
+            connectingSnapRadius = Math.round(baseConnectingRadius / highFactor);
+            currentConnectionPreference = basePreference;
+        } else {
+            snapRadius = baseSnapRadius;
+            connectingSnapRadius = baseConnectingRadius;
+            currentConnectionPreference = basePreference;
+        }
     } else {
         snapRadius = baseSnapRadius;
         connectingSnapRadius = baseConnectingRadius;
@@ -47,8 +63,10 @@ const computeZoomSnapRadii = (scale, options = {}) => {
         snapRadius,
         connectingSnapRadius,
         currentConnectionPreference,
+        approachStartRadius,
         screenSnapPx: Number((snapRadius * clampedScale).toFixed(2)),
-        screenConnectingPx: Number((connectingSnapRadius * clampedScale).toFixed(2))
+        screenConnectingPx: Number((connectingSnapRadius * clampedScale).toFixed(2)),
+        screenApproachStartPx: Number((approachStartRadius * clampedScale).toFixed(2))
     };
 };
 
@@ -192,6 +210,10 @@ const patchSnapPolicy = SB => {
     const mgrProto = SB.InsertionMarkerManager.prototype;
     mgrProto.sqSnapPolicyPatched_ = true;
 
+    SB.SNAP_RADIUS = DEFAULT_SNAP_RADIUS;
+    SB.CONNECTING_SNAP_RADIUS = DEFAULT_CONNECTING_RADIUS;
+    SB.CURRENT_CONNECTION_PREFERENCE = DEFAULT_PREFERENCE;
+
     mgrProto.getZoomRadii_ = function () {
         const scale = (this.workspace_ && typeof this.workspace_.scale === 'number') ?
             this.workspace_.scale :
@@ -204,19 +226,29 @@ const patchSnapPolicy = SB => {
     };
 
     mgrProto.getBaseSnapRadius_ = function () {
-        return this.getZoomRadii_().snapRadius;
+        return SB.SNAP_RADIUS || DEFAULT_SNAP_RADIUS;
+    };
+
+    mgrProto.getApproachStartRadius_ = function () {
+        const scale = (this.workspace_ && typeof this.workspace_.scale === 'number') ?
+            this.workspace_.scale :
+            1;
+        return computeApproachStartRadius(scale, this.getBaseSnapRadius_());
     };
 
     mgrProto.getStartRadius_ = function () {
-        const radii = this.getZoomRadii_();
         if (this.closestConnection_ && this.localConnection_) {
-            return radii.connectingSnapRadius;
+            return SB.CONNECTING_SNAP_RADIUS || DEFAULT_CONNECTING_RADIUS;
         }
-        return radii.snapRadius;
+        return SB.SNAP_RADIUS || DEFAULT_SNAP_RADIUS;
     };
 
     mgrProto.shouldUpdatePreviews_ = function (candidate, dxy) {
-        const radii = this.getZoomRadii_();
+        const radii = {
+            snapRadius: SB.SNAP_RADIUS || DEFAULT_SNAP_RADIUS,
+            connectingSnapRadius: SB.CONNECTING_SNAP_RADIUS || DEFAULT_CONNECTING_RADIUS,
+            currentConnectionPreference: SB.CURRENT_CONNECTION_PREFERENCE || DEFAULT_PREFERENCE
+        };
         const curDistance = getManagerCurrentDistance(this, dxy);
         const markerBlock = this.markerConnection_ ? this.markerConnection_.sourceBlock_ : null;
         const decision = selectCandidateWithHysteresis(
@@ -238,6 +270,7 @@ const patchSnapPolicy = SB => {
 };
 
 export {
+    computeApproachStartRadius,
     computeZoomSnapRadii,
     isSameStackInsertionJoint,
     selectCandidateWithHysteresis,

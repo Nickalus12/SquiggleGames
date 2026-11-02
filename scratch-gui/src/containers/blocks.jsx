@@ -52,29 +52,30 @@ import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 import {patchJointGlow} from '../lib/workspace/joint-glow';
 import {patchSnapPolicy} from '../lib/workspace/snap-policy';
 import {patchCustomBlocks, scrollNewProcedureIntoPalette} from '../lib/workspace/custom-blocks';
+import patchWorkspaceScalePerf, {isToolboxXmlChanged, syncWorkspaceFromXml} from '../lib/workspace/scale-perf';
 
 // TW: Strings we add to scratch-blocks are localized here
 const messages = defineMessages({
     PROCEDURES_RETURN: {
-        defaultMessage: 'return {v}',
+        defaultMessage: 'give back {v}',
         // eslint-disable-next-line max-len
         description: 'The name of the "return" block from the Custom Reporters extension. {v} is replaced with a slot to insert a value.',
         id: 'tw.blocks.PROCEDURES_RETURN'
     },
     PROCEDURES_TO_REPORTER: {
-        defaultMessage: 'Change To Reporter',
+        defaultMessage: 'Use the round shape',
         // eslint-disable-next-line max-len
         description: 'Context menu item to change a command-shaped custom block into a reporter. Part of the Custom Reporters extension.',
         id: 'tw.blocks.PROCEDURES_TO_REPORTER'
     },
     PROCEDURES_TO_STATEMENT: {
-        defaultMessage: 'Change To Statement',
+        defaultMessage: 'Use the stack shape',
         // eslint-disable-next-line max-len
         description: 'Context menu item to change a reporter-shaped custom block into a statement/command. Part of the Custom Reporters extension.',
         id: 'tw.blocks.PROCEDURES_TO_STATEMENT'
     },
     PROCEDURES_DOCS: {
-        defaultMessage: 'How to use return',
+        defaultMessage: 'How to give an answer',
         // eslint-disable-next-line max-len
         description: 'Button in extension list to learn how to use the "return" block from the Custom Reporters extension.',
         id: 'tw.blocks.PROCEDURES_DOCS'
@@ -149,6 +150,7 @@ class Blocks extends React.Component {
         this.ScratchBlocks.recordSoundCallback = this.handleOpenSoundRecorder;
 
         patchComments(this.ScratchBlocks);
+        patchWorkspaceScalePerf(this.ScratchBlocks);
         patchSnapPolicy(this.ScratchBlocks);
         patchJointGlow(this.ScratchBlocks);
         patchCustomBlocks(this.ScratchBlocks);
@@ -158,6 +160,14 @@ class Blocks extends React.Component {
         this.ScratchBlocks.ScratchMsgs.setLocale(this.props.locale);
 
         const Msg = this.ScratchBlocks.Msg;
+        if (this.props.intl && this.props.intl.messages) {
+            this.props.intl.messages['tw.blocks.PROCEDURES_RETURN'] = messages.PROCEDURES_RETURN.defaultMessage;
+            this.props.intl.messages['tw.blocks.PROCEDURES_TO_REPORTER'] =
+                messages.PROCEDURES_TO_REPORTER.defaultMessage;
+            this.props.intl.messages['tw.blocks.PROCEDURES_TO_STATEMENT'] =
+                messages.PROCEDURES_TO_STATEMENT.defaultMessage;
+            this.props.intl.messages['tw.blocks.PROCEDURES_DOCS'] = messages.PROCEDURES_DOCS.defaultMessage;
+        }
         Msg.PROCEDURES_RETURN = this.props.intl.formatMessage(messages.PROCEDURES_RETURN, {
             v: '%1'
         });
@@ -307,6 +317,7 @@ class Blocks extends React.Component {
         this.unmounted = true;
         this.workspace.dispose();
         clearTimeout(this.toolboxUpdateTimeout);
+        clearTimeout(this.metricsUpdateTimeout_);
 
         // Clear the flyout blocks so that they can be recreated on mount.
         this.props.vm.clearFlyoutBlocks();
@@ -433,7 +444,12 @@ class Blocks extends React.Component {
             // Dispatch updateMetrics later, since onWorkspaceMetricsChange may be (very indirectly)
             // called from a reducer, i.e. when you create a custom procedure.
             // TODO: Is this a vehement hack?
-            setTimeout(() => {
+            if (this.metricsUpdateTimeout_) {
+                clearTimeout(this.metricsUpdateTimeout_);
+            }
+            this.metricsUpdateTimeout_ = setTimeout(() => {
+                this.metricsUpdateTimeout_ = null;
+                if (this.unmounted || !this.workspace) return;
                 this.props.updateMetrics({
                     targetID: target.id,
                     scrollX: this.workspace.scrollX,
@@ -488,7 +504,7 @@ class Blocks extends React.Component {
     onWorkspaceUpdate (data) {
         // When we change sprites, update the toolbox to have the new sprite's blocks
         const toolboxXML = this.getToolboxXML();
-        if (toolboxXML) {
+        if (isToolboxXmlChanged(toolboxXML, this.props.toolboxXML, this._renderedToolboxXML)) {
             this.props.updateToolboxState(toolboxXML);
         }
 
@@ -500,8 +516,8 @@ class Blocks extends React.Component {
         this.workspace.removeChangeListener(this.props.vm.blockListener);
         collab.suspendWorkspaceEvents();
         try {
-            const dom = this.ScratchBlocks.Xml.textToDom(data.xml);
-            this.ScratchBlocks.Xml.clearWorkspaceAndLoadFromXml(dom, this.workspace);
+            const targetId = this.props.vm.editingTarget ? this.props.vm.editingTarget.id : null;
+            syncWorkspaceFromXml(this.ScratchBlocks, this.workspace, data.xml, targetId);
         } catch (error) {
             // The workspace is likely incomplete. What did update should be
             // functional.

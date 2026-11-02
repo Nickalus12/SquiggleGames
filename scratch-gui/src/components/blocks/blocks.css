@@ -69,6 +69,7 @@
 
 .blocks :global(.blocklyBlockDragSurface) {
     pointer-events: none;
+    will-change: transform;
     z-index: $z-index-drag-layer;
 }
 
@@ -84,51 +85,24 @@
     min-height: auto;
 }
 
-.blocks :global(.sq-joint-glow-group) {
+.blocks :global(.sq-joint-glow-path) {
+    fill: none;
     pointer-events: none;
-    transition: opacity 48ms linear;
-}
-
-.blocks :global(.sq-joint-glow-halo) {
-    fill: none;
-    stroke: #7c5cff;
-    stroke-width: 8px;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-opacity: 0.48;
-}
-
-.blocks :global(.sq-joint-glow-core) {
-    fill: none;
-    stroke: #22d3ee;
-    stroke-width: 3px;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
 
-.blocks :global(.sq-joint-glow-target[data-kind="value-input"] .sq-joint-glow-halo),
-.blocks :global(.sq-joint-glow-target[data-kind="boolean"] .sq-joint-glow-halo) {
-    fill: rgba(34, 211, 238, 0.14);
+.blocks :global(.sq-joint-replaceable) {
+    opacity: 0.55;
 }
 
-.blocks :global(.sq-joint-glow-group[data-snapped="true"] .sq-joint-glow-halo) {
-    stroke: #22d3ee;
-    stroke-opacity: 0.64;
-}
-
-.blocks :global(.sq-joint-glow-group[data-snapped="true"] .sq-joint-glow-core) {
-    stroke: #e0faff;
-    stroke-width: 3.5px;
-}
-
-.blocks :global(.sq-joint-input-active) {
-    stroke: #22d3ee !important;
-    stroke-width: 2px !important;
-}
-
-.blocks :global(.sq-joint-glow-group[data-reduced-motion="true"]) {
-    transition: none !important;
-    animation: none !important;
+.blocks :global(.sq-procedure-pill-caption-text) {
+    fill: #c7cce6;
+    font-family: var(--sq-font, "Nunito", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: 12px;
+    font-weight: 600;
+    pointer-events: none;
+    user-select: none;
 }
 
 .blocks :global(.sq-custom-block-landed > .blocklyPath) {
@@ -137,9 +111,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .blocks :global(.sq-joint-glow-group),
-    .blocks :global(.sq-joint-glow-halo),
-    .blocks :global(.sq-joint-glow-core) {
+    .blocks :global(.sq-joint-glow-path),
+    .blocks :global(.sq-joint-replaceable) {
         transition: none !important;
         animation: none !important;
     }

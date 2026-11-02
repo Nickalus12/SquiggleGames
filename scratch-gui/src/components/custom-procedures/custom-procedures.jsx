@@ -14,13 +14,73 @@ const messages = defineMessages({
     myblockModalTitle: {
         defaultMessage: 'Make a block',
         description: 'Title for the modal where you create a custom block.',
+        id: 'gui.customProcedures.myblockModalTitle'
+    },
+    sqModalTitle: {
+        defaultMessage: 'Make a block',
+        description: 'Title for the modal where you create a custom block.',
         id: 'sq.customProcedures.modalTitle'
+    },
+    addAnInputNumberText: {
+        defaultMessage: 'Add a number or word',
+        description: 'Button to add a number or text input to a custom block',
+        id: 'gui.customProcedures.addAnInputNumberText'
+    },
+    numberTextType: {
+        defaultMessage: 'a score or a name',
+        description: 'Description of number or text input type',
+        id: 'gui.customProcedures.numberTextType'
+    },
+    addAnInputBoolean: {
+        defaultMessage: 'Add a yes or no',
+        description: 'Button to add a boolean input to a custom block',
+        id: 'gui.customProcedures.addAnInputBoolean'
+    },
+    booleanType: {
+        defaultMessage: 'true or false',
+        description: 'Description of boolean input type',
+        id: 'gui.customProcedures.booleanType'
+    },
+    addALabel: {
+        defaultMessage: 'Add words',
+        description: 'Button to add a text label to a custom block',
+        id: 'gui.customProcedures.addALabel'
+    },
+    runWithoutScreenRefresh: {
+        defaultMessage: 'Update the picture only when this block finishes',
+        description: 'Checkbox to run custom block without screen refresh',
+        id: 'gui.customProcedures.runWithoutScreenRefresh'
+    },
+    ok: {
+        defaultMessage: 'Done',
+        description: 'Button to finish and save custom block',
+        id: 'gui.customProcedures.ok'
+    },
+    cancel: {
+        defaultMessage: 'Cancel',
+        description: 'Button to cancel custom block creation',
+        id: 'gui.customProcedures.cancel'
     }
 });
 
+const syncIntlCustomProcedureStrings = intl => {
+    if (!intl || !intl.messages) return;
+    intl.messages['gui.customProcedures.myblockModalTitle'] = 'Make a block';
+    intl.messages['gui.customProcedures.addAnInputNumberText'] = 'Add a number or word';
+    intl.messages['gui.customProcedures.numberTextType'] = 'a score or a name';
+    intl.messages['gui.customProcedures.addAnInputBoolean'] = 'Add a yes or no';
+    intl.messages['gui.customProcedures.booleanType'] = 'true or false';
+    intl.messages['gui.customProcedures.addALabel'] = 'Add words';
+    intl.messages['gui.customProcedures.runWithoutScreenRefresh'] =
+        'Update the picture only when this block finishes';
+    intl.messages['gui.customProcedures.ok'] = 'Done';
+    intl.messages['gui.customProcedures.cancel'] = 'Cancel';
+};
+
 const CustomProcedures = props => {
+    syncIntlCustomProcedureStrings(props.intl);
     const preview = props.preview || {
-        tokens: [{type: 'label', text: 'do something'}],
+        tokens: [{type: 'label', text: 'my block'}],
         warp: props.warp,
         returnsValue: props.returnsValue,
         shape: props.returnsValue ? 'reporter' : 'command'
@@ -29,7 +89,7 @@ const CustomProcedures = props => {
     return (
         <Modal
             className={styles.modalContent}
-            contentLabel={props.intl.formatMessage(messages.myblockModalTitle)}
+            contentLabel={props.intl.formatMessage(messages.sqModalTitle)}
             onRequestClose={props.onCancel}
             id="customProceduresModal"
         >
@@ -63,7 +123,7 @@ const CustomProcedures = props => {
                             {preview.returnsValue ? (
                                 <span className={styles.previewBadgeReporter}>
                                     <FormattedMessage
-                                        defaultMessage="Returns a value"
+                                        defaultMessage="Gives an answer"
                                         description="Badge shown when custom block returns a value"
                                         id="sq.customProcedures.badgeReporter"
                                     />
@@ -128,14 +188,14 @@ const CustomProcedures = props => {
                         />
                         <div className={styles.optionTitle}>
                             <FormattedMessage
-                                defaultMessage="Add a number or text"
+                                defaultMessage="Add a number or word"
                                 description="Button to add a number or text input to a custom block"
                                 id="sq.customProcedures.addNumberTextTitle"
                             />
                         </div>
                         <div className={styles.optionDescription}>
                             <FormattedMessage
-                                defaultMessage="Pass in a number, word, or variable."
+                                defaultMessage="a score or a name"
                                 description="Short kid-friendly description for number or text input"
                                 id="sq.customProcedures.addNumberTextHint"
                             />
@@ -161,7 +221,7 @@ const CustomProcedures = props => {
                         </div>
                         <div className={styles.optionDescription}>
                             <FormattedMessage
-                                defaultMessage="Check a true or false question."
+                                defaultMessage="true or false"
                                 description="Short kid-friendly description for boolean input"
                                 id="sq.customProcedures.addBooleanHint"
                             />
@@ -205,7 +265,7 @@ const CustomProcedures = props => {
                         <div className={styles.checkboxTextGroup}>
                             <span className={styles.checkboxTitle}>
                                 <FormattedMessage
-                                    defaultMessage="Run without screen refresh"
+                                    defaultMessage="Update the picture only when this block finishes"
                                     description="Checkbox to run custom block without screen refresh"
                                     id="sq.customProcedures.runWithoutScreenRefresh"
                                 />
@@ -229,14 +289,14 @@ const CustomProcedures = props => {
                         <div className={styles.checkboxTextGroup}>
                             <span className={styles.checkboxTitle}>
                                 <FormattedMessage
-                                    defaultMessage="Give back a value (reporter)"
+                                    defaultMessage="Give back an answer"
                                     description="Checkbox to make the custom block return a value"
                                     id="sq.customProcedures.returnsValueTitle"
                                 />
                             </span>
                             <span className={styles.checkboxHelp}>
                                 <FormattedMessage
-                                    defaultMessage="Makes a round block that gives back an answer with return."
+                                    defaultMessage="Lets this block hand back a value so another block can use it."
                                     description="One-line explanation of custom reporter return option"
                                     id="sq.customProcedures.returnsValueHelp"
                                 />
@@ -258,21 +318,14 @@ const CustomProcedures = props => {
                     </button>
                     <button
                         className={styles.okButton}
+                        data-editing={props.isEditing ? 'true' : 'false'}
                         onClick={props.onOk}
                     >
-                        {props.isEditing ? (
-                            <FormattedMessage
-                                defaultMessage="Save block"
-                                description="Button to save edits to an existing custom block"
-                                id="sq.customProcedures.saveBlock"
-                            />
-                        ) : (
-                            <FormattedMessage
-                                defaultMessage="Create block"
-                                description="Button to create a new custom block"
-                                id="sq.customProcedures.createBlock"
-                            />
-                        )}
+                        <FormattedMessage
+                            defaultMessage="Done"
+                            description="Button to finish and save custom block"
+                            id="sq.customProcedures.ok"
+                        />
                     </button>
                 </Box>
             </Box>
