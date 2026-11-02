@@ -228,6 +228,7 @@ const setCell = (grid, layer, col, row, value) => {
     const v = clampInt(value, 0, maxForLayer(layer), defaultForLayer(layer));
     if (grid[layer][i] === v) return false;
     grid[layer][i] = v;
+    grid[layer]._version = (grid[layer]._version | 0) + 1;
     return true;
 };
 

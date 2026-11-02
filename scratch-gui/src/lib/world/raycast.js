@@ -151,13 +151,41 @@ const createLightBuffer = (cols, rows) => {
     };
 };
 
-const hashBytes = bytes => {
-    if (!bytes) return 0;
+const NO_LIGHT_INFO = Object.freeze({hasLight: false, hash: 0});
+
+const lightLayerInfo = bytes => {
+    if (!bytes) return NO_LIGHT_INFO;
+    const ver = bytes._version | 0;
+    if (bytes._cachedVersion === ver && bytes._cachedInfo) {
+        return bytes._cachedInfo;
+    }
+    let hasLight = false;
     let h = 2166136261 >>> 0;
     for (let i = 0; i < bytes.length; i++) {
-        h = Math.imul(h ^ bytes[i], 16777619) >>> 0;
+        const v = bytes[i];
+        if (v !== 100) hasLight = true;
+        h = Math.imul(h ^ v, 16777619) >>> 0;
     }
-    return h >>> 0;
+    const info = {hasLight, hash: hasLight ? (h >>> 0) : 0};
+    bytes._cachedVersion = ver;
+    bytes._cachedInfo = info;
+    return info;
+};
+
+const layerHasNonZero = bytes => {
+    if (!bytes) return false;
+    const ver = bytes._version | 0;
+    if (bytes._cachedNzVer === ver) return Boolean(bytes._cachedNz);
+    let nz = false;
+    for (let i = 0; i < bytes.length; i++) {
+        if (bytes[i] > 0) {
+            nz = true;
+            break;
+        }
+    }
+    bytes._cachedNzVer = ver;
+    bytes._cachedNz = nz;
+    return nz;
 };
 
 const updateLightBuffer = (buf, map, lights) => {
@@ -165,7 +193,8 @@ const updateLightBuffer = (buf, map, lights) => {
     const cols = buf.cols | 0;
     const rows = buf.rows | 0;
     const mapLight = map && map._light && map._light.length === (cols * rows) ? map._light : null;
-    const hasMapLight = Boolean(mapLight && (map._hasLight || mapLight.some(v => v !== 100)));
+    const lightInfo = lightLayerInfo(mapLight);
+    const hasMapLight = lightInfo.hasLight;
     const raw = Array.isArray(lights) ? lights : [];
     let count = 0;
     for (let i = 0; i < raw.length && count < MAX_LIGHTS; i++) {
@@ -186,7 +215,7 @@ const updateLightBuffer = (buf, map, lights) => {
         buf.version++;
         return true;
     }
-    const mapHash = hasMapLight ? hashBytes(mapLight) : 0;
+    const mapHash = lightInfo.hash;
     let same = count === buf._lightCount && mapHash === buf._lightHash;
     let slot = 0;
     for (let i = 0; i < raw.length && slot < MAX_LIGHTS; i++) {
@@ -1828,9 +1857,9 @@ const gridMap = (grid, flagsAt, solidBit) => {
     const floor = hasDirect && grid.floor ? grid.floor : null;
     const ceiling = hasDirect && grid.ceiling ? grid.ceiling : null;
     const light = hasDirect && grid.light ? grid.light : null;
-    const hasFloor = Boolean(floor && floor.some(v => v > 0));
-    const hasCeiling = Boolean(ceiling && ceiling.some(v => v > 0));
-    const hasLight = Boolean(light && light.some(v => v !== 100));
+    const hasFloor = layerHasNonZero(floor);
+    const hasCeiling = layerHasNonZero(ceiling);
+    const hasLight = lightLayerInfo(light).hasLight;
     const bit = solidBit | 0;
     return {
         cols: grid.cols,
