@@ -469,58 +469,12 @@ const castRay = (map, u, v, rx, ry, out) => {
     return null;
 };
 
-const inspectMap = map => {
-    if (!map) return {multi: false, maxHeight: 1};
-    const main = map._main;
-    if (!main) {
-        const custom = typeof map.seethrough === 'function' || typeof map.height === 'function';
-        return {multi: custom, maxHeight: map.maxHeight || 4};
-    }
-    let multi = false;
-    let maxHeight = 1;
-    const tiles = map._tiles;
-    if (tiles) {
-        for (let i = 0; i < tiles.length; i++) {
-            const t = tiles[i];
-            if (!t) continue;
-            if ((t.flags & FLAGS.seethrough) !== 0) multi = true;
-            if (t.height && t.height !== 1) {
-                multi = true;
-                if (t.height > maxHeight) maxHeight = t.height;
-            }
-        }
-    }
-    const flags = map._flags;
-    if (!multi && flags) {
-        for (let i = 0; i < flags.length; i++) {
-            if ((flags[i] & FLAGS.seethrough) !== 0) {
-                multi = true;
-                break;
-            }
-        }
-    }
-    const heights = map._heights;
-    if (heights) {
-        for (let i = 0; i < heights.length; i++) {
-            const raw = heights[i];
-            if (raw !== 0 && raw !== 60) {
-                multi = true;
-                const h = raw / 60;
-                if (h > maxHeight) maxHeight = h;
-            }
-        }
-    }
-    return {multi, maxHeight};
-};
-
 const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough) => {
     const hits = Array.isArray(outHits) ? outHits : [];
     hits.length = 0;
     if (!map) return hits;
     const capSee = typeof maxSeethrough === 'number' ?
         clamp(Math.floor(maxSeethrough), 0, MAX_SEETHROUGH) : MAX_SEETHROUGH;
-    const info = inspectMap(map);
-    const maxMapHeight = info.maxHeight;
     let col = Math.floor(u) | 0;
     let row = Math.floor(v) | 0;
     const dx = rx === 0 ? Infinity : Math.abs(1 / rx);
@@ -613,7 +567,7 @@ const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough) => {
                 door: true,
                 seethrough: false
             });
-            if (tileH >= maxMapHeight && tileH >= 1) break;
+            if (tileH >= 1) break;
             continue;
         }
         if (!isSolid) continue;
@@ -648,7 +602,7 @@ const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough) => {
             door: false,
             seethrough: false
         });
-        if (oob || (tileH >= maxMapHeight && tileH >= 1)) break;
+        if (oob || tileH >= 1) break;
     }
     return hits;
 };
@@ -684,6 +638,7 @@ const createFrame = (width, height) => {
         colRow: new Int32Array(w),
         colDist: new Float64Array(w),
         colWallX: new Float64Array(w),
+        colHeight: new Float32Array(w),
         colRx: new Float64Array(w),
         colRy: new Float64Array(w),
         skyTx: new Int32Array(w),
@@ -708,7 +663,6 @@ const createFrame = (width, height) => {
         result: {crosshair: '', target: null, ahead: Infinity},
         timings: null,
         _multiHit: false,
-        _maxMapHeight: 1,
         _surfCeiling: -1,
         _surfFloor: -1,
         _surfFog: -1,
@@ -852,7 +806,7 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
 
     let coverY0 = h;
     let coverY1 = -1;
-    if (frame._rayMap && frame._rayMap === map) {
+    if (frame._rayMap && frame._rayMap === map && !frame._multiHit) {
         const {colOk, colDist, colVal} = frame;
         let allOpaque = true;
         let maxDist = 0;
@@ -1090,67 +1044,27 @@ const castColumns = (frame, scene, view) => {
         frame._rayU === u && frame._rayV === v && frame._rayDir === dir && frame._rayFov === fov) {
         return true;
     }
-    if (frame._rayMap !== map || frame._rayWallKey !== wallKey) {
-        const info = inspectMap(map);
-        frame._multiHit = info.multi;
-        frame._maxMapHeight = info.maxHeight;
-    }
-    const {colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colRx, colRy, hit} = frame;
+    const {
+        colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colHeight,
+        colRx, colRy, colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow,
+        hitSide, hitFlags, hit, _multiPool
+    } = frame;
     const {dir: vDir, plane} = view;
-    if (frame._multiHit) {
-        const {
-            colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow, hitSide, hitFlags, _multiPool
-        } = frame;
-        for (let x = 0; x < w; x++) {
-            const camX = ((2 * (x + 0.5)) / w) - 1;
-            const rx = vDir.x + (plane.x * camX);
-            const ry = vDir.y + (plane.y * camX);
-            colRx[x] = rx;
-            colRy[x] = ry;
-            const hits = castRayMulti(map, u, v, rx, ry, _multiPool, MAX_SEETHROUGH);
-            const count = hits.length;
-            colHitCount[x] = count;
-            if (!count) {
-                colOk[x] = 0;
-                colDoor[x] = 0;
-                continue;
-            }
-            const first = hits[0];
-            colOk[x] = 1;
-            colSide[x] = first.side;
-            colDoor[x] = first.door ? 1 : 0;
-            colVal[x] = first.value;
-            colCol[x] = first.col;
-            colRow[x] = first.row;
-            colDist[x] = first.dist;
-            colWallX[x] = first.wallX;
-            const base = x * MAX_COL_HITS;
-            for (let i = 0; i < count; i++) {
-                const hi = hits[i];
-                const idx = base + i;
-                hitDist[idx] = hi.dist;
-                hitWallX[idx] = hi.wallX;
-                hitHeight[idx] = hi.height;
-                hitVal[idx] = hi.value;
-                hitCol[idx] = hi.col;
-                hitRow[idx] = hi.row;
-                hitSide[idx] = hi.side;
-                hitFlags[idx] = (hi.door ? HIT_DOOR : 0) | (hi.seethrough ? HIT_SEETHROUGH : 0);
-            }
+    let anyMulti = false;
+    for (let x = 0; x < w; x++) {
+        const camX = ((2 * (x + 0.5)) / w) - 1;
+        const rx = vDir.x + (plane.x * camX);
+        const ry = vDir.y + (plane.y * camX);
+        colRx[x] = rx;
+        colRy[x] = ry;
+        const h = castRay(map, u, v, rx, ry, hit);
+        if (!h) {
+            colOk[x] = 0;
+            colDoor[x] = 0;
+            colHitCount[x] = 0;
+            continue;
         }
-    } else {
-        for (let x = 0; x < w; x++) {
-            const camX = ((2 * (x + 0.5)) / w) - 1;
-            const rx = vDir.x + (plane.x * camX);
-            const ry = vDir.y + (plane.y * camX);
-            colRx[x] = rx;
-            colRy[x] = ry;
-            const h = castRay(map, u, v, rx, ry, hit);
-            if (!h) {
-                colOk[x] = 0;
-                colDoor[x] = 0;
-                continue;
-            }
+        if (!h.seethrough && h.height >= 1) {
             colOk[x] = 1;
             colSide[x] = h.side;
             colDoor[x] = h.door ? 1 : 0;
@@ -1159,8 +1073,44 @@ const castColumns = (frame, scene, view) => {
             colRow[x] = h.row;
             colDist[x] = h.dist;
             colWallX[x] = h.wallX;
+            colHeight[x] = h.height;
+            colHitCount[x] = 0;
+            continue;
+        }
+        anyMulti = true;
+        const hits = castRayMulti(map, u, v, rx, ry, _multiPool, MAX_SEETHROUGH);
+        const count = hits.length;
+        colHitCount[x] = count;
+        if (!count) {
+            colOk[x] = 0;
+            colDoor[x] = 0;
+            continue;
+        }
+        const first = hits[0];
+        colOk[x] = 1;
+        colSide[x] = first.side;
+        colDoor[x] = first.door ? 1 : 0;
+        colVal[x] = first.value;
+        colCol[x] = first.col;
+        colRow[x] = first.row;
+        colDist[x] = first.dist;
+        colWallX[x] = first.wallX;
+        colHeight[x] = first.height;
+        const base = x * MAX_COL_HITS;
+        for (let i = 0; i < count; i++) {
+            const hi = hits[i];
+            const idx = base + i;
+            hitDist[idx] = hi.dist;
+            hitWallX[idx] = hi.wallX;
+            hitHeight[idx] = hi.height;
+            hitVal[idx] = hi.value;
+            hitCol[idx] = hi.col;
+            hitRow[idx] = hi.row;
+            hitSide[idx] = hi.side;
+            hitFlags[idx] = (hi.door ? HIT_DOOR : 0) | (hi.seethrough ? HIT_SEETHROUGH : 0);
         }
     }
+    frame._multiHit = anyMulti;
     frame._rayMap = map;
     frame._rayWallKey = wallKey;
     frame._rayDoorRev = doorRev;
@@ -1285,7 +1235,9 @@ const sampleColumnSlice = (
 
 const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const {
-        pixels, zbuffer, heights, colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colRx, colRy
+        pixels, zbuffer, heights, colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colHeight,
+        colRx, colRy, colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow, hitSide, hitFlags,
+        hitY0, hitY1, hitRawY0
     } = frame;
     const {focal} = view;
     const w = frame.width || WIDTH;
@@ -1305,8 +1257,9 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const glowG = hasGlow ? lightBuf.glowG : null;
     const glowB = hasGlow ? lightBuf.glowB : null;
 
-    if (!frame._multiHit) {
-        for (let x = 0; x < w; x++) {
+    for (let x = 0; x < w; x++) {
+        const count = colHitCount[x];
+        if (count === 0) {
             if (!colOk[x]) {
                 zbuffer[x] = Infinity;
                 heights[x] = 0;
@@ -1314,9 +1267,11 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             }
             const dist = Math.max(1e-4, colDist[x]);
             const lineH = focal / dist;
+            const tileH = colHeight[x];
+            const wallH = tileH === 1 ? lineH : lineH * tileH;
             zbuffer[x] = dist;
-            heights[x] = lineH;
-            const top = half - ((1 - eye) * lineH);
+            heights[x] = wallH;
+            const top = tileH === 1 ? (half - ((1 - eye) * lineH)) : ((half + (eye * lineH)) - wallH);
             const y0 = Math.max(0, Math.floor(top));
             const y1 = Math.min(h, Math.ceil(half + (eye * lineH)));
             const val = colVal[x];
@@ -1366,7 +1321,7 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             }
             if (tx < 0) tx = 0;
             else if (tx >= texW) tx = texW - 1;
-            const step = texH / lineH;
+            const step = texH / wallH;
             let ty = (y0 - top) * step;
             const plain = k === 1 && f === 0 && addR === 0 && addG === 0 && addB === 0;
             const texData = tex.data;
@@ -1408,17 +1363,6 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                     pixels[pixIdx] = prevOut;
                 }
             }
-        }
-        return;
-    }
-    const {
-        colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow, hitSide, hitFlags, hitY0, hitY1, hitRawY0
-    } = frame;
-    for (let x = 0; x < w; x++) {
-        const count = colHitCount[x];
-        if (!count) {
-            zbuffer[x] = Infinity;
-            heights[x] = 0;
             continue;
         }
         const base = x * MAX_COL_HITS;
@@ -1553,7 +1497,6 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     }
     sortFarToNear(placed, count);
     let crosshairDepth = zbuffer[centre];
-    const multi = frame._multiHit;
     const {
         colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow,
         hitSide, hitFlags, hitY0, hitY1, hitRawY0, colRx, colRy
@@ -1603,10 +1546,9 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         for (let x = x0; x < x1; x++) {
             if (depth >= zbuffer[x]) continue;
             let colY1 = y1;
-            let hc = 0;
+            const hc = colHitCount[x];
             let base = 0;
-            if (multi) {
-                hc = colHitCount[x];
+            if (hc > 0) {
                 base = x * MAX_COL_HITS;
                 for (let m = 0; m < hc; m++) {
                     const idx = base + m;
@@ -1649,7 +1591,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                     drew = true;
                 }
             }
-            if (drew && multi) {
+            if (drew && hc > 0) {
                 for (let m = hc - 1; m >= 0; m--) {
                     const idx = base + m;
                     if (hitDist[idx] >= depth || (hitFlags[idx] & HIT_SEETHROUGH) === 0) continue;
@@ -1689,10 +1631,12 @@ const pickCrosshair = (frame, scene) => {
     const rx0 = view.dir.x + (view.plane.x * camX);
     const ry0 = view.dir.y + (view.plane.y * camX);
     const {dir, plane, focal} = view;
-    const info = inspectMap(scene.map);
     let crosshairDepth = Infinity;
     let centerHits = null;
-    if (info.multi) {
+    const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit);
+    if (!hit || (!hit.seethrough && hit.height >= 1)) {
+        crosshairDepth = hit ? Math.max(1e-4, hit.dist) : Infinity;
+    } else {
         centerHits = castRayMulti(
             scene.map, scene.player.u, scene.player.v, rx0, ry0, frame._multiPool, MAX_SEETHROUGH
         );
@@ -1703,9 +1647,6 @@ const pickCrosshair = (frame, scene) => {
                 break;
             }
         }
-    } else {
-        const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit);
-        crosshairDepth = hit ? Math.max(1e-4, hit.dist) : Infinity;
     }
     let crosshair = '';
     let target = null;

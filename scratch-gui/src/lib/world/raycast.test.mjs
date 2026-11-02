@@ -831,6 +831,35 @@ section('per-tile wall heights (0.25 to 4) and running top edge');
     ok('floor shows behind the 0.25 low wall', floorBetween);
     const shortWallHash = hashPixels(frame.pixels);
     ok('variable wall heights frame matches golden hash', shortWallHash === 0xde5e759f, shortWallHash.toString(16));
+    let singleCols = 0;
+    let multiCols = 0;
+    for (let x = 0; x < 120; x++) {
+        if (frame.colHitCount[x] === 0) singleCols++;
+        else multiCols++;
+    }
+    ok('per-column fast path: columns hitting full-height walls stay on single-hit while low-wall columns use multi',
+        singleCols > 0 && multiCols > 0, [singleCols, multiCols]);
+
+    const tallOnly = room(16, 16);
+    setCell(tallOnly, 'flags', 8, 5, FLAGS.solid);
+    setCell(tallOnly, 'flags', 8, 2, FLAGS.solid);
+    setHeight(tallOnly, 8, 2, 4);
+    const tallHits = castRayMulti(mapOf(tallOnly), 8.5, 8.5, 0, -1);
+    ok('a height-1 solid breaks the ray even when a height-4 tile exists behind it',
+        tallHits.length === 1 && tallHits[0].row === 5 && tallHits[0].height === 1, tallHits);
+    const tallFrame = createFrame(120, 90);
+    setCell(tallOnly, 'flags', 8, 5, 0);
+    render(tallFrame, {
+        map: mapOf(tallOnly),
+        player: {u: 8.5, v: 8.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => cTall
+    });
+    ok('a map with height-4 and height-1 walls keeps every column on the single-hit fast path',
+        tallFrame._multiHit === false && tallFrame.colHitCount.every(c => c === 0) &&
+        tallFrame.pixels[60] === ray.shade(cTall, 0.72));
 }
 
 section('frame.horizon contract');
