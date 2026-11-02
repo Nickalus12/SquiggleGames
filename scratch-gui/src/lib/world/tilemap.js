@@ -13,9 +13,16 @@ const FLAGS = Object.freeze({
     solid: 1,
     oneway: 2,
     hazard: 4,
-    goal: 8
+    goal: 8,
+    door: 16,
+    seethrough: 32
 });
-const FLAG_MASK = 15;
+const FLAG_MASK = 63;
+const MIN_HEIGHT = 0.25;
+const MAX_HEIGHT = 4;
+const DEFAULT_HEIGHT = 1;
+const HEIGHT_SCALE = 60;
+const HEIGHT_MAX = 240;
 
 const maxForLayer = layer => {
     if (layer === 'flags') return FLAG_MASK;
@@ -91,12 +98,38 @@ const decodeGrid = (rowsData, cols, rows, max, fallback) => {
     return cells;
 };
 
+const clampHeight = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_HEIGHT;
+    return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(n * HEIGHT_SCALE) / HEIGHT_SCALE));
+};
+
+const encodeHeight = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (Number.isInteger(n) && n >= 15 && n <= HEIGHT_MAX) return n;
+    return Math.round(clampHeight(n) * HEIGHT_SCALE);
+};
+
+const decodeHeight = byte => {
+    const b = int(byte, 0);
+    if (b <= 0) return DEFAULT_HEIGHT;
+    return clampHeight(b / HEIGHT_SCALE);
+};
+
 const normalizeTiles = tiles => {
     if (!Array.isArray(tiles)) return [];
-    return tiles.slice(0, MAX_TEXTURES).map(tile => ({
-        name: text(tile && tile.name, ''),
-        flags: clampInt(tile && tile.flags, 0, FLAG_MASK, 0) & FLAG_MASK
-    }));
+    return tiles.slice(0, MAX_TEXTURES).map(tile => {
+        const entry = {
+            name: text(tile && tile.name, ''),
+            flags: clampInt(tile && tile.flags, 0, FLAG_MASK, 0) & FLAG_MASK
+        };
+        if (tile && typeof tile.height !== 'undefined') {
+            const h = clampHeight(tile.height);
+            if (h !== DEFAULT_HEIGHT) entry.height = h;
+        }
+        return entry;
+    });
 };
 
 const createGrid = spec => {
@@ -122,6 +155,7 @@ const createGrid = spec => {
     GRIDS.forEach(name => {
         grid[name] = decodeGrid(layers[name], cols, rows, maxForLayer(name), defaultForLayer(name));
     });
+    grid.heights = decodeGrid(layers.heights, cols, rows, HEIGHT_MAX);
     return grid;
 };
 
@@ -130,6 +164,9 @@ const encodeLevel = grid => {
     GRIDS.forEach(name => {
         layers[name] = encodeGrid(grid[name], grid.cols, grid.rows);
     });
+    if (grid.heights && grid.heights.some(v => v !== 0)) {
+        layers.heights = encodeGrid(grid.heights, grid.cols, grid.rows);
+    }
     return {
         id: grid.id,
         name: grid.name,
@@ -138,7 +175,13 @@ const encodeLevel = grid => {
         tileSize: grid.tileSize,
         origin: grid.origin.slice(),
         tileset: grid.tileset,
-        tiles: grid.tiles.map(tile => ({name: tile.name, flags: tile.flags})),
+        tiles: grid.tiles.map(tile => {
+            const entry = {name: tile.name, flags: tile.flags};
+            if (tile.height && clampHeight(tile.height) !== DEFAULT_HEIGHT) {
+                entry.height = clampHeight(tile.height);
+            }
+            return entry;
+        }),
         v: grid.v,
         layers
     };
@@ -152,6 +195,9 @@ const cloneGrid = grid => {
     GRIDS.forEach(name => {
         copy[name] = Uint8Array.from(grid[name]);
     });
+    copy.heights = grid.heights ? Uint8Array.from(grid.heights) : new Uint8Array(grid.cols * grid.rows);
+    if (copy._doors) delete copy._doors;
+    if (copy._doorRev) delete copy._doorRev;
     return copy;
 };
 
@@ -161,12 +207,24 @@ const indexOf = (grid, col, row) => (inside(grid, col, row) ? (row * grid.cols) 
 
 const getCell = (grid, layer, col, row) => {
     const i = indexOf(grid, col, row);
-    return i === -1 ? defaultForLayer(layer) : grid[layer][i];
+    if (i === -1) return defaultForLayer(layer);
+    if (layer === 'heights') return grid.heights ? grid.heights[i] : 0;
+    return grid[layer] ? grid[layer][i] : defaultForLayer(layer);
 };
 
 const setCell = (grid, layer, col, row, value) => {
     const i = indexOf(grid, col, row);
-    if (i === -1 || GRIDS.indexOf(layer) === -1) return false;
+    if (i === -1) return false;
+    if (layer === 'heights') {
+        if (!grid.heights) grid.heights = new Uint8Array(grid.cols * grid.rows);
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0 || n > HEIGHT_MAX) return false;
+        const v = n === 0 ? 0 : encodeHeight(n);
+        if (grid.heights[i] === v) return false;
+        grid.heights[i] = v;
+        return true;
+    }
+    if (GRIDS.indexOf(layer) === -1) return false;
     const v = clampInt(value, 0, maxForLayer(layer), defaultForLayer(layer));
     if (grid[layer][i] === v) return false;
     grid[layer][i] = v;
@@ -181,7 +239,26 @@ const flagsAt = (grid, col, row) => {
     return grid.flags[i] | tileFlags;
 };
 
-const flagBit = name => FLAGS[String(name).toLowerCase()] || 0;
+const flagBit = name => FLAGS[String(name || '').toLowerCase()
+    .replace(/[^a-z0-9]/g, '')] || 0;
+
+const heightAt = (grid, col, row) => {
+    const i = indexOf(grid, col, row);
+    if (i === -1) return DEFAULT_HEIGHT;
+    const raw = grid.heights ? grid.heights[i] : 0;
+    if (raw > 0) return decodeHeight(raw);
+    const tile = grid.main[i];
+    const th = tile > 0 && grid.tiles[tile - 1] ? grid.tiles[tile - 1].height : 0;
+    return th ? clampHeight(th) : DEFAULT_HEIGHT;
+};
+
+const setHeight = (grid, col, row, height) => setCell(
+    grid,
+    'heights',
+    col,
+    row,
+    height === 0 || height === null || typeof height === 'undefined' ? 0 : encodeHeight(height)
+);
 
 const cellAt = (grid, x, y) => ({
     col: Math.floor((x - grid.origin[0]) / grid.tileSize),
@@ -213,11 +290,16 @@ const tileIndex = (grid, value) => {
     return found === -1 ? -1 : found + 1;
 };
 
-const addTexture = (grid, name, flags) => {
+const addTexture = (grid, name, flags, height) => {
     const existing = tileIndex(grid, name);
     if (existing > 0) return existing;
     if (grid.tiles.length >= MAX_TEXTURES) return 0;
-    grid.tiles.push({name: text(name, `tile${grid.tiles.length + 1}`), flags: clampInt(flags, 0, FLAG_MASK, 0)});
+    const entry = {name: text(name, `tile${grid.tiles.length + 1}`), flags: clampInt(flags, 0, FLAG_MASK, 0)};
+    if (typeof height !== 'undefined') {
+        const h = clampHeight(height);
+        if (h !== DEFAULT_HEIGHT) entry.height = h;
+    }
+    grid.tiles.push(entry);
     return grid.tiles.length;
 };
 
@@ -283,6 +365,14 @@ export {
     GRIDS,
     FLAGS,
     FLAG_MASK,
+    MIN_HEIGHT,
+    MAX_HEIGHT,
+    DEFAULT_HEIGHT,
+    HEIGHT_SCALE,
+    HEIGHT_MAX,
+    clampHeight,
+    encodeHeight,
+    decodeHeight,
     encodeRow,
     decodeRow,
     encodeGrid,
@@ -296,6 +386,8 @@ export {
     setCell,
     flagsAt,
     flagBit,
+    heightAt,
+    setHeight,
     cellAt,
     cellCenter,
     levelRect,

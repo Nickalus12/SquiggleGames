@@ -2,6 +2,7 @@ import {registerKit} from '../../../kits/registry.js';
 import {KIT_COLORS} from '../../../themes/tokens.js';
 import {attachWhenReady, getWorld, installWorldApi} from '../../../world/world.js';
 import {getView3d} from '../../../world/view3d.js';
+import {getDoors} from '../../../world/doors.js';
 
 const ID = 'squiggle3d';
 const COLORS = KIT_COLORS[ID];
@@ -17,6 +18,11 @@ const MYSELF = '_myself_';
 
 const str = value => (value === null || typeof value === 'undefined' ? '' : String(value));
 
+const num = value => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+};
+
 class Squiggle3dBlocks {
     constructor (runtime) {
         this.runtime = runtime;
@@ -24,6 +30,7 @@ class Squiggle3dBlocks {
         attachWhenReady(this.world);
         this.view = getView3d(runtime, this.world);
         attachWhenReady(this.view);
+        this.doors = getDoors(runtime, this.world);
     }
 
     getInfo () {
@@ -119,7 +126,42 @@ class Squiggle3dBlocks {
                     text: 'turn with the mouse in 3D [ONOFF]',
                     arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
                 },
-                {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'}
+                {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'},
+                '---',
+                {
+                    opcode: 'openDoor',
+                    blockType: 'command',
+                    text: 'open the 3D door at x [X] y [Y]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0}
+                    }
+                },
+                {
+                    opcode: 'closeDoor',
+                    blockType: 'command',
+                    text: 'close the 3D door at x [X] y [Y]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0}
+                    }
+                },
+                {
+                    opcode: 'doorOpen',
+                    blockType: 'Boolean',
+                    text: '3D door at x [X] y [Y] open?',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0}
+                    }
+                },
+                {
+                    opcode: 'whenTouchDoor',
+                    blockType: 'hat',
+                    isEdgeActivated: true,
+                    text: 'when I touch a 3D door',
+                    filter: ['sprite']
+                }
             ],
             menus: {
                 viewers: {acceptReporters: true, items: 'viewerMenu'},
@@ -225,6 +267,26 @@ class Squiggle3dBlocks {
 
     spriteInSights () {
         return this.view.crosshair();
+    }
+
+    openDoor (args) {
+        this.doors.open(num(args.X), num(args.Y));
+    }
+
+    closeDoor (args) {
+        this.doors.close(num(args.X), num(args.Y));
+    }
+
+    doorOpen (args) {
+        return this.doors.isOpen(num(args.X), num(args.Y));
+    }
+
+    whenTouchDoor (args, util) {
+        const viewer = this.view.viewer();
+        const target = util && util.target ? util.target : viewer;
+        if (!target || target.isStage) return false;
+        if (viewer && target !== viewer) return false;
+        return this.doors.touching(target);
     }
 }
 

@@ -1,4 +1,5 @@
 import {FLAGS, flagsAt} from './tilemap.js';
+import {PASS_OPEN, doorOpenAt} from './doors.js';
 
 const EPS = 1e-7;
 const GROUND = 0.01;
@@ -21,18 +22,47 @@ const span = (grid, low, high, count) => {
     return [first, last];
 };
 
-const blocks = (grid, col, row, mask) => (flagsAt(grid, col, row) & mask) !== 0;
+const effectiveFlags = (grid, col, row) => {
+    let f = flagsAt(grid, col, row);
+    if (f & FLAGS.seethrough) f |= FLAGS.solid;
+    if (f & FLAGS.door) {
+        if (doorOpenAt(grid, col, row) >= PASS_OPEN) f &= ~FLAGS.solid;
+        else f |= FLAGS.solid;
+    }
+    return f;
+};
 
-const columnBlocked = (grid, col, rows, mask) => {
+const blocks = (grid, col, row, mask, low, high) => {
+    const f = effectiveFlags(grid, col, row);
+    if ((f & mask) === 0) return false;
+    if ((f & FLAGS.door) && (mask & FLAGS.solid) && typeof low === 'number' && typeof high === 'number') {
+        const open = doorOpenAt(grid, col, row);
+        if (open > 0) {
+            const ts = grid.tileSize;
+            const cellStart = (f & FLAGS.door) ? 0 : 0;
+            const gapEnd = open * ts;
+            if (low >= cellStart && high <= gapEnd) return false;
+        }
+    }
+    return true;
+};
+
+const columnBlocked = (grid, col, rows, mask, top, bottom) => {
+    const ts = grid.tileSize;
     for (let row = rows[0]; row <= rows[1]; row++) {
-        if (blocks(grid, col, row, mask)) return true;
+        const relLow = typeof top === 'number' ? Math.max(0, top - (row * ts)) : undefined;
+        const relHigh = typeof bottom === 'number' ? Math.min(ts, bottom - (row * ts)) : undefined;
+        if (blocks(grid, col, row, mask, relLow, relHigh)) return true;
     }
     return false;
 };
 
-const rowBlocked = (grid, row, cols, mask) => {
+const rowBlocked = (grid, row, cols, mask, left, right) => {
+    const ts = grid.tileSize;
     for (let col = cols[0]; col <= cols[1]; col++) {
-        if (blocks(grid, col, row, mask)) return true;
+        const relLow = typeof left === 'number' ? Math.max(0, left - (col * ts)) : undefined;
+        const relHigh = typeof right === 'number' ? Math.min(ts, right - (col * ts)) : undefined;
+        if (blocks(grid, col, row, mask, relLow, relHigh)) return true;
     }
     return false;
 };
@@ -62,7 +92,7 @@ const moveBy = (grid, box, axis, delta) => {
     const p = toPixels(grid, box);
     if (axis === 'x') {
         const rows = span(grid, p.top, p.bottom, grid.rows);
-        const blocked = col => columnBlocked(grid, col, rows, FLAGS.solid);
+        const blocked = col => columnBlocked(grid, col, rows, FLAGS.solid, p.top, p.bottom);
         const edge = d > 0 ? p.right : p.left;
         const step = sweep(grid, edge, d, grid.cols, blocked);
         result.x = box.x + step.moved;
@@ -72,7 +102,7 @@ const moveBy = (grid, box, axis, delta) => {
     const down = d < 0;
     const cols = span(grid, p.left, p.right, grid.cols);
     const mask = down ? FLAGS.solid | FLAGS.oneway : FLAGS.solid;
-    const blocked = row => rowBlocked(grid, row, cols, mask);
+    const blocked = row => rowBlocked(grid, row, cols, mask, p.left, p.right);
     const edge = down ? p.bottom : p.top;
     const step = sweep(grid, edge, -d, grid.rows, blocked);
     result.y = box.y - step.moved;
@@ -135,10 +165,14 @@ const castRay = (grid, x, y, dx, dy, maxDistance) => {
         }
         if (distance > limit) return null;
         const outside = col < 0 || row < 0 || col >= grid.cols || row >= grid.rows;
-        if (outside || (flagsAt(grid, col, row) & FLAGS.solid)) {
-            gx += ux * distance;
-            gy += vy * distance;
-            const along = side === 0 ? gy - Math.floor(gy) : gx - Math.floor(gx);
+        const f = outside ? FLAGS.solid : effectiveFlags(grid, col, row);
+        if (outside || (f & FLAGS.solid)) {
+            const hitX = gx + (ux * distance);
+            const hitY = gy + (vy * distance);
+            const along = side === 0 ? hitY - Math.floor(hitY) : hitX - Math.floor(hitX);
+            if (!outside && (f & FLAGS.door) && along < doorOpenAt(grid, col, row)) {
+                continue;
+            }
             return {distance: distance * ts, col, row, side, along, outside};
         }
     }

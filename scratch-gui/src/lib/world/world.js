@@ -1,6 +1,7 @@
 import {FLAGS, MAX_LEVELS, addTexture, cellAt, cloneGrid, createGrid, flagsAt, levelRect, setCell,
     toRulesLevel} from './tilemap.js';
 import {moveBy, onGround, overlapFlags} from './collision.js';
+import {PASS_OPEN, doorOpenAt, peekDoors} from './doors.js';
 import {STAGE_WIDTH, STAGE_HEIGHT, createCamera, toWorld} from './camera.js';
 import {createTileRenderer} from './render.js';
 import {createTextureCache, browserCanvas, browserImageLoader} from './textures.js';
@@ -250,6 +251,8 @@ const createWorldState = (runtime, options) => {
     };
 
     const afterStep = () => {
+        const doors = peekDoors(runtime);
+        if (doors) doors.step();
         if (camera.isActive()) {
             const dt = (runtime.currentStepTime || (1000 / 30)) / 1000;
             camera.step(dt, followPosition());
@@ -404,7 +407,9 @@ const createWorldState = (runtime, options) => {
             const grid = state.play;
             if (!grid) return false;
             const cell = cellAt(grid, x, y);
-            return (flagsAt(grid, cell.col, cell.row) & FLAGS.solid) !== 0;
+            const f = flagsAt(grid, cell.col, cell.row);
+            if (f & FLAGS.door) return doorOpenAt(grid, cell.col, cell.row) < PASS_OPEN;
+            return (f & (FLAGS.solid | FLAGS.seethrough)) !== 0;
         },
         flagsAt (x, y) {
             const grid = state.play;
@@ -499,7 +504,7 @@ const createWorldState = (runtime, options) => {
             });
             return ids;
         },
-        revision: () => state.revision,
+        revision: () => state.revision + (state.play ? state.play._doorRev || 0 : 0),
         setTilesHidden (on) {
             if (state.tiles) state.tiles.setHidden(on);
         },

@@ -1,4 +1,6 @@
 import {defaultSkyTexture} from './textures.js';
+import {FLAGS, heightAt} from './tilemap.js';
+import {doorOpenAt} from './doors.js';
 
 const WIDTH = 240;
 const HEIGHT = 180;
@@ -232,6 +234,31 @@ const updateLightBuffer = (buf, map, lights) => {
     return true;
 };
 
+const makeDoorTexture = () => {
+    const size = 16;
+    const data = new Uint32Array(size * size);
+    const frame = pixel(68, 52, 38);
+    const panel = pixel(132, 92, 56);
+    const trim = pixel(98, 70, 44);
+    const bevelHi = pixel(164, 120, 78);
+    const bevelLo = pixel(80, 56, 36);
+    const handle = pixel(232, 194, 76);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            let c = panel;
+            if (x === 0 || x === 15 || y === 0 || y === 15) c = frame;
+            else if (x === 1 || x === 14 || y === 1 || y === 14 || y === 7 || y === 8) c = trim;
+            else if (x >= 2 && x <= 3 && y >= 7 && y <= 9) c = handle;
+            else if (x === 2 || y === 2 || y === 9) c = bevelHi;
+            else if (x === 13 || y === 6 || y === 13) c = bevelLo;
+            data[(y * size) + x] = c;
+        }
+    }
+    return {width: size, height: size, data};
+};
+
+const DEFAULT_DOOR_TEXTURE = makeDoorTexture();
+
 const basis = (direction, fov, out, width) => {
     const a = rad(direction);
     const k = Math.tan(rad(clampFov(fov)) / 2);
@@ -279,7 +306,30 @@ const castRay = (map, u, v, rx, ry, out) => {
                 const idx = (row * cols) + col;
                 val = main[idx];
                 const tf = val > 0 && tiles[val - 1] ? tiles[val - 1].flags : 0;
-                solid = ((flags[idx] | tf) & bit) !== 0;
+                const cellFlags = flags[idx] | tf;
+                if ((cellFlags & FLAGS.door) !== 0) {
+                    const doorDist = side === 0 ? sideX - (0.5 * dx) : sideY - (0.5 * dy);
+                    const insideDoor = side === 0 ? doorDist < sideY : doorDist < sideX;
+                    if (insideDoor && doorDist > 0) {
+                        const along = side === 0 ? v + (doorDist * ry) : u + (doorDist * rx);
+                        const rawWallX = along - Math.floor(along);
+                        const open = map._grid ? doorOpenAt(map._grid, col, row) :
+                            (map.doorOpen ? map.doorOpen(col, row) : 0);
+                        if (rawWallX >= open) {
+                            const hit = out || {};
+                            hit.dist = doorDist;
+                            hit.side = side;
+                            hit.col = col;
+                            hit.row = row;
+                            hit.wallX = rawWallX - open;
+                            hit.value = val;
+                            hit.door = true;
+                            return hit;
+                        }
+                    }
+                    continue;
+                }
+                solid = (cellFlags & (bit | FLAGS.seethrough)) !== 0;
             }
             if (solid) {
                 const hit = out || {};
@@ -291,6 +341,7 @@ const castRay = (map, u, v, rx, ry, out) => {
                 hit.row = row;
                 hit.wallX = along - Math.floor(along);
                 hit.value = val;
+                hit.door = false;
                 return hit;
             }
         }
@@ -306,6 +357,27 @@ const castRay = (map, u, v, rx, ry, out) => {
             row += stepY;
             side = 1;
         }
+        if (map.door && map.door(col, row)) {
+            const doorDist = side === 0 ? sideX - (0.5 * dx) : sideY - (0.5 * dy);
+            const insideDoor = side === 0 ? doorDist < sideY : doorDist < sideX;
+            if (insideDoor && doorDist > 0) {
+                const along = side === 0 ? v + (doorDist * ry) : u + (doorDist * rx);
+                const rawWallX = along - Math.floor(along);
+                const open = map.doorOpen ? map.doorOpen(col, row) : 0;
+                if (rawWallX >= open) {
+                    const hit = out || {};
+                    hit.dist = doorDist;
+                    hit.side = side;
+                    hit.col = col;
+                    hit.row = row;
+                    hit.wallX = rawWallX - open;
+                    hit.value = map.wallValue ? map.wallValue(col, row) : 0;
+                    hit.door = true;
+                    return hit;
+                }
+            }
+            continue;
+        }
         if (map.solid(col, row)) {
             const hit = out || {};
             const dist = side === 0 ? sideX - dx : sideY - dy;
@@ -316,6 +388,7 @@ const castRay = (map, u, v, rx, ry, out) => {
             hit.row = row;
             hit.wallX = along - Math.floor(along);
             hit.value = map.wallValue(col, row);
+            hit.door = false;
             return hit;
         }
     }
@@ -347,6 +420,7 @@ const createFrame = (width, height) => {
         syRow: new Int32Array(h),
         colOk: new Uint8Array(w),
         colSide: new Uint8Array(w),
+        colDoor: new Uint8Array(w),
         colVal: new Int32Array(w),
         colCol: new Int32Array(w),
         colRow: new Int32Array(w),
@@ -356,7 +430,7 @@ const createFrame = (width, height) => {
         colRy: new Float64Array(w),
         skyTx: new Int32Array(w),
         lightBuffer: null,
-        hit: {dist: 0, side: 0, col: 0, row: 0, wallX: 0, value: 0},
+        hit: {dist: 0, side: 0, col: 0, row: 0, wallX: 0, value: 0, door: false},
         view: {dir: {x: 0, y: 0}, plane: {x: 0, y: 0}, focal: 0},
         placed: [],
         result: {crosshair: '', target: null, ahead: Infinity},
@@ -369,6 +443,7 @@ const createFrame = (width, height) => {
         _surfHorizon: NaN,
         _rayMap: null,
         _rayWallKey: -1,
+        _rayDoorRev: -1,
         _rayU: NaN,
         _rayV: NaN,
         _rayDir: NaN,
@@ -724,17 +799,18 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
 const castColumns = (frame, scene, view) => {
     const w = frame.width || WIDTH;
     const wallKey = typeof scene.wallKey === 'number' ? scene.wallKey : 0;
+    const map = scene.map;
+    const doorRev = map && map._grid ? map._grid._doorRev || 0 : (map && map.doorRev) || 0;
     const u = scene.player.u;
     const v = scene.player.v;
     const dir = scene.player.direction;
     const fov = clampFov(scene.fov);
-    if (frame._rayMap === scene.map && frame._rayWallKey === wallKey &&
+    if (frame._rayMap === map && frame._rayWallKey === wallKey && frame._rayDoorRev === doorRev &&
         frame._rayU === u && frame._rayV === v && frame._rayDir === dir && frame._rayFov === fov) {
         return true;
     }
-    const {colOk, colSide, colVal, colCol, colRow, colDist, colWallX, colRx, colRy, hit} = frame;
+    const {colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colRx, colRy, hit} = frame;
     const {dir: vDir, plane} = view;
-    const map = scene.map;
     for (let x = 0; x < w; x++) {
         const camX = ((2 * (x + 0.5)) / w) - 1;
         const rx = vDir.x + (plane.x * camX);
@@ -744,10 +820,12 @@ const castColumns = (frame, scene, view) => {
         const h = castRay(map, u, v, rx, ry, hit);
         if (!h) {
             colOk[x] = 0;
+            colDoor[x] = 0;
             continue;
         }
         colOk[x] = 1;
         colSide[x] = h.side;
+        colDoor[x] = h.door ? 1 : 0;
         colVal[x] = h.value;
         colCol[x] = h.col;
         colRow[x] = h.row;
@@ -756,6 +834,7 @@ const castColumns = (frame, scene, view) => {
     }
     frame._rayMap = map;
     frame._rayWallKey = wallKey;
+    frame._rayDoorRev = doorRev;
     frame._rayU = u;
     frame._rayV = v;
     frame._rayDir = dir;
@@ -764,8 +843,21 @@ const castColumns = (frame, scene, view) => {
     return false;
 };
 
+const doorTexFor = (scene, map, val) => {
+    if (scene.doorTexture) return scene.doorTexture;
+    const getTex = scene.texture;
+    if (val > 0 && getTex) {
+        const tiles = map && map._tiles;
+        if (!tiles || (tiles[val - 1] && (tiles[val - 1].flags & FLAGS.door))) {
+            const custom = getTex(val);
+            if (custom) return custom;
+        }
+    }
+    return DEFAULT_DOOR_TEXTURE;
+};
+
 const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
-    const {pixels, zbuffer, heights, colOk, colSide, colVal, colCol, colRow, colDist, colWallX, colRx, colRy} = frame;
+    const {pixels, zbuffer, heights, colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colRx, colRy} = frame;
     const {focal} = view;
     const w = frame.width || WIDTH;
     const h = frame.height || HEIGHT;
@@ -797,7 +889,8 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         const y1 = Math.min(h, Math.ceil(half + (eye * lineH)));
         const val = colVal[x];
         const side = colSide[x];
-        const tex = getTex ? getTex(val) : null;
+        const isDoor = colDoor[x] !== 0;
+        const tex = isDoor ? doorTexFor(scene, map, val) : (getTex ? getTex(val) : null);
         let k = (side === 1 ? SIDE_SHADE : 1) * lightFalloffFactor(falloff, dist);
         const f = fogFactor(fog, dist);
         let addR = 0;
@@ -1192,9 +1285,11 @@ const gridMap = (grid, flagsAt, solidBit) => {
     const hasFloor = Boolean(floor && floor.some(v => v > 0));
     const hasCeiling = Boolean(ceiling && ceiling.some(v => v > 0));
     const hasLight = Boolean(light && light.some(v => v !== 100));
+    const bit = solidBit | 0;
     return {
         cols: grid.cols,
         rows: grid.rows,
+        _grid: grid,
         _main: hasDirect ? grid.main : null,
         _floor: floor,
         _ceiling: ceiling,
@@ -1203,10 +1298,17 @@ const gridMap = (grid, flagsAt, solidBit) => {
         _hasCeiling: hasCeiling,
         _hasLight: hasLight,
         _flags: hasDirect ? grid.flags : null,
+        _heights: hasDirect && grid.heights ? grid.heights : null,
         _tiles: hasDirect ? grid.tiles : null,
-        _bit: solidBit | 0,
+        _bit: bit,
+        door: (col, row) => col >= 0 && row >= 0 && col < grid.cols && row < grid.rows &&
+            (flagsAt(grid, col, row) & FLAGS.door) !== 0,
+        doorOpen: (col, row) => doorOpenAt(grid, col, row),
+        seethrough: (col, row) => col >= 0 && row >= 0 && col < grid.cols && row < grid.rows &&
+            (flagsAt(grid, col, row) & FLAGS.seethrough) !== 0,
+        height: (col, row) => heightAt(grid, col, row),
         solid: (col, row) => col < 0 || row < 0 || col >= grid.cols || row >= grid.rows ||
-            (flagsAt(grid, col, row) & solidBit) !== 0,
+            (flagsAt(grid, col, row) & (bit | FLAGS.seethrough)) !== 0,
         wallValue: (col, row) => {
             if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return 0;
             return grid.main[(row * grid.cols) + col];
@@ -1247,6 +1349,7 @@ export {
     MAX_EYE,
     MAX_LIGHTS,
     FACINGS,
+    DEFAULT_DOOR_TEXTURE,
     pixel,
     shade,
     tint,

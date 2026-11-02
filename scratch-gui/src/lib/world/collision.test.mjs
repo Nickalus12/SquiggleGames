@@ -1,6 +1,7 @@
 import {ok, near, section, done} from './harness.mjs';
 import {FLAGS, createGrid, setCell, addTexture} from './tilemap.js';
 import {moveBy, overlapFlags, onGround, castRay} from './collision.js';
+import {openDoorAt, closeDoorAt, stepDoors, doorOpenAt} from './doors.js';
 
 const level = tileSize => {
     const grid = createGrid({cols: 20, rows: 12, tileSize, origin: [0, 0]});
@@ -92,5 +93,33 @@ ok('rays stop at the range', castRay(room, eye.x, eye.y, 1, 0, 50) === null);
 const open = createGrid({cols: 3, rows: 3, tileSize: 16, origin: [0, 0]});
 const edge = castRay(open, 24, -24, -1, 0, 1000);
 ok('the level edge counts as a wall', edge.outside && near(edge.distance, 24, 0.01), edge);
+
+section('doors and seethrough collision');
+{
+    const dGrid = createGrid({cols: 10, rows: 6, tileSize: 32, origin: [0, 0]});
+    setCell(dGrid, 'flags', 4, 2, FLAGS.door);
+    setCell(dGrid, 'flags', 6, 2, FLAGS.seethrough);
+    const runner = cellBox(dGrid, 3, 2, 24, 24);
+    const blockedByClosed = moveBy(dGrid, runner, 'x', 64);
+    ok('a closed door blocks movement', blockedByClosed.hit === 'right' && near(blockedByClosed.x + 12, 4 * 32));
+    openDoorAt(dGrid, 4, 2, {cell: true, holdMs: 3000});
+    stepDoors(dGrid, 200);
+    ok('half-open door at 200 ms has open fraction 0.5', near(doorOpenAt(dGrid, 4, 2), 0.5));
+    const narrow = {x: (3.5 * 32), y: -(2 * 32) - 8, w: 8, h: 8};
+    const throughHalf = moveBy(dGrid, narrow, 'x', 64);
+    ok('a narrow box in the open half passes a half-open door', throughHalf.hit === null && near(throughHalf.x, narrow.x + 64));
+    const wideBlocked = moveBy(dGrid, runner, 'x', 64);
+    ok('a wide box is still blocked by a half-open door', wideBlocked.hit === 'right');
+    stepDoors(dGrid, 200);
+    ok('fully open door at 400 ms has open fraction 1', near(doorOpenAt(dGrid, 4, 2), 1));
+    const throughOpen = moveBy(dGrid, runner, 'x', 48);
+    ok('an open door allows full-size boxes through', throughOpen.hit === null && near(throughOpen.x, runner.x + 48));
+    const hitFence = moveBy(dGrid, {x: 5.5 * 32, y: -(2.5 * 32), w: 24, h: 24}, 'x', 64);
+    ok('a seethrough tile still blocks collision', hitFence.hit === 'right' && near(hitFence.x + 12, 6 * 32));
+    closeDoorAt(dGrid, 4, 2, {cell: true});
+    stepDoors(dGrid, 400);
+    ok('closing the door makes it block again', near(doorOpenAt(dGrid, 4, 2), 0) &&
+        moveBy(dGrid, runner, 'x', 64).hit === 'right');
+}
 
 done();

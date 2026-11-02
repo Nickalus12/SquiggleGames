@@ -1,7 +1,8 @@
 import {ok, section, done} from './harness.mjs';
 import {
-    FLAGS, MAX_SIZE, encodeRow, decodeRow, createGrid, encodeLevel, cloneGrid, setCell, getCell, flagsAt,
-    cellAt, cellCenter, levelRect, tileIndex, addTexture, base64, solidBits, toRulesLevel, solidRows
+    FLAGS, FLAG_MASK, MAX_SIZE, encodeRow, decodeRow, createGrid, encodeLevel, cloneGrid, setCell, getCell, flagsAt,
+    flagBit, heightAt, setHeight, cellAt, cellCenter, levelRect, tileIndex, addTexture, base64, solidBits,
+    toRulesLevel, solidRows
 } from './tilemap.js';
 
 section('RLE rows');
@@ -103,5 +104,25 @@ ok('rules level carries id, cols, rows, tile and origin', rules.id === 'cave' &&
 ok('solid is base64 of the bitset', rules.solid === base64(bits));
 ok('solid is left out unless asked', !('solid' in toRulesLevel(grid, false)));
 ok('flag rows are RLE of effective flags', solidRows(grid)[5][0] === FLAGS.solid && solidRows(grid)[5][1] === 10);
+
+section('door, seethrough, and heights');
+ok('door and seethrough flags are 16 and 32 with mask 63', FLAGS.door === 16 && FLAGS.seethrough === 32 && FLAG_MASK === 63);
+ok('flagBit resolves door and see-through aliases', flagBit('door') === FLAGS.door &&
+    flagBit('seethrough') === FLAGS.seethrough && flagBit('see-through') === FLAGS.seethrough);
+const hGrid = createGrid({id: 'heights', cols: 6, rows: 4, tileSize: 32});
+addTexture(hGrid, 'lowwall', FLAGS.solid, 0.5);
+setCell(hGrid, 'main', 1, 1, 1);
+ok('tile height comes from texture when cell height is unset', heightAt(hGrid, 1, 1) === 0.5 && heightAt(hGrid, 0, 0) === 1);
+setHeight(hGrid, 2, 1, 2.5);
+setHeight(hGrid, 3, 1, 0.1);
+setHeight(hGrid, 4, 1, 9);
+ok('cell height clamps between 0.25 and 4', heightAt(hGrid, 2, 1) === 2.5 &&
+    heightAt(hGrid, 3, 1) === 0.25 && heightAt(hGrid, 4, 1) === 4);
+const hStored = encodeLevel(hGrid);
+const hBack = createGrid(JSON.parse(JSON.stringify(hStored)));
+ok('heights round trip through encodeLevel', heightAt(hBack, 1, 1) === 0.5 &&
+    heightAt(hBack, 2, 1) === 2.5 && heightAt(hBack, 3, 1) === 0.25 && heightAt(hBack, 4, 1) === 4);
+setHeight(hBack, 2, 1, 0);
+ok('setting height to 0 clears cell override', heightAt(hBack, 2, 1) === 1);
 
 done();

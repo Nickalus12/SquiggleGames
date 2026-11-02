@@ -78,7 +78,7 @@ const opcodes = blocks.map(block => block.opcode);
 ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
     'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
-    'mouseTurn', 'spriteInSights'].join(), opcodes);
+    'mouseTurn', 'spriteInSights', 'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor'].join(), opcodes);
 ok('every opcode has a method', opcodes.every(opcode => typeof ext[opcode] === 'function'));
 const byOp = Object.fromEntries(blocks.map(block => [block.opcode, block]));
 ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER]' &&
@@ -89,12 +89,20 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
     byOp.setLightFalloff.text === 'set 3D light falloff to [N]' &&
     byOp.showMeAs.text === 'show me in 3D as [LOOK]' && byOp.setMyHeight.text === 'set my 3D height to [N]' &&
     byOp.glowIn3d.text === 'glow in 3D with [COLOR] radius [N]' &&
-    byOp.mouseTurn.text === 'turn with the mouse in 3D [ONOFF]' && byOp.spriteInSights.text === 'sprite in my sights');
+    byOp.mouseTurn.text === 'turn with the mouse in 3D [ONOFF]' && byOp.spriteInSights.text === 'sprite in my sights' &&
+    byOp.openDoor.text === 'open the 3D door at x [X] y [Y]' &&
+    byOp.closeDoor.text === 'close the 3D door at x [X] y [Y]' &&
+    byOp.doorOpen.text === '3D door at x [X] y [Y] open?' &&
+    byOp.whenTouchDoor.text === 'when I touch a 3D door');
 ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blockType === 'reporter' &&
     byOp.showView.blockType === 'command' && byOp.setSurfaceTexture.blockType === 'command' &&
-    byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command');
+    byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command' &&
+    byOp.openDoor.blockType === 'command' &&
+    byOp.closeDoor.blockType === 'command' && byOp.doorOpen.blockType === 'Boolean' &&
+    byOp.whenTouchDoor.blockType === 'hat');
 ok('sprite-only blocks are filtered', byOp.showMeAs.filter.join() === 'sprite' &&
-    byOp.setMyHeight.filter.join() === 'sprite' && byOp.glowIn3d.filter.join() === 'sprite');
+    byOp.setMyHeight.filter.join() === 'sprite' && byOp.glowIn3d.filter.join() === 'sprite' &&
+    byOp.whenTouchDoor.filter.join() === 'sprite');
 const items = name => info.menus[name].items.map(item => (typeof item === 'object' ? item.text : item)).join('/');
 ok('menus read as rev 3', items('settings') === 'field of view/fog/eye height' &&
     items('surfaces') === 'floor/ceiling' && items('looks') === 'a picture/8 views/nothing' &&
@@ -165,6 +173,37 @@ ext.mouseTurn({ONOFF: 'off'});
 ok('turn with the mouse off', view.mouseTurn() === false);
 ext.hideView();
 ok('hide 3D view', ext.viewOn() === false && ext.spriteInSights() === '');
+
+section('3D doors');
+{
+    const {FLAGS, setCell, cellCenter} = await import('../../../world/tilemap.js');
+    const level = world.createLevel({name: 'Hall', cols: 10, rows: 10, tileSize: 32, origin: [-160, 160]});
+    setCell(level, 'flags', 5, 5, FLAGS.door);
+    world.saveLevel(level);
+    world.useLevel(level.id);
+    const live = world.current();
+    const doorPos = cellCenter(live, 5, 5);
+    ext.showView({VIEWER: 'Hero'}, util(hero));
+    hero.setXY(doorPos.x - 24, doorPos.y);
+    world.setHitbox(hero, 16, 16);
+    ok('door starts closed and solid', ext.doorOpen({X: doorPos.x, Y: doorPos.y}) === false &&
+        world.solidAt(doorPos.x, doorPos.y) === true);
+    ok('whenTouchDoor fires for the viewer sprite next to the door',
+        ext.whenTouchDoor({}, util(hero)) === true && ext.whenTouchDoor({}, util(coin)) === false);
+    ext.openDoor({X: doorPos.x, Y: doorPos.y});
+    ext.doors.step(400);
+    ok('door opens after 400 ms and clears solidAt', ext.doorOpen({X: doorPos.x, Y: doorPos.y}) === true &&
+        world.solidAt(doorPos.x, doorPos.y) === false);
+    const values = ext.doors.values();
+    ok('multiplayer door values encode open door state', values['door:5:5'] === 1);
+    hero.setXY(-140, 140);
+    ext.closeDoor({X: doorPos.x, Y: doorPos.y});
+    ext.doors.step(400);
+    ok('closeDoor closes the door over 400 ms', ext.doorOpen({X: doorPos.x, Y: doorPos.y}) === false &&
+        world.solidAt(doorPos.x, doorPos.y) === true);
+    world.deleteLevel(level.id);
+    ext.hideView();
+}
 
 section('saved projects');
 const saved = JSON.parse(vm.toJSON());
