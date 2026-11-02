@@ -12,6 +12,8 @@ const RESOLUTION = 0.5;
 const TEXTURE_SIZE = 64;
 const SPRITE_MAX = 64;
 const SAMPLES = 240;
+const SLOW_FRAME_MS = 8;
+const SLOW_STREAK = 12;
 const VIEW_NAME = /^(.*)-([1-8])$/;
 const LOOKS = Object.freeze({picture: 1, views: 2, nothing: 0});
 const TURN_PER_PIXEL = 0.25;
@@ -123,15 +125,10 @@ const createView3d = (runtime, world, options) => {
         ((pixels, width, height) => new ImageData(new Uint8ClampedArray(pixels.buffer), width, height));
     const defaultScale = Number.isFinite(Number(opts.resolution)) ?
         Math.max(0.25, Math.min(2, Number(opts.resolution))) :
-        (!opts.toBitmap && typeof ImageData !== 'undefined' ? 1 : RESOLUTION);
-    const stageDims = () => [
-        Math.max(120, Number(runtime && runtime.stageWidth) || (WIDTH / RESOLUTION)),
-        Math.max(90, Number(runtime && runtime.stageHeight) || (HEIGHT / RESOLUTION))
-    ];
-    let frame = createFrame(
-        Math.round(stageDims()[0] * defaultScale),
-        Math.round(stageDims()[1] * defaultScale)
-    );
+        RESOLUTION;
+    const stageW = () => Math.max(120, Number(runtime && runtime.stageWidth) || (WIDTH / RESOLUTION));
+    const stageH = () => Math.max(90, Number(runtime && runtime.stageHeight) || (HEIGHT / RESOLUTION));
+    let frame = createFrame(Math.round(stageW() * defaultScale), Math.round(stageH() * defaultScale));
     const cameraOwner = {kit: 'squiggle3d'};
     const serials = new WeakMap();
     const fresh = () => ({
@@ -155,6 +152,7 @@ const createView3d = (runtime, world, options) => {
         crosshair: '',
         target: null,
         samples: [],
+        slow: 0,
         scale: defaultScale
     });
     let state = fresh();
@@ -238,9 +236,8 @@ const createView3d = (runtime, world, options) => {
     const viewerAlive = () => !!state.viewer && runtime.targets.indexOf(state.viewer) !== -1;
 
     const ensureFrame = () => {
-        const [sw, sh] = stageDims();
-        const wantW = Math.max(60, Math.round(sw * state.scale));
-        const wantH = Math.max(45, Math.round(sh * state.scale));
+        const wantW = Math.max(60, Math.round(stageW() * state.scale));
+        const wantH = Math.max(45, Math.round(stageH() * state.scale));
         if (frame.width === wantW && frame.height === wantH) return false;
         frame = createFrame(wantW, wantH);
         gpu.image = null;
@@ -334,11 +331,9 @@ const createView3d = (runtime, world, options) => {
         const elapsed = now() - started;
         state.samples.push(elapsed);
         if (state.samples.length > SAMPLES) state.samples.shift();
-        if (opts.adaptive !== false && state.scale > RESOLUTION && state.samples.length >= 20) {
-            const recent = state.samples.slice(-20).sort((a, b) => a - b);
-            if (percentile(recent, 0.5) > 18) {
-                state.scale = RESOLUTION;
-            }
+        if (opts.adaptive !== false && state.scale > RESOLUTION) {
+            state.slow = elapsed > SLOW_FRAME_MS ? state.slow + 1 : 0;
+            if (state.slow >= SLOW_STREAK) state.scale = RESOLUTION;
         }
     };
 

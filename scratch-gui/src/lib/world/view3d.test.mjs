@@ -294,6 +294,33 @@ runtime.stageHeight = 360;
 runtime._step();
 ok('restoring 480x360 and 0.5 scale returns frame to 240x180',
     view.frame.width === WIDTH && view.frame.height === HEIGHT);
+globalThis.ImageData = class {};
+const browserView = createView3d(runtime, world, {canvas, document: doc});
+ok('a browser view starts at half resolution, not full', browserView.scale() === RESOLUTION &&
+    browserView.frame.width === WIDTH && browserView.frame.height === HEIGHT, browserView.scale());
+browserView.detach();
+delete globalThis.ImageData;
+view.setScale(1);
+const realNow = performance.now;
+let fakeClock = 0;
+performance.now = () => {
+    fakeClock += 10;
+    return fakeClock;
+};
+const startX = hero.x;
+for (let i = 0; i < 11; i++) {
+    hero.setXY(startX + ((i % 2) * 2), hero.y);
+    runtime._step();
+}
+const stillSharp = view.scale() === 1;
+hero.setXY(startX + 3, hero.y);
+runtime._step();
+performance.now = realNow;
+ok('twelve slow frames in a row drop a sharp view back to half resolution',
+    stillSharp && view.scale() === RESOLUTION, view.scale());
+hero.setXY(startX, hero.y);
+runtime._step();
+ok('the dropped view renders a half resolution frame', view.frame.width === WIDTH && view.frame.height === HEIGHT);
 
 section('mouse turning');
 view.setMouseTurn(true);
