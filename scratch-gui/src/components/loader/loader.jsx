@@ -6,47 +6,97 @@ import PropTypes from 'prop-types';
 import bindAll from 'lodash.bindall';
 import styles from './loader.css';
 import {getIsLoadingWithId} from '../../reducers/project-state';
-import topBlock from './top-block.svg';
-import middleBlock from './middle-block.svg';
-import bottomBlock from './bottom-block.svg';
 
 const mainMessages = {
     'gui.loader.headline': (
         <FormattedMessage
-            defaultMessage="Loading Project"
+            defaultMessage="Loading your game"
             description="Main loading message"
-            id="gui.loader.headline"
+            id="sq.loader.headline"
         />
     ),
     'gui.loader.creating': (
         <FormattedMessage
-            defaultMessage="Creating Project"
+            defaultMessage="Making a new game"
             description="Main creating message"
-            id="gui.loader.creating"
+            id="sq.loader.creating"
         />
     )
 };
 
 const messages = defineMessages({
     projectData: {
-        defaultMessage: 'Loading project …',
+        defaultMessage: 'Getting your game ready …',
         description: 'Appears when loading project data, but not assets yet',
-        id: 'tw.loader.projectData'
+        id: 'sq.loader.projectData'
     },
     downloadingAssets: {
-        defaultMessage: 'Downloading assets ({complete}/{total}) …',
+        defaultMessage: 'Downloading pictures and sounds ({complete} of {total}) …',
         description: 'Appears when loading project assets from a project on a remote website',
-        id: 'tw.loader.downloadingAssets'
+        id: 'sq.loader.downloadingAssets'
     },
     loadingAssets: {
-        defaultMessage: 'Loading assets ({complete}/{total}) …',
+        defaultMessage: 'Loading pictures and sounds ({complete} of {total}) …',
         description: 'Appears when loading project assets from a project file on the user\'s computer',
-        id: 'tw.loader.loadingAssets'
+        id: 'sq.loader.loadingAssets'
     }
 });
 
-// Because progress events are fired so often during the very performance-critical loading
-// process and React updates are very slow, we bypass React for updating the progress bar.
+const WaveMark = () => (
+    <svg
+        aria-hidden="true"
+        className={styles.mark}
+        focusable="false"
+        viewBox="0 0 64 64"
+    >
+        <defs>
+            <linearGradient
+                id="sq-loader-g"
+                x1="0"
+                x2="1"
+                y1="0"
+                y2="1"
+            >
+                <stop
+                    offset="0"
+                    stopColor="#8b5cf6"
+                />
+                <stop
+                    offset=".55"
+                    stopColor="#5b6cff"
+                />
+                <stop
+                    offset="1"
+                    stopColor="#22d3ee"
+                />
+            </linearGradient>
+            <clipPath id="sq-loader-c">
+                <rect
+                    height="64"
+                    rx="16"
+                    width="64"
+                />
+            </clipPath>
+        </defs>
+        <rect
+            fill="url(#sq-loader-g)"
+            height="64"
+            rx="16"
+            width="64"
+        />
+        <g clipPath="url(#sq-loader-c)">
+            <path
+                className={styles.wave}
+                d="M-32 34 q8 -15 16 0 q8 15 16 0 q8 -15 16 0 q8 15 16 0 q8 -15 16 0 q8 15 16 0 q8 -15 16 0 q8 15 16 0"
+                fill="none"
+                stroke="#ffffff"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="7"
+            />
+        </g>
+    </svg>
+);
 
 class LoaderComponent extends React.Component {
     constructor (props) {
@@ -113,23 +163,7 @@ class LoaderComponent extends React.Component {
                 })}
             >
                 <div className={styles.container}>
-                    <div className={styles.blockAnimation}>
-                        <img
-                            className={styles.topBlock}
-                            src={topBlock}
-                            draggable={false}
-                        />
-                        <img
-                            className={styles.middleBlock}
-                            src={middleBlock}
-                            draggable={false}
-                        />
-                        <img
-                            className={styles.bottomBlock}
-                            src={bottomBlock}
-                            draggable={false}
-                        />
-                    </div>
+                    <WaveMark />
 
                     <div className={styles.title}>
                         {mainMessages[this.props.messageId]}

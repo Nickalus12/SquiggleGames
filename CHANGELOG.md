@@ -11,8 +11,20 @@ of work rather than just moving files.
 
 ## Unreleased
 
+### Added
+
+- **Game data**, in every project with no trip to the extension library. A game can `save [level] as [10]`, read it back with `saved [level]`, `forget` it, and keep a top 10 with `post score [100] to [Ninjas]`, `my best on`, `top [10] on` and `put top [10] on [Ninjas] in list`. Signed-in players keep their saves on their account and find them on any device; signed-out players keep them on that device, and `signed in?` lets a game ask them to sign in. See [docs/GAME-DATA.md](./docs/GAME-DATA.md).
+- A **Game data** section in Game settings shows what a game saved for you while you tested it and your best scores, with Reset my saves and Clear board.
+- **The game server is on.** A game with a Game Rules sprite plays its rules on the server when someone who can edit presses the green flag, and others join it. The blocks that talk to the game server appear once a project has a Game Rules sprite. A game without one plays as it always has. See [docs/GAME-RULES.md](./docs/GAME-RULES.md).
+- **Widescreen stage, native HUD, radial thumbstick, Play Test, Starter Templates and Publish flow.** World, camera, tilemap and 3D raycast scale dynamically to the project's stage dimensions (`640×360` 16:9 widescreen, `480×360` 4:3 or `360×640` tall). Game settings add touch control mode (radial thumbstick or D-pad), custom action button labels (`Jump`, `Fire`, `Tag`, `Dash`) and toggles for the glassmorphic CoreHud (round timer, team score pills, leaderboard and player vitals). The stage header adds one-click **Play Test** mode with a Touch Pad preview toggle, and the menu bar adds **Templates** and **Publish** modals.
+
+### Removed
+
+- The TurboWarp Extension Gallery, the Load custom extension card, and the Face Sensing and Translate cards. A project can no longer load an extension from another website, and cloud variables no longer connect to a TurboWarp server; they work as normal variables.
+
 ### Fixed
 
+- A player standing still in a game sent nothing to the game server, so the server could not tell them from a player whose connection had died. The game socket now checks in every 2 seconds when it has nothing else to send.
 - On a phone there was no visible way to add a sprite from the Code tab, where the editor opens. The only button at the bottom of the screen was the purple puzzle piece, which adds an extension. The top bar now has an **Add a sprite** button on the Code and Sprites tabs.
 
 ### Changed

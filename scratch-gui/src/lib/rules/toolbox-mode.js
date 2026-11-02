@@ -1,9 +1,12 @@
 import {OPEN_RULES_FUNC, OPEN_SETUP_FUNC, ruleCards, ruleOpcodeSet} from './rule-blocks.js';
+import {gameBlockTypes} from '../together2/device-blocks.js';
 
 const MODE_RULES = 'rules';
 const MODE_DEVICE = 'device';
+const MODE_PLAIN = 'plain';
 
 const ruleSet = ruleOpcodeSet();
+const gameSet = gameBlockTypes();
 const cardSet = new Set(ruleCards());
 
 const attr = (tag, name) => {
@@ -64,6 +67,8 @@ const splitCategory = xml => {
 
 const isRuleItem = item => item.name === 'block' && ruleSet.has(attr(item.openTag, 'type'));
 
+const isGameItem = item => item.name === 'block' && gameSet.has(attr(item.openTag, 'type'));
+
 const isButtonFor = (item, func) => {
     if (item.name !== 'button') return false;
     const data = attr(item.openTag, 'callbackData') || '';
@@ -88,6 +93,7 @@ const tidy = items => {
 
 const keepFor = (mode, item) => {
     if (mode === MODE_RULES) return isRuleItem(item) || item.name === 'sep' || item.name === 'label';
+    if (mode === MODE_PLAIN) return !isRuleItem(item) && !isGameItem(item);
     return !isRuleItem(item);
 };
 
@@ -106,13 +112,22 @@ const filterCategory = (category, mode) => {
     return Object.assign({}, category, {xml: `${parts.head}${kept.map(item => item.xml).join('')}${parts.tail}`});
 };
 
+const modeOf = mode => (mode === MODE_RULES || mode === MODE_PLAIN ? mode : MODE_DEVICE);
+
 const filterCategories = (categories, mode) => categories
-    .map(category => filterCategory(category, mode === MODE_RULES ? MODE_RULES : MODE_DEVICE))
+    .map(category => filterCategory(category, modeOf(mode)))
     .filter(Boolean);
+
+const toolboxModeFor = (isRules, hasRulesSprite) => {
+    if (isRules) return MODE_RULES;
+    return hasRulesSprite ? MODE_DEVICE : MODE_PLAIN;
+};
 
 export {
     MODE_RULES,
     MODE_DEVICE,
+    MODE_PLAIN,
+    toolboxModeFor,
     tokenize,
     splitCategory,
     filterCategory,

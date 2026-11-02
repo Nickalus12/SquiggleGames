@@ -11,7 +11,7 @@
     display: flex;
     align-items: center;
     gap: var(--sq-space-1, 4px);
-    font-size: var(--sq-text-xs, 12px);
+    font-size: var(--sq-text-xs, 14px);
     font-weight: var(--sq-weight-bold, 700);
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
     color: var(--sq-text, $text-primary);

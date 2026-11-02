@@ -12,6 +12,7 @@ class TemplatePickerModal extends React.Component {
             busy: false
         };
         this.handleSelect = this.handleSelect.bind(this);
+        this.handleCardClick = this.handleCardClick.bind(this);
         this.handleStart = this.handleStart.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleBackdropMouseDown = this.handleBackdropMouseDown.bind(this);
@@ -19,6 +20,11 @@ class TemplatePickerModal extends React.Component {
 
     handleSelect (id) {
         this.setState({selectedId: id});
+    }
+
+    handleCardClick (e) {
+        const id = e.currentTarget && e.currentTarget.getAttribute('data-template-id');
+        if (id) this.handleSelect(id);
     }
 
     async handleStart () {
@@ -74,7 +80,7 @@ class TemplatePickerModal extends React.Component {
                                 {'Pick a Game Template'}
                             </h2>
                             <p className={styles.subtitle}>
-                                {'Every template starts in 16:9 widescreen at 60 FPS with mobile thumbstick and HUD ready to customize.'}
+                                {'16:9 widescreen at 60 FPS with mobile thumbstick and HUD ready to customize.'}
                             </p>
                         </div>
                         <button
@@ -96,7 +102,7 @@ class TemplatePickerModal extends React.Component {
                                     className={classNames(styles.card, {[styles.cardActive]: active})}
                                     aria-pressed={active}
                                     data-template-id={item.id}
-                                    onClick={() => this.handleSelect(item.id)}
+                                    onClick={this.handleCardClick}
                                 >
                                     <div className={styles.cardTop}>
                                         <span className={styles.cardTitle}>{item.title}</span>

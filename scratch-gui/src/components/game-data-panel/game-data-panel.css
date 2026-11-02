@@ -1,0 +1,108 @@
+@import "../../css/colors.css";
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem 0.5rem;
+}
+
+.intro,
+.status,
+.empty,
+.note {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.intro,
+.empty {
+    color: $text-primary-transparent;
+}
+
+.status {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: $badge-background;
+    color: $text-primary;
+}
+
+.title {
+    margin: 0.5rem 0 0;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid $ui-black-transparent;
+}
+
+.name {
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.value {
+    flex: 1;
+    color: $text-primary-transparent;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.button,
+.danger {
+    font: inherit;
+    font-weight: bold;
+    min-height: 44px;
+    padding: 0.4rem 1rem;
+    border-radius: 10px;
+    cursor: pointer;
+    align-self: flex-start;
+}
+
+.button {
+    border: 1px solid $ui-black-transparent;
+    background: $ui-white-transparent;
+    color: $text-primary;
+}
+
+.button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.danger {
+    border: 1px solid $error-primary;
+    background: $error-primary;
+    color: white;
+}
+
+.button:focus-visible,
+.danger:focus-visible {
+    outline: 3px solid $looks-transparent;
+    outline-offset: 2px;
+}

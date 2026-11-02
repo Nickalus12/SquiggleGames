@@ -5,33 +5,16 @@ import log from '../lib/log';
 import bindAll from 'lodash.bindall';
 import SecurityManagerModal from '../components/tw-security-manager-modal/security-manager-modal.jsx';
 import SecurityModals from '../lib/tw-security-manager-constants';
-import {getPersistedUnsandboxed, setPersistedUnsandboxed} from '../lib/tw-persisted-unsandboxed.js';
 
 /* eslint-disable require-atomic-updates */
 
-/**
- * Set of extension URLs that the user has manually trusted to load unsandboxed.
- */
 const extensionsTrustedByUser = new Set();
 
 const manuallyTrustExtension = url => {
     extensionsTrustedByUser.add(url);
 };
 
-/**
- * Trusted extensions are loaded automatically and without a sandbox.
- * @param {string} url URL as a string.
- * @returns {boolean} True if the extension can is trusted
- */
-const isTrustedExtension = url => (
-    // Always trust our official extension repostiory.
-    url.startsWith('https://extensions.turbowarp.org/') ||
-
-    // For development.
-    url.startsWith('http://localhost:8000/') ||
-
-    extensionsTrustedByUser.has(url)
-);
+const isTrustedExtension = url => extensionsTrustedByUser.has(url);
 
 /**
  * Set of fetch resource hosts that were manually trusted by the user.
@@ -250,44 +233,9 @@ class TWSecurityManagerComponent extends React.Component {
         return 'iframe';
     }
 
-    handleChangeUnsandboxed (e) {
-        const checked = e.target.checked;
-        this.setState(oldState => ({
-            data: {
-                ...oldState.data,
-                unsandboxed: checked
-            }
-        }));
-    }
-
-    /**
-     * @param {string} url The extension's URL
-     * @returns {Promise<boolean>} Whether the extension can be loaded
-     */
-    async canLoadExtensionFromProject (url) {
-        if (isTrustedExtension(url)) {
-            log.info(`Loading extension ${url} automatically`);
-            return true;
-        }
-        const {showModal} = await this.acquireModalLock();
-        if (url.startsWith('data:')) {
-            const allowed = await showModal(SecurityModals.LoadExtension, {
-                url,
-                unsandboxed: getPersistedUnsandboxed(),
-                onChangeUnsandboxed: this.handleChangeUnsandboxed.bind(this)
-            });
-            if (allowed) {
-                setPersistedUnsandboxed(this.state.data.unsandboxed);
-            }
-            if (allowed && this.state.data.unsandboxed) {
-                manuallyTrustExtension(url);
-            }
-            return allowed;
-        }
-        return showModal(SecurityModals.LoadExtension, {
-            url,
-            unsandboxed: false
-        });
+    canLoadExtensionFromProject (url) {
+        log.warn(`Refusing to load extension from project: ${url}`);
+        return Promise.resolve(false);
     }
 
     /**

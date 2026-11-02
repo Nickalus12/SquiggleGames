@@ -240,8 +240,12 @@ class CoreHud extends React.Component {
             const runtime = this.props.vm && this.props.vm.runtime;
             if (runtime && Array.isArray(runtime.targets)) {
                 runtime.targets.forEach(target => {
-                    const name = target && ((target.getName && target.getName()) || (target.sprite && target.sprite.name));
-                    if ((name === 'StatusHUD' || name === 'TimerHUD') && target.visible !== false && typeof target.setVisible === 'function') {
+                    const name = target && (
+                        (target.getName && target.getName()) ||
+                        (target.sprite && target.sprite.name)
+                    );
+                    const isLegacyHud = name === 'StatusHUD' || name === 'TimerHUD';
+                    if (isLegacyHud && target.visible !== false && typeof target.setVisible === 'function') {
                         target.setVisible(false);
                     }
                 });

@@ -243,7 +243,6 @@ const createView3d = (runtime, world, options) => {
         const wantH = Math.max(45, Math.round(sh * state.scale));
         if (frame.width === wantW && frame.height === wantH) return false;
         frame = createFrame(wantW, wantH);
-        if (view) view.frame = frame;
         gpu.image = null;
         state.rendered = -1;
         state.uploaded = -1;
@@ -528,7 +527,9 @@ const createView3d = (runtime, world, options) => {
 
     const view = {
         runtime,
-        frame,
+        get frame () {
+            return frame;
+        },
         attach (seam) {
             if (!seam || link.seam === seam) return view;
             detach();

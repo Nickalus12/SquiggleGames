@@ -42,7 +42,7 @@ const STARTER_TEMPLATES = [
         title: 'Spark Tag Arena',
         genre: 'Multiplayer Tag',
         badge: '2–8 Players',
-        summary: 'Fast arena tag where whoever holds the unstable spark runs faster and must pass it before time runs out.',
+        summary: 'Fast arena tag where whoever holds the spark runs faster and must pass it before time runs out.',
         sb3Url: '/examples/minigames/spark-tag/spark-tag.sb3',
         settings: {
             width: 640,
@@ -142,6 +142,7 @@ const applyStarterTemplate = async (vm, templateId, fetcher) => {
                 return {ok: true, loadedProject: true, template};
             }
         } catch (_e) {
+            return {ok: true, loadedProject: false, template, settings: applyTemplateSettings(vm, template)};
         }
     }
     applyTemplateSettings(vm, template);

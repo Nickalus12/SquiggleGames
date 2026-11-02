@@ -5,14 +5,12 @@ import React from 'react';
 import {FormattedMessage, defineMessages} from 'react-intl';
 import {connect} from 'react-redux';
 
-import check from './check.svg';
-import dropdownCaret from './dropdown-caret.svg';
 import {MenuItem, Submenu} from '../menu/menu.jsx';
 import {GUI_AUTO, GUI_SQUIGGLE, GUI_SQUIGGLE_DAY, Theme} from '../../lib/themes/index.js';
 import {openGuiThemeMenu, closeGuiThemeMenu, guiThemeMenuOpen, closeSettingsMenu} from '../../reducers/menus.js';
 import {setTheme} from '../../reducers/theme.js';
 import {persistTheme} from '../../lib/themes/themePersistance.js';
-import {sqIconDataUri} from '../sq-icon';
+import SqIcon from '../sq-icon';
 import styles from './settings-menu.css';
 
 const options = defineMessages({
@@ -33,20 +31,17 @@ const options = defineMessages({
     }
 });
 
-const MENU_ICON = {color: '#ffffff', size: 24};
 const icons = {
-    [GUI_SQUIGGLE]: sqIconDataUri('night', MENU_ICON),
-    [GUI_SQUIGGLE_DAY]: sqIconDataUri('day', MENU_ICON),
-    [GUI_AUTO]: sqIconDataUri('auto', MENU_ICON)
+    [GUI_SQUIGGLE]: 'night',
+    [GUI_SQUIGGLE_DAY]: 'day',
+    [GUI_AUTO]: 'auto'
 };
 
 const ThemeIcon = ({id}) => (
-    <img
-        src={icons[id] || icons[GUI_AUTO]}
-        draggable={false}
-        width={24}
-        height={24}
-        alt=""
+    <SqIcon
+        className={styles.icon}
+        name={icons[id] || icons[GUI_AUTO]}
+        size={20}
     />
 );
 
@@ -64,7 +59,7 @@ const focusItem = (list, index) => {
 };
 
 const GuiThemeMenuItem = ({id, isSelected, onClick, onKeyDown}) => (
-    <MenuItem>
+    <MenuItem role="none">
         <button
             aria-checked={isSelected}
             className={classNames(styles.option, styles.optionButton)}
@@ -75,13 +70,10 @@ const GuiThemeMenuItem = ({id, isSelected, onClick, onKeyDown}) => (
             onClick={onClick}
             onKeyDown={onKeyDown}
         >
-            <img
-                alt=""
+            <SqIcon
                 className={classNames(styles.check, {[styles.selected]: isSelected})}
-                width={15}
-                height={12}
-                src={check}
-                draggable={false}
+                name="check"
+                size={16}
             />
             <ThemeIcon id={id} />
             <FormattedMessage {...options[id]} />
@@ -121,7 +113,7 @@ class GuiThemeMenu extends React.Component {
     }
     handleOpenerKeyDown (e) {
         const forward = this.props.isRtl ? 'ArrowLeft' : 'ArrowRight';
-        if (e.key !== forward && e.key !== 'ArrowDown' && e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.key !== forward && e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
         e.stopPropagation();
         if (this.props.isOpen) {
@@ -149,12 +141,17 @@ class GuiThemeMenu extends React.Component {
     render () {
         const {isOpen, isRtl, onChangeTheme, onOpenMenu, theme} = this.props;
         return (
-            <MenuItem expanded={isOpen}>
+            <MenuItem
+                expanded={isOpen}
+                role="none"
+            >
                 <button
                     aria-expanded={isOpen}
                     aria-haspopup="menu"
                     className={classNames(styles.option, styles.optionButton)}
                     ref={this.setOpener}
+                    role="menuitem"
+                    tabIndex={-1}
                     type="button"
                     onClick={onOpenMenu}
                     onKeyDown={this.handleOpenerKeyDown}
@@ -162,21 +159,20 @@ class GuiThemeMenu extends React.Component {
                     <ThemeIcon id={theme.gui} />
                     <span className={styles.submenuLabel}>
                         <FormattedMessage
-                            defaultMessage="Appearance"
-                            description="Label for the menu that chooses the editor's color scheme"
-                            id="sq.menuBar.appearance"
+                            defaultMessage="Theme"
+                            description="Label for the menu that chooses Night, Day or Auto for the editor"
+                            id="sq.menuBar.theme"
                         />
                     </span>
-                    <img
-                        alt=""
+                    <SqIcon
                         className={styles.expandCaret}
-                        src={dropdownCaret}
-                        draggable={false}
+                        name="chevronRight"
+                        size={16}
                     />
                 </button>
                 <Submenu
                     componentRef={this.setList}
-                    place={isRtl ? 'left' : 'right'}
+                    place={isRtl ? 'right' : 'left'}
                 >
                     {Object.keys(options).map(id => (
                         <GuiThemeMenuItem

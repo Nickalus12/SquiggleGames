@@ -22,13 +22,12 @@ import {
 
 import log from './log';
 import storage from './storage';
-import {ProjectUnsharedError, ProjectFetchError} from './tw-load-project-error';
+import {ProjectFetchError} from './tw-load-project-error';
 
 import VM from 'scratch-vm';
-import {fetchProjectMeta} from './tw-project-meta-fetcher-hoc.jsx';
 
 // TW: Temporary hack for project tokens
-const fetchProjectToken = async projectId => {
+const fetchProjectToken = projectId => {
     if (projectId === '0') {
         return null;
     }
@@ -42,13 +41,7 @@ const fetchProjectToken = async projectId => {
     if (hashParams.has('token')) {
         return hashParams.get('token');
     }
-    try {
-        const metadata = await fetchProjectMeta(projectId);
-        return metadata.project_token;
-    } catch (e) {
-        log.error(e);
-        throw new ProjectUnsharedError('Cannot access project token. Project is probably unshared. See https://docs.turbowarp.org/unshared-projects');
-    }
+    return null;
 };
 
 /* Higher Order Component to provide behavior for loading projects by id. If
@@ -134,7 +127,7 @@ const ProjectFetcherHOC = function (WrappedComponent) {
                     .then(buffer => ({data: buffer}));
             } else {
                 // TW: Temporary hack for project tokens
-                assetPromise = fetchProjectToken(projectId)
+                assetPromise = Promise.resolve(fetchProjectToken(projectId))
                     .then(token => {
                         storage.setProjectToken(token);
                         return storage.load(storage.AssetType.Project, projectId, storage.DataFormat.JSON)

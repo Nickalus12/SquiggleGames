@@ -12,9 +12,9 @@ import LibraryComponent from '../components/library/library.jsx';
 
 const messages = defineMessages({
     libraryTitle: {
-        defaultMessage: 'Choose a Sprite',
+        defaultMessage: 'Choose a sprite',
         description: 'Heading for the sprite library',
-        id: 'gui.spriteLibrary.chooseASprite'
+        id: 'sq.library.chooseSprite'
     }
 });
 

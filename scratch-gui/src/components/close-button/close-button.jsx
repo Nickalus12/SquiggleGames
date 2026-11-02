@@ -1,78 +1,75 @@
 import PropTypes from 'prop-types';
 import React from 'react';
 import classNames from 'classnames';
+import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
+import SqIcon from '../sq-icon';
 import styles from './close-button.css';
-import closeIcon from './icon--close.svg';
-import closeIconOrange from './icon--close-orange.svg';
-import backIcon from '../../lib/assets/icon--back.svg';
 
-let closeIcons = {};
+const messages = defineMessages({
+    close: {
+        id: 'sq.closeButton.close',
+        defaultMessage: 'Close',
+        description: 'Accessible name of the close button on modals and alerts'
+    },
+    back: {
+        id: 'sq.closeButton.back',
+        defaultMessage: 'Back',
+        description: 'Accessible name of the back button on modals'
+    }
+});
 
-const CloseButton = props => (
-    <div
-        aria-label="Close"
+const SIZE_SMALL = 'small';
+const SIZE_LARGE = 'large';
+const COLOR_NEUTRAL = 'neutral';
+const COLOR_GREEN = 'green';
+const COLOR_ORANGE = 'orange';
+
+const CloseButtonComponent = props => (
+    <button
+        aria-label={props.intl.formatMessage(props.buttonType === 'back' ? messages.back : messages.close)}
         className={classNames(
             styles.closeButton,
             props.className,
             {
-                [styles.small]: props.size === CloseButton.SIZE_SMALL,
-                [styles.large]: props.size === CloseButton.SIZE_LARGE,
-                [styles.orange]: props.color === CloseButton.COLOR_ORANGE
+                [styles.small]: props.size === SIZE_SMALL,
+                [styles.large]: props.size === SIZE_LARGE,
+                [styles.orange]: props.color === COLOR_ORANGE,
+                [styles.green]: props.color === COLOR_GREEN
             }
         )}
-        role="button"
-        tabIndex="0"
+        type="button"
         onClick={props.onClick}
     >
-        {props.buttonType === 'back' ?
-            <img
-                className={styles.backIcon}
-                src={backIcon}
-                draggable={false}
-            /> :
-            <img
-                className={classNames(
-                    styles.closeIcon,
-                    {
-                        [styles[props.color]]: (props.color !== CloseButton.COLOR_NEUTRAL)
-                    }
-                )}
-                src={(props.color && closeIcons[props.color]) ?
-                    closeIcons[props.color] :
-                    closeIcon
-                }
-                draggable={false}
-            />
-        }
-    </div>
+        <SqIcon
+            className={styles.icon}
+            name={props.buttonType === 'back' ? 'arrowLeft' : 'close'}
+            size={props.size === SIZE_SMALL ? 12 : 20}
+        />
+    </button>
 );
 
-CloseButton.SIZE_SMALL = 'small';
-CloseButton.SIZE_LARGE = 'large';
-
-CloseButton.COLOR_NEUTRAL = 'neutral';
-CloseButton.COLOR_GREEN = 'green';
-CloseButton.COLOR_ORANGE = 'orange';
-closeIcons = {
-    [CloseButton.COLOR_NEUTRAL]: closeIcon,
-    [CloseButton.COLOR_GREEN]: closeIcon, // TODO: temporary, need green icon
-    [CloseButton.COLOR_ORANGE]: closeIconOrange
-};
-
-
-CloseButton.propTypes = {
+CloseButtonComponent.propTypes = {
     buttonType: PropTypes.oneOf(['back', 'close']),
     className: PropTypes.string,
     color: PropTypes.string,
+    intl: intlShape,
     onClick: PropTypes.func.isRequired,
-    size: PropTypes.oneOf([CloseButton.SIZE_SMALL, CloseButton.SIZE_LARGE])
+    size: PropTypes.oneOf([SIZE_SMALL, SIZE_LARGE])
 };
 
-CloseButton.defaultProps = {
-    color: CloseButton.COLOR_NEUTRAL,
-    size: CloseButton.SIZE_LARGE,
+CloseButtonComponent.defaultProps = {
+    color: COLOR_NEUTRAL,
+    size: SIZE_LARGE,
     buttonType: 'close'
 };
+
+const CloseButton = injectIntl(CloseButtonComponent);
+
+CloseButton.SIZE_SMALL = SIZE_SMALL;
+CloseButton.SIZE_LARGE = SIZE_LARGE;
+CloseButton.COLOR_NEUTRAL = COLOR_NEUTRAL;
+CloseButton.COLOR_GREEN = COLOR_GREEN;
+CloseButton.COLOR_ORANGE = COLOR_ORANGE;
 
 export default CloseButton;

@@ -4,7 +4,7 @@ process.removeAllListeners('warning');
 
 const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
 const {createGameLink} = await import('./session.js');
-const {gameFlags} = await import('../rules/flags.js');
+const {GAME_SERVER_READY, gameFlags} = await import('../rules/flags.js');
 const {deviceBlocks, slotOf} = await import('./device-blocks.js');
 const TogetherBlocks = (await import('../libraries/extensions/together/index.js')).default;
 const ScoresBlocks = (await import('../libraries/extensions/squigglescores/index.js')).default;
@@ -98,7 +98,8 @@ section('the flag hides every device block');
     ok('off: all hidden', cards.every(card => deviceBlocks(card).every(block => block.hideFromPalette === true)));
     gameFlags.serverReady = true;
     ok('on: all shown', cards.every(card => deviceBlocks(card).every(block => block.hideFromPalette === false)));
-    gameFlags.serverReady = false;
+    gameFlags.serverReady = GAME_SERVER_READY;
+    ok('the game server is on in this release', GAME_SERVER_READY === true);
 }
 
 section('Together: when game value changes, a player value of, name of');

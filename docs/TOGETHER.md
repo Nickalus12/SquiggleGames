@@ -93,17 +93,19 @@ Health, hits and respawns for battle games.
 The two blocks that need a level check the solid tiles of a World level, so
 walls block sight and aim.
 
-### The game server is switched off in 2.0
+### Blocks for normal sprites
 
-The editor also has blocks for normal sprites that talk to the game server:
+Normal sprites have blocks that talk to the game server:
 `tell the game [NAME] with [VALUE]`, `when the game says [EVENT]`,
 `game value [NAME]`, `my player value [NAME]`, `round`, `my team`,
-`time left on [TIMER]`, `in a game?`, and per expansion `fire`,
-`when I get hit` and `who hit me last` (Arena), `my place on [BOARD]` (Scores
-and Rounds) and `team of [PLAYER]` (Teams and Items). They are hidden from the
-palette while the game server is off, which it is in this release. You can
-build Game Rules today, and the checker reads them. Turning the game server on
-is what is next.
+`time left on [TIMER]`, `in a game?`, `when game value [NAME] changes`,
+`[VALUE] of [PLAYER]` and `name of [PLAYER]`, and per expansion `fire`,
+`when I get hit` and `who hit me last` (Arena), `when the round starts`,
+`when the round ends`, `[BOARD] place [N] [PART]` and `my place on [BOARD]`
+(Scores and Rounds), and `team of [PLAYER]` and `players on team [TEAM]`
+(Teams and Items). They show up in the palette once the project has a Game
+Rules sprite, and they work while you are in a game. The game server is on
+since 2.2; [GAME-RULES.md](./GAME-RULES.md) says how a game starts.
 
 ## A two-player example
 
@@ -135,7 +137,7 @@ send [bump] to everyone with [1]
   and that is what keeps their scripts from fighting each other.
 - **Pick one owner for anything contested.** For scores, turn order or spawns,
   let one player own the value and send the results, or put the rule on the
-  Game Rules sprite once the game server is on.
+  Game Rules sprite so the game server decides.
 - **Late joiners get shared variables, not messages.** Messages are live only.
   Anything a newcomer needs to know must live in a shared variable.
 - **Do not send in a loop with no wait.** The checker flags a Together send or a

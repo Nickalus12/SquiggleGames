@@ -6,15 +6,13 @@ import {FormattedMessage} from 'react-intl';
 import {connect} from 'react-redux';
 import locales from '@turbowarp/scratch-l10n';
 
-import check from './check.svg';
 import {MenuItem, Submenu} from '../menu/menu.jsx';
-import languageIcon from '../language-selector/language-icon.svg';
 import {languageMenuOpen, openLanguageMenu} from '../../reducers/menus.js';
 import {selectLocale} from '../../reducers/locales.js';
 
 import styles from './settings-menu.css';
 
-import dropdownCaret from './dropdown-caret.svg';
+import SqIcon from '../sq-icon';
 
 class LanguageMenu extends React.PureComponent {
     constructor (props) {
@@ -26,7 +24,6 @@ class LanguageMenu extends React.PureComponent {
     }
 
     componentDidUpdate (prevProps) {
-        // If the submenu has been toggled open, try scrolling the selected option into view.
         if (!prevProps.menuOpen && this.props.menuOpen && this.selectedRef) {
             this.scrollSelectedIntoView();
         }
@@ -37,17 +34,12 @@ class LanguageMenu extends React.PureComponent {
     }
 
     handleMouseOver () {
-        // If we are using hover rather than clicks for submenus, scroll the selected option into view
         if (!this.props.menuOpen && this.selectedRef) {
             this.scrollSelectedIntoView();
         }
     }
 
     scrollSelectedIntoView () {
-        // the native scrollIntoView() scrolls the entire page when used outside the editor,
-        // so we do this manually instead.
-        // selectedRef is the checkmark <img>, its parent is a <div> from <MenuItem>, then a <div> from <SubMenu>
-
         const menuItem = this.selectedRef.parentNode;
         const scrollContainer = menuItem.parentNode;
 
@@ -68,10 +60,10 @@ class LanguageMenu extends React.PureComponent {
                     onClick={this.props.onRequestOpen}
                     onMouseOver={this.handleMouseOver}
                 >
-                    <img
+                    <SqIcon
                         className={styles.icon}
-                        src={languageIcon}
-                        draggable={false}
+                        name="language"
+                        size={20}
                     />
                     <span className={styles.submenuLabel}>
                         <FormattedMessage
@@ -80,15 +72,15 @@ class LanguageMenu extends React.PureComponent {
                             id="gui.menuBar.language"
                         />
                     </span>
-                    <img
+                    <SqIcon
                         className={styles.expandCaret}
-                        src={dropdownCaret}
-                        draggable={false}
+                        name="chevronRight"
+                        size={16}
                     />
                 </div>
                 <Submenu
                     className={styles.languageSubmenu}
-                    place={this.props.isRtl ? 'left' : 'right'}
+                    place={this.props.isRtl ? 'right' : 'left'}
                 >
                     {
                         Object.keys(locales)
@@ -99,14 +91,17 @@ class LanguageMenu extends React.PureComponent {
                                     // eslint-disable-next-line react/jsx-no-bind
                                     onClick={() => this.props.onChangeLanguage(locale)}
                                 >
-                                    <img
+                                    <span
                                         className={classNames(styles.check, {
                                             [styles.selected]: this.props.currentLocale === locale
                                         })}
-                                        src={check}
-                                        draggable={false}
                                         {...(this.props.currentLocale === locale && {ref: this.setRef})}
-                                    />
+                                    >
+                                        <SqIcon
+                                            name="check"
+                                            size={16}
+                                        />
+                                    </span>
                                     {locales[locale].name}
                                 </MenuItem>
                             ))

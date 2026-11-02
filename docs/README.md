@@ -6,6 +6,7 @@
 |---|---|
 | [TOGETHER.md](./TOGETHER.md) | Multiplayer games with Together, and the blocks in Scores and Rounds, Teams and Items, and Arena |
 | [GAME-RULES.md](./GAME-RULES.md) | The Game Rules sprite: which blocks run on your computer, which run on the server, the limits, and what the checker tells you |
+| [GAME-DATA.md](./GAME-DATA.md) | Game data: saving a player's progress, top 10 boards, the limits, and where saves go |
 | [PHONE.md](./PHONE.md) | The editor on a phone: the top bar, the tabs, the sheets, the tile painter and the game pad |
 
 ## For contributors

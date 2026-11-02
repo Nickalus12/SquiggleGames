@@ -5,6 +5,8 @@
 .sprite-info {
     padding: 0.75rem;
     font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: var(--sq-text-xs, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     background-color: $ui-white;
     color: $text-primary;
     border-top-left-radius: $space;
@@ -25,13 +27,13 @@
 
 .group {
     display: inline-flex;
-    flex-direction: row; /* makes columns, for each label/form group */
+    flex-direction: row;
     align-items: center;
 }
 
 .column {
     display: inline-flex;
-    flex-direction: column; /* put label above input */
+    flex-direction: column;
     align-items: flex-start;
 }
 

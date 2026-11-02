@@ -44,7 +44,7 @@ the green flag and play the game you built together.
 |---|---|
 | **Build together, live** | Blocks, sprites, costumes, sounds, paint strokes and green-flag runs replay on everyone's screen. Each player has a cursor and a name tag, so you can see who is working where. |
 | **Make multiplayer games** | The **Together** extension adds shared variables and game messages that travel between running projects, so two players can race, chase or keep score across screens. See [docs/TOGETHER.md](./docs/TOGETHER.md). |
-| **Add game rules** | Three expansions build on Together: **Scores and Rounds**, **Teams and Items** and **Arena**. Their gold-edged rule blocks go on one Game Rules sprite and run on the game server, which stays switched off in 2.0. See [docs/GAME-RULES.md](./docs/GAME-RULES.md). |
+| **Add game rules** | Three expansions build on Together: **Scores and Rounds**, **Teams and Items** and **Arena**. Their gold-edged rule blocks go on one Game Rules sprite and run on the game server, which is on since 2.2. See [docs/GAME-RULES.md](./docs/GAME-RULES.md). |
 | **Build a world** | **World** builds big levels out of tiles with a camera and a tile painter, **Scenes** switches between levels, menus and cutscenes, and **3D** turns a tile level into a world you can walk through. |
 | **Make it move** | **Animate** adds glides, bounces and costume clips. **Game Tools** moves toward a spot, rolls a chance and sends messages with data. |
 | **Check your project** | A checker in the menu bar finds problems in plain words, with Show me and Fix it. Ctrl or Cmd+K opens a command palette, and focus mode floats the stage. |

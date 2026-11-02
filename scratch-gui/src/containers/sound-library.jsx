@@ -18,9 +18,9 @@ import {connect} from 'react-redux';
 
 const messages = defineMessages({
     libraryTitle: {
-        defaultMessage: 'Choose a Sound',
+        defaultMessage: 'Choose a sound',
         description: 'Heading for the sound library',
-        id: 'gui.soundLibrary.chooseASound'
+        id: 'sq.library.chooseSound'
     }
 });
 

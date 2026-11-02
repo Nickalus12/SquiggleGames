@@ -28,7 +28,8 @@ const KIT_COLORS = {
     squigglescores: {color1: '#f25f5c', color2: '#d94e4b', color3: '#b83d3a'},
     squiggleteams: {color1: '#2a9d8f', color2: '#23877b', color3: '#1c6e64'},
     squigglearena: {color1: '#b8336a', color2: '#9e2b5b', color3: '#82234b'},
-    together: {color1: BRAND[500], color2: BRAND[600], color3: BRAND[700]}
+    together: {color1: BRAND[500], color2: BRAND[600], color3: BRAND[700]},
+    gamedata: {color1: '#3b8fd9', color2: '#3179bd', color3: '#28639b'}
 };
 
 const EXPANSION_IDS = ['squigglescores', 'squiggleteams', 'squigglearena'];
@@ -36,13 +37,13 @@ const EXPANSION_IDS = ['squigglescores', 'squiggleteams', 'squigglearena'];
 const SCALE = {
     'sq-font': FONT_STACK,
 
-    'sq-text-xs': '12px',
+    'sq-text-xs': '14px',
     'sq-text-sm': '14px',
     'sq-text-md': '16px',
-    'sq-text-lg': '20px',
-    'sq-text-xl': '24px',
-    'sq-text-2xl': '32px',
-    'sq-weight-regular': '500',
+    'sq-text-lg': '22px',
+    'sq-text-xl': '28px',
+    'sq-text-2xl': '36px',
+    'sq-weight-regular': '600',
     'sq-weight-bold': '700',
     'sq-weight-heavy': '800',
 
@@ -58,8 +59,9 @@ const SCALE = {
     'sq-radius-panel': '10px',
     'sq-radius-card': '16px',
     'sq-radius-pill': '999px',
+    'sq-radius-sheet': '20px',
 
-    'sq-target': '36px',
+    'sq-target': '40px',
     'sq-target-touch': '44px',
 
     'sq-ease': 'cubic-bezier(0, 0, 0.2, 1)',
@@ -77,6 +79,8 @@ const SCALE = {
     'sq-menu-bar-control': MENU_BAR_CONTROL,
     'sq-menu-bar-control-active': MENU_BAR_CONTROL_ACTIVE,
     'sq-menu-bar-focus': '#ffffff',
+    'sq-menu-bar-hover': 'rgba(0, 0, 0, 0.18)',
+    'sq-menu-bar-ring': 'rgba(255, 255, 255, 0.55)',
     'sq-peer-outline-bar': '#ffffff',
     'sq-stage-surface': '#ffffff',
 
@@ -101,8 +105,10 @@ const NIGHT = {
     'sq-panel': '#161c36',
     'sq-raised': '#232b4d',
     'sq-line': '#2e3760',
+    'sq-line-hi': '#454f80',
     'sq-text': '#f2f4fb',
     'sq-text-muted': '#b8bfd9',
+    'sq-text-faint': '#9aa3c7',
     'sq-link': '#22d3ee',
     'sq-focus': '#22d3ee',
     'sq-accent-text': '#b9a0ff',
@@ -114,6 +120,7 @@ const NIGHT = {
     'sq-elevation-2': '0 0 0 1px #3a4573',
     'sq-elevation-3': '0 0 0 1px #46528a, 0 8px 24px rgba(0, 0, 0, 0.45)',
     'sq-scrim': 'rgba(6, 8, 18, 0.72)',
+    'sq-tint': 'rgba(153, 102, 255, 0.14)',
     'sq-tint-card': 'rgba(255, 255, 255, 0.055)',
     'sq-tint-line': 'rgba(255, 255, 255, 0.11)',
     'sq-tint-line-hi': 'rgba(255, 255, 255, 0.22)',
@@ -125,8 +132,10 @@ const DAY = {
     'sq-panel': '#ffffff',
     'sq-raised': '#efecf9',
     'sq-line': '#d9d5ea',
+    'sq-line-hi': '#b9b2d6',
     'sq-text': '#1b1f3a',
     'sq-text-muted': '#4f5677',
+    'sq-text-faint': '#646a8a',
     'sq-link': '#5b3aa0',
     'sq-focus': '#5b3aa0',
     'sq-accent-text': '#5b3aa0',
@@ -138,6 +147,7 @@ const DAY = {
     'sq-elevation-2': '0 2px 8px rgba(27, 31, 58, 0.12)',
     'sq-elevation-3': '0 8px 24px rgba(27, 31, 58, 0.18)',
     'sq-scrim': 'rgba(27, 31, 58, 0.45)',
+    'sq-tint': 'rgba(119, 77, 203, 0.09)',
     'sq-tint-card': 'rgba(27, 31, 58, 0.05)',
     'sq-tint-line': 'rgba(27, 31, 58, 0.12)',
     'sq-tint-line-hi': 'rgba(27, 31, 58, 0.24)',

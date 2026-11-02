@@ -327,4 +327,17 @@ section('stop');
     ok('nothing is sent after stop', ins(ws).length === 0);
 }
 
+section('a player standing still keeps pinging while ticks arrive');
+{
+    const {clock, ws} = make();
+    ws.deliver({type: 'welcome', slot: 1, ack: 0, tickHz: 20});
+    for (let i = 1; i <= 120; i++) {
+        clock.advance(50);
+        ws.deliver({type: 'tick', t: i, ack: 0});
+    }
+    const pings = ws.sent.filter(m => m.type === 'ping').length;
+    ok('six seconds of ticks and no input still send pings about every two seconds', pings >= 2 && pings <= 3, pings);
+    ok('nothing else went out', ws.sent.every(m => m.type === 'join' || m.type === 'ping'), ws.sent);
+}
+
 done();

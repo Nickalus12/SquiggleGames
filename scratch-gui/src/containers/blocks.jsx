@@ -28,8 +28,7 @@ import {activateColorPicker} from '../reducers/color-picker';
 import {
     closeExtensionLibrary,
     openSoundRecorder,
-    openConnectionModal,
-    openCustomExtensionModal
+    openConnectionModal
 } from '../reducers/modals';
 import {activateCustomProcedures, deactivateCustomProcedures} from '../reducers/custom-procedures';
 import {setConnectionModalExtensionId} from '../reducers/connection-modal';
@@ -46,6 +45,8 @@ import {findTopBlock} from '../lib/backpack/code-payload.js';
 import {gentlyRequestPersistentStorage} from '../lib/tw-persistent-storage.js';
 import collab from '../lib/collab';
 import {isRulesTarget} from '../lib/collab/project-seam.js';
+import {findRulesTarget} from '../lib/rules/rule-blocks.js';
+import {toolboxModeFor} from '../lib/rules/toolbox-mode.js';
 import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 
@@ -472,7 +473,7 @@ class Blocks extends React.Component {
                 stageCostumes[stageCostumes.length - 1].name,
                 targetSounds.length > 0 ? targetSounds[targetSounds.length - 1].name : '',
                 this.props.theme.getBlockColors(),
-                isRulesTarget(target) ? 'rules' : 'device'
+                toolboxModeFor(isRulesTarget(target), !!findRulesTarget(runtime))
             );
         } catch {
             return null;
@@ -698,8 +699,6 @@ class Blocks extends React.Component {
             onActivateColorPicker,
             onOpenConnectionModal,
             onOpenSoundRecorder,
-            onOpenCustomExtensionModal,
-            reduxOnOpenCustomExtensionModal,
             updateToolboxState,
             onActivateCustomProcedures,
             onRequestCloseExtensionLibrary,
@@ -738,7 +737,6 @@ class Blocks extends React.Component {
                         onCategorySelected={this.handleCategorySelected}
                         onEnableProcedureReturns={this.handleEnableProcedureReturns}
                         onRequestClose={onRequestCloseExtensionLibrary}
-                        onOpenCustomExtensionModal={onOpenCustomExtensionModal || reduxOnOpenCustomExtensionModal}
                     />
                 ) : null}
                 {customProceduresVisible ? (
@@ -773,8 +771,6 @@ Blocks.propTypes = {
     onActivateCustomProcedures: PropTypes.func,
     onOpenConnectionModal: PropTypes.func,
     onOpenSoundRecorder: PropTypes.func,
-    onOpenCustomExtensionModal: PropTypes.func,
-    reduxOnOpenCustomExtensionModal: PropTypes.func,
     onRequestCloseCustomProcedures: PropTypes.func,
     onRequestCloseExtensionLibrary: PropTypes.func,
     options: PropTypes.shape({
@@ -848,7 +844,6 @@ const mapDispatchToProps = dispatch => ({
         dispatch(activateTab(SOUNDS_TAB_INDEX));
         dispatch(openSoundRecorder());
     },
-    reduxOnOpenCustomExtensionModal: () => dispatch(openCustomExtensionModal()),
     onRequestCloseExtensionLibrary: () => {
         dispatch(closeExtensionLibrary());
     },

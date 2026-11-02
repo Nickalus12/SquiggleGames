@@ -7,12 +7,18 @@
 }
 
 .backpack-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: var(--sq-target, 40px);
     margin-top: 0.5rem;
     border: 1px solid $ui-black-transparent;
     background: $ui-white;
     padding: 0.25rem;
     text-align: center;
-    font-size: 0.85rem;
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
     color: $text-primary;
     transition: 0.2s;
     cursor: pointer;

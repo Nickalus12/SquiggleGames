@@ -4,8 +4,6 @@ import React from 'react';
 import {FormattedMessage, defineMessages} from 'react-intl';
 import {connect} from 'react-redux';
 
-import check from './check.svg';
-import dropdownCaret from './dropdown-caret.svg';
 import {MenuItem, Submenu} from '../menu/menu.jsx';
 import {
     ACCENT_BLUE,
@@ -20,6 +18,7 @@ import {openAccentMenu, accentMenuOpen, closeSettingsMenu} from '../../reducers/
 import {setTheme} from '../../reducers/theme.js';
 import {persistTheme} from '../../lib/themes/themePersistance.js';
 import rainbowIcon from './tw-accent-rainbow.svg';
+import SqIcon from '../sq-icon';
 import styles from './settings-menu.css';
 
 const options = defineMessages({
@@ -60,14 +59,12 @@ const ColorIcon = props => (
             className={styles.accentIconOuter}
             src={icons[props.id]}
             draggable={false}
-            // Image is decorative
             alt=""
         />
     ) : (
         <div
             className={styles.accentIconOuter}
             style={{
-                // menu-bar-background is var(...), don't want to evaluate with the current values
                 backgroundColor: ACCENT_MAP[props.id].guiColors['looks-secondary'],
                 backgroundImage: ACCENT_MAP[props.id].guiColors['menu-bar-background-image']
             }}
@@ -82,12 +79,10 @@ ColorIcon.propTypes = {
 const AccentMenuItem = props => (
     <MenuItem onClick={props.onClick}>
         <div className={styles.option}>
-            <img
+            <SqIcon
                 className={classNames(styles.check, {[styles.selected]: props.isSelected})}
-                width={15}
-                height={12}
-                src={check}
-                draggable={false}
+                name="check"
+                size={16}
             />
             <ColorIcon id={props.id} />
             <FormattedMessage {...options[props.id]} />
@@ -121,13 +116,13 @@ const AccentThemeMenu = ({
                     id="tw.menuBar.accent"
                 />
             </span>
-            <img
+            <SqIcon
                 className={styles.expandCaret}
-                src={dropdownCaret}
-                draggable={false}
+                name="chevronRight"
+                size={16}
             />
         </div>
-        <Submenu place={isRtl ? 'left' : 'right'}>
+        <Submenu place={isRtl ? 'right' : 'left'}>
             {Object.keys(options).map(item => (
                 <AccentMenuItem
                     key={item}

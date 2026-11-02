@@ -24,24 +24,24 @@ import searchIcon from '../action-menu/icon--search.svg';
 
 const messages = defineMessages({
     addSpriteFromLibrary: {
-        id: 'gui.spriteSelector.addSpriteFromLibrary',
+        id: 'sq.spriteSelector.choose',
         description: 'Button to add a sprite in the target pane from library',
-        defaultMessage: 'Choose a Sprite'
+        defaultMessage: 'Choose a sprite'
     },
     addSpriteFromPaint: {
-        id: 'gui.spriteSelector.addSpriteFromPaint',
+        id: 'sq.spriteSelector.draw',
         description: 'Button to add a sprite in the target pane from paint',
-        defaultMessage: 'Paint'
+        defaultMessage: 'Draw a sprite'
     },
     addSpriteFromSurprise: {
-        id: 'gui.spriteSelector.addSpriteFromSurprise',
+        id: 'sq.spriteSelector.surprise',
         description: 'Button to add a random sprite in the target pane',
-        defaultMessage: 'Surprise'
+        defaultMessage: 'Surprise me'
     },
     addSpriteFromFile: {
-        id: 'gui.spriteSelector.addSpriteFromFile',
+        id: 'sq.spriteSelector.upload',
         description: 'Button to add a sprite in the target pane from file',
-        defaultMessage: 'Upload Sprite'
+        defaultMessage: 'Upload a sprite'
     }
 });
 

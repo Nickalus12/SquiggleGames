@@ -1,14 +1,18 @@
 import coplay from '../coplay/index.js';
 import {TOGETHER_ID, listKits, requiresTogether} from '../kits/registry.js';
 import {gameServerReady} from '../rules/flags.js';
+import {isRulesTarget} from '../collab/project-seam.js';
 import {createPlayClient} from './play-client.js';
 
 const gameExtensionIds = () => [TOGETHER_ID].concat(listKits().map(kit => kit.id)
     .filter(requiresTogether));
 
+const hasGameRules = runtime => ((runtime && runtime.targets) || []).some(target => target.isOriginal &&
+    isRulesTarget(target) && Object.keys((target.blocks && target.blocks._blocks) || {}).length > 0);
+
 const playMode = (vm, ready) => {
     const manager = ready && vm && vm.extensionManager;
-    if (!manager) return 'drive';
+    if (!manager || !hasGameRules(vm.runtime)) return 'drive';
     return gameExtensionIds().some(id => manager.isExtensionLoaded(id)) ? 'game' : 'drive';
 };
 
@@ -36,6 +40,7 @@ const initPlay = (vm, {code, name = ''} = {}, {
 
 export {
     gameExtensionIds,
+    hasGameRules,
     initPlay,
     playMode
 };

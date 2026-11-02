@@ -8,6 +8,7 @@ import FancyCheckbox from '../tw-fancy-checkbox/checkbox.jsx';
 import Input from '../forms/input.jsx';
 import BufferedInputHOC from '../forms/buffered-input-hoc.jsx';
 import {STAGE_PRESETS, MIN_FPS, MAX_FPS} from '../../lib/game-settings.js';
+import GameDataPanel from '../game-data-panel/game-data-panel.jsx';
 import styles from './settings-modal.css';
 
 /* eslint-disable react/no-multi-comp */
@@ -495,6 +496,19 @@ const SettingsModalComponent = props => (
                         onActionLabelChange={props.onActionLabelChange}
                         onHudToggle={props.onHudToggle}
                     />
+                </React.Fragment>
+            )}
+
+            {!props.isEmbedded && (
+                <React.Fragment>
+                    <Header>
+                        <FormattedMessage
+                            defaultMessage="Game data"
+                            description="Section of the game settings with the maker's test saves and boards"
+                            id="sq.settings.gameData"
+                        />
+                    </Header>
+                    <GameDataPanel />
                 </React.Fragment>
             )}
 

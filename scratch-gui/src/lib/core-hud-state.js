@@ -6,7 +6,10 @@ const HEALTH_KEYS = ['hp', 'health', 'hearts', 'lives', 'hull', 'energy', 'p1 hp
 const SHIELD_KEYS = ['shield', 'armor', 'armour', 'p1 shield', 'p1_shield'];
 const AMMO_KEYS = ['ammo', 'bolts', 'charges', 'shells', 'p1 ammo', 'p1_ammo'];
 const SCORE_KEYS = ['score', 'points', 'pts', 'frags', 'captures', 'tags', 'coins', 'gems', 'stars', 'clears', 'laps'];
-const TIMER_KEYS = ['time_left', 'time left', 'timer', 'cur_timer', 'last_timer', 'countdown', 'round_time', 'round timer', 'round_timer'];
+const TIMER_KEYS = [
+    'time_left', 'time left', 'timer', 'cur_timer', 'last_timer',
+    'countdown', 'round_time', 'round timer', 'round_timer'
+];
 const STATUS_KEYS = ['core_carrier', 'core carrier', 'last_core_state', 'wave', 'checkpoint', 'objective', 'status'];
 
 const numOrNull = val => {
@@ -48,7 +51,7 @@ const readDefaultPlayerValues = mark => {
         if (!item || typeof item !== 'object') return;
         const name = String(item.name || item.n || '').trim()
             .toLowerCase();
-        const def = typeof item.default !== 'undefined' ? item.default : item.d;
+        const def = typeof item.default === 'undefined' ? item.d : item.default;
         if (name && typeof def !== 'undefined') out[name] = def;
     });
     return out;
@@ -111,9 +114,8 @@ export const extractHudState = (vm, netOverride) => {
         };
     }
 
-    const net = typeof netOverride !== 'undefined' ?
-        netOverride :
-        (typeof window !== 'undefined' ? window.SquiggleNet : null);
+    const globalNet = typeof window === 'undefined' ? null : window.SquiggleNet;
+    const net = typeof netOverride === 'undefined' ? globalNet : netOverride;
     const game = net && net.game ? net.game : null;
     const mySlot = net && Number.isInteger(net.slot) && net.slot > 0 ? net.slot : 1;
     const mark = rulesMark(runtime);

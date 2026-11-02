@@ -38,7 +38,7 @@ export const DEFAULT_SQUIGGLE_SETTINGS = Object.freeze({
 
 export const normalizeSquiggleSettings = raw => {
     const src = raw && typeof raw === 'object' ? raw : {};
-    const touchMode = TOUCH_MODES.indexOf(src.touchMode) !== -1 ? src.touchMode : 'thumbstick';
+    const touchMode = TOUCH_MODES.indexOf(src.touchMode) === -1 ? 'thumbstick' : src.touchMode;
     const actionLabels = {};
     if (src.actionLabels && typeof src.actionLabels === 'object') {
         Object.keys(src.actionLabels).forEach(key => {
@@ -74,7 +74,7 @@ export const SETTINGS_NOTE = [
 ].join('\n');
 
 const mergeMagicLine = (magic, extra) => {
-    if (typeof extra === 'undefined') return magic;
+    if (typeof extra === 'undefined' || extra === null) return magic;
     const rawJson = magic.slice(0, magic.length - CONFIG_MAGIC.length);
     try {
         const parsed = JSON.parse(rawJson);
@@ -134,7 +134,7 @@ export const storeGameSettings = vm => {
     vm.storeProjectOptions();
     const runtime = vm.runtime;
     const comment = findOptionsComment(runtime);
-    const extra = runtime && runtime._squiggleSettings ? runtime._squiggleSettings : undefined;
+    const extra = runtime && runtime._squiggleSettings ? runtime._squiggleSettings : null;
     if (comment && typeof comment.text === 'string') {
         comment.text = squiggleSettingsText(comment.text, extra);
     }

@@ -35,6 +35,11 @@ class PublishModal extends React.Component {
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleSaveAndPublish = this.handleSaveAndPublish.bind(this);
         this.handleCopyLink = this.handleCopyLink.bind(this);
+        this.handleTitleChange = this.handleTitleChange.bind(this);
+        this.handleInstructionsChange = this.handleInstructionsChange.bind(this);
+        this.handleDescriptionChange = this.handleDescriptionChange.bind(this);
+        this.handleVisClick = this.handleVisClick.bind(this);
+        this.handleTagClick = this.handleTagClick.bind(this);
     }
 
     componentDidUpdate (prevProps) {
@@ -58,7 +63,30 @@ class PublishModal extends React.Component {
                 }
             }
         } catch (_e) {
+            return;
         }
+    }
+
+    handleTitleChange (e) {
+        this.setState({title: e.target.value});
+    }
+
+    handleInstructionsChange (e) {
+        this.setState({instructions: e.target.value});
+    }
+
+    handleDescriptionChange (e) {
+        this.setState({description: e.target.value});
+    }
+
+    handleVisClick (e) {
+        const vis = e.currentTarget && e.currentTarget.getAttribute('data-vis');
+        if (vis) this.setState({visibility: vis});
+    }
+
+    handleTagClick (e) {
+        const tag = e.currentTarget && e.currentTarget.getAttribute('data-tag');
+        if (tag) this.toggleTag(tag);
     }
 
     toggleTag (tagId) {
@@ -126,9 +154,12 @@ class PublishModal extends React.Component {
     handleCopyLink () {
         const {projectId} = this.state;
         const roomSelf = overlay.getState().self;
+        const roomUrl = roomSelf ?
+            `${window.location.origin}/editor.html?room=${encodeURIComponent(roomSelf.room)}` :
+            window.location.href;
         const shareUrl = projectId ?
             `${window.location.origin}/play/${encodeURIComponent(projectId)}` :
-            (roomSelf ? `${window.location.origin}/editor.html?room=${encodeURIComponent(roomSelf.room)}` : window.location.href);
+            roomUrl;
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
             navigator.clipboard.writeText(shareUrl).then(() => {
                 this.setState({copied: true});
@@ -164,9 +195,13 @@ class PublishModal extends React.Component {
             copied
         } = this.state;
         const roomSelf = overlay.getState().self;
+        const origin = typeof window === 'undefined' ? '' : window.location.origin;
+        const fallbackUrl = roomSelf ?
+            `${origin}/editor.html?room=${encodeURIComponent(roomSelf.room)}` :
+            '';
         const shareUrl = projectId ?
-            `${typeof window !== 'undefined' ? window.location.origin : ''}/play/${encodeURIComponent(projectId)}` :
-            (roomSelf ? `${typeof window !== 'undefined' ? window.location.origin : ''}/editor.html?room=${encodeURIComponent(roomSelf.room)}` : '');
+            `${origin}/play/${encodeURIComponent(projectId)}` :
+            fallbackUrl;
 
         return (
             <div
@@ -211,7 +246,7 @@ class PublishModal extends React.Component {
                             className={styles.input}
                             maxLength={60}
                             value={title}
-                            onChange={e => this.setState({title: e.target.value})}
+                            onChange={this.handleTitleChange}
                         />
                     </label>
 
@@ -226,9 +261,13 @@ class PublishModal extends React.Component {
                                 <button
                                     key={opt.id}
                                     type="button"
-                                    className={classNames(styles.visBtn, {[styles.visBtnActive]: visibility === opt.id})}
+                                    className={classNames(
+                                        styles.visBtn,
+                                        {[styles.visBtnActive]: visibility === opt.id}
+                                    )}
                                     aria-pressed={visibility === opt.id}
-                                    onClick={() => this.setState({visibility: opt.id})}
+                                    data-vis={opt.id}
+                                    onClick={this.handleVisClick}
                                 >
                                     {opt.label}
                                 </button>
@@ -243,7 +282,7 @@ class PublishModal extends React.Component {
                             rows={2}
                             maxLength={600}
                             value={instructions}
-                            onChange={e => this.setState({instructions: e.target.value})}
+                            onChange={this.handleInstructionsChange}
                         />
                     </label>
 
@@ -255,7 +294,7 @@ class PublishModal extends React.Component {
                             maxLength={600}
                             placeholder="Tell players what makes your game fun…"
                             value={description}
-                            onChange={e => this.setState({description: e.target.value})}
+                            onChange={this.handleDescriptionChange}
                         />
                     </label>
 
@@ -270,7 +309,8 @@ class PublishModal extends React.Component {
                                         type="button"
                                         className={classNames(styles.tagChip, {[styles.tagChipActive]: active})}
                                         aria-pressed={active}
-                                        onClick={() => this.toggleTag(tag.id)}
+                                        data-tag={tag.id}
+                                        onClick={this.handleTagClick}
                                     >
                                         {tag.label}
                                     </button>

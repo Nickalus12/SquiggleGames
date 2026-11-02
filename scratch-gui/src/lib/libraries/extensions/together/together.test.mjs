@@ -465,7 +465,7 @@ console.log('\nblock shapes from 1.8 projects');
     const client = ['tellGame', 'whenGameSays', 'gameValue', 'myPlayerValue', 'gameRound', 'myTeam',
         'timeLeft', 'inGame', 'whenGameValueChanges', 'playerValueOf', 'nameOfPlayer'];
     ok('the eleven game server blocks are present', client.every(opcode => byOpcode[opcode]), client);
-    ok('they stay hidden while the game server is off', client.every(opcode => byOpcode[opcode].hideFromPalette));
+    ok('they are in the palette now the game server is on', client.every(opcode => !byOpcode[opcode].hideFromPalette));
     ok('a player slot takes me or nobody', info.menus.gamePlayers &&
         info.menus.gamePlayers.items.map(item => item.text).join() === 'me,nobody');
     ok('an Open Game Rules button is offered',

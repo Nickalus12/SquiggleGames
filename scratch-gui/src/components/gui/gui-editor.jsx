@@ -27,7 +27,6 @@ import Alerts from '../../containers/alerts.jsx';
 import DragLayer from '../../containers/drag-layer.jsx';
 import ConnectionModal from '../../containers/connection-modal.jsx';
 import TelemetryModal from '../telemetry-modal/telemetry-modal.jsx';
-import TWCustomExtensionModal from '../../containers/tw-custom-extension-modal.jsx';
 import TWFontsModal from '../../containers/tw-fonts-modal.jsx';
 import TouchGameControls from '../../containers/touch-game-controls.jsx';
 import PhoneTopBar from '../phone-shell/phone-top-bar.jsx';
@@ -94,7 +93,6 @@ const GUIEditor = props => {
         connectionModalVisible,
         costumeLibraryVisible,
         costumesTabVisible,
-        customExtensionModalVisible,
         customStageSize,
         enableCommunity,
         fontsModalVisible,
@@ -124,7 +122,6 @@ const GUIEditor = props => {
         onClosePhoneMenu,
         onExtensionButtonClick,
         onLogOut,
-        onOpenCustomExtensionModal,
         onOpenRegistration,
         onProjectTelemetryEvent,
         onRequestCloseBackdropLibrary,
@@ -206,7 +203,6 @@ const GUIEditor = props => {
             {...componentProps}
         >
             {alwaysEnabledModals}
-            {customExtensionModalVisible && <TWCustomExtensionModal />}
             {fontsModalVisible && <TWFontsModal />}
             {telemetryModalVisible ? (
                 <TelemetryModal
@@ -340,7 +336,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="code"
-                                        size={24}
+                                        size={20}
                                     />
                                     <FormattedMessage
                                         defaultMessage="Code"
@@ -355,7 +351,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="art"
-                                        size={24}
+                                        size={20}
                                     />
                                     {targetIsStage ? (
                                         <FormattedMessage
@@ -378,7 +374,7 @@ const GUIEditor = props => {
                                     <SqIcon
                                         className={styles.tabIcon}
                                         name="sounds"
-                                        size={24}
+                                        size={20}
                                     />
                                     <FormattedMessage
                                         defaultMessage="Sounds"
@@ -402,7 +398,6 @@ const GUIEditor = props => {
                                             media: `${basePath}static/${theme.getBlocksMediaFolder()}/`
                                         }}
                                         stageSize={stageSize}
-                                        onOpenCustomExtensionModal={onOpenCustomExtensionModal}
                                         theme={theme}
                                         vm={vm}
                                     />
@@ -519,7 +514,6 @@ GUIEditor.propTypes = {
     connectionModalVisible: PropTypes.bool,
     costumeLibraryVisible: PropTypes.bool,
     costumesTabVisible: PropTypes.bool,
-    customExtensionModalVisible: PropTypes.bool,
     customStageSize: PropTypes.shape({
         width: PropTypes.number,
         height: PropTypes.number
@@ -552,7 +546,6 @@ GUIEditor.propTypes = {
     onClosePhoneMenu: PropTypes.func,
     onExtensionButtonClick: PropTypes.func,
     onLogOut: PropTypes.func,
-    onOpenCustomExtensionModal: PropTypes.func,
     onOpenRegistration: PropTypes.func,
     onProjectTelemetryEvent: PropTypes.func,
     onRequestCloseBackdropLibrary: PropTypes.func,

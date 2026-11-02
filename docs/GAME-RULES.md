@@ -120,9 +120,27 @@ delete themselves, Together sends in a loop with no wait, pen drawing in a
 World project, scenes, levels and tiles that do not exist, and costumes or
 sounds big enough to make the game slow to load.
 
-## In 2.0
+## Playing a game with Game Rules
 
-The game server is switched off for players in this release. You can build
-Game Rules, and the checker reads them, but the blocks on normal sprites that
-connect a game to the server are hidden and a game plays on each computer.
-Turning the game server on is what is next.
+Since 2.2 the game server is on.
+
+- Press the green flag in a room where you can edit. Your game joins the
+  game server, which runs your Game Rules for everyone in the room. Anyone
+  else in the room presses the green flag to join the game you started. A
+  viewer cannot start a game, only join one that is already running.
+- A game with no Game Rules sprite does not use the game server. It plays
+  the way it always has.
+- The blocks that talk to the game server, on normal sprites, show up in the
+  palette once your project has a Game Rules sprite. Press **Open Game
+  Rules** to make one. Until then Together shows its usual blocks and the
+  button.
+- If your connection drops, your game tries again by itself and you keep
+  your place and your score for 20 seconds.
+- If a player goes quiet for 15 seconds without leaving, the server lets
+  them go so they stop showing up in the game.
+- Press the stop sign to leave the game.
+
+A play link (**Share and play**) uses Game Rules the same way when the
+project has a Game Rules sprite with scripts. Without one, a play link works
+the way it did before: one player drives and the others watch and take
+turns.

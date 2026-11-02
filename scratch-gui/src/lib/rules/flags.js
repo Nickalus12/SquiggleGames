@@ -1,4 +1,4 @@
-const GAME_SERVER_READY = false;
+const GAME_SERVER_READY = true;
 
 const gameFlags = {serverReady: GAME_SERVER_READY};
 

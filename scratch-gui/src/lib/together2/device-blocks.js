@@ -71,6 +71,12 @@ const deviceBlocks = card => {
 
 const deviceOpcodes = card => (CARDS[card] ? CARDS[card]().map(block => block.opcode) : []);
 
+const TOGETHER_GAME_OPCODES = ['tellGame', 'whenGameSays', 'gameValue', 'myPlayerValue', 'gameRound', 'myTeam',
+    'timeLeft', 'inGame'];
+
+const gameBlockTypes = () => new Set(TOGETHER_GAME_OPCODES.map(opcode => `together_${opcode}`)
+    .concat(...Object.keys(CARDS).map(card => deviceOpcodes(card).map(opcode => `${card}_${opcode}`))));
+
 const usedMenus = card => {
     const names = new Set();
     (CARDS[card] ? CARDS[card]() : []).forEach(block => {
@@ -242,6 +248,8 @@ export {
     deviceMenus,
     deviceOpcodes,
     fireDeviceHats,
+    gameBlockTypes,
+    TOGETHER_GAME_OPCODES,
     installDeviceMethods,
     sharedGame,
     slotOf
