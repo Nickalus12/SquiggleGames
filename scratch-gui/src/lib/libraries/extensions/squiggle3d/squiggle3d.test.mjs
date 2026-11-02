@@ -78,7 +78,8 @@ const opcodes = blocks.map(block => block.opcode);
 ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
     'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
-    'mouseTurn', 'spriteInSights', 'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor'].join(), opcodes);
+    'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch', 'spriteInSights',
+    'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor'].join(), opcodes);
 ok('every opcode has a method', opcodes.every(opcode => typeof ext[opcode] === 'function'));
 const byOp = Object.fromEntries(blocks.map(block => [block.opcode, block]));
 ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER]' &&
@@ -89,7 +90,11 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
     byOp.setLightFalloff.text === 'set 3D light falloff to [N]' &&
     byOp.showMeAs.text === 'show me in 3D as [LOOK]' && byOp.setMyHeight.text === 'set my 3D height to [N]' &&
     byOp.glowIn3d.text === 'glow in 3D with [COLOR] radius [N]' &&
-    byOp.mouseTurn.text === 'turn with the mouse in 3D [ONOFF]' && byOp.spriteInSights.text === 'sprite in my sights' &&
+    byOp.mouseTurn.text === 'turn with the mouse in 3D [ONOFF]' &&
+    byOp.usePlayerSettings.text === 'use the player\'s 3D settings [ONOFF]' &&
+    byOp.setPitch.text === 'set 3D pitch to [N]' &&
+    byOp.pitch.text === '3D pitch' &&
+    byOp.spriteInSights.text === 'sprite in my sights' &&
     byOp.openDoor.text === 'open the 3D door at x [X] y [Y]' &&
     byOp.closeDoor.text === 'close the 3D door at x [X] y [Y]' &&
     byOp.doorOpen.text === '3D door at x [X] y [Y] open?' &&
@@ -171,6 +176,13 @@ ext.mouseTurn({ONOFF: 'on'});
 ok('turn with the mouse on', view.mouseTurn() === true);
 ext.mouseTurn({ONOFF: 'off'});
 ok('turn with the mouse off', view.mouseTurn() === false);
+ext.usePlayerSettings({ONOFF: 'off'});
+ok('use player settings off', view.usePlayerSettings() === false);
+ext.usePlayerSettings({ONOFF: 'on'});
+ok('use player settings on', view.usePlayerSettings() === true);
+ext.setPitch({N: 20});
+ok('set 3D pitch and report 3D pitch', ext.pitch() === 20);
+ext.setPitch({N: 0});
 ext.hideView();
 ok('hide 3D view', ext.viewOn() === false && ext.spriteInSights() === '');
 
