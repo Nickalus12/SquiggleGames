@@ -340,4 +340,53 @@ section('a player standing still keeps pinging while ticks arrive');
     ok('nothing else went out', ws.sent.every(m => m.type === 'join' || m.type === 'ping'), ws.sent);
 }
 
+section('reconnect grace window and joinAgain');
+{
+    const {clock, session, ws} = make();
+    const lifecycle = [];
+    session.on('resumed', msg => lifecycle.push({type: 'resumed', msg}));
+    session.on('grace-expired', msg => lifecycle.push({type: 'grace-expired', msg}));
+    session.on('health', msg => lifecycle.push({type: 'health', msg}));
+    ws.deliver({type: 'welcome', slot: 2, ack: 0, resume: 'tok-grace'});
+    ws.deliver({
+        type: 'health',
+        t: 20,
+        players: 4,
+        tickP50: 2,
+        tickP95: 5,
+        bytesPerSec: 18420,
+        downPerPlayer: 4605,
+        upPerPlayer: 410,
+        keyframeBytes: 912,
+        rewindMs: 150,
+        deadlineJumps: 0,
+        rtt: {1: 34, 2: 48},
+        lateTicks: 0
+    });
+    ok('health frame is emitted and stored on session.health',
+        session.health && session.health.tickP95 === 5 && lifecycle.some(e => e.type === 'health'));
+    ws.drop(1006);
+    clock.advance(250);
+    const second = sockets[1];
+    second.open();
+    second.deliver({type: 'welcome', slot: 2, ack: 0, resume: 'tok-grace-2'});
+    ok('resuming inside 20s emits resumed on the same slot',
+        lifecycle.some(e => e.type === 'resumed' && e.msg.slot === 2 && e.msg.dropMs === 250), lifecycle);
+
+    second.drop(1006);
+    for (let elapsed = 0; elapsed < 25000; elapsed += 5000) {
+        clock.advance(5000);
+        const latest = sockets[sockets.length - 1];
+        if (latest && latest !== second && !latest.closed) latest.drop(1006);
+    }
+    ok('dropping past 20s marks graceExpired and emits grace-expired',
+        session.graceExpired === true && lifecycle.some(e => e.type === 'grace-expired'));
+    const countBefore = sockets.length;
+    session.joinAgain();
+    const fresh = sockets[sockets.length - 1];
+    fresh.open();
+    ok('joinAgain opens a fresh socket without the old resume token',
+        sockets.length === countBefore + 1 && !('resume' in fresh.sent[0]), fresh.sent[0]);
+}
+
 done();

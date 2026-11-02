@@ -25,6 +25,9 @@ const WEAK_SNAPS_COUNT = 2;
 const WEAK_GAPS_COUNT = 2;
 const WEAK_TEXT = 'Weak connection';
 const RECONNECTING_TEXT = 'Reconnecting';
+const TICK_P50_MS = 5;
+const TICK_P95_MS = 12;
+const TICK_CEILING_MS = 25;
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
@@ -50,6 +53,19 @@ const pingBucket = rttMs => {
     if (!Number.isFinite(rttMs) || rttMs <= 80) return 'good';
     if (rttMs <= WEAK_RTT_P50_MS) return 'ok';
     return 'weak';
+};
+
+const tickP95Bucket = tickP95Ms => {
+    if (!Number.isFinite(tickP95Ms) || tickP95Ms <= TICK_P95_MS) return 'good';
+    if (tickP95Ms <= TICK_CEILING_MS) return 'ok';
+    return 'weak';
+};
+
+const tickP95Band = tickP95Ms => {
+    if (!Number.isFinite(tickP95Ms) || tickP95Ms <= TICK_P50_MS) return 'p50';
+    if (tickP95Ms <= TICK_P95_MS) return 'p95';
+    if (tickP95Ms <= TICK_CEILING_MS) return 'ceiling';
+    return 'over';
 };
 
 const extrapolateStep = (aheadTicks, maxAheadTicks) => {
@@ -545,6 +561,9 @@ const createConnectionHealth = ({
 
 export {
     TICK_MS,
+    TICK_P50_MS,
+    TICK_P95_MS,
+    TICK_CEILING_MS,
     MIN_RENDER_DELAY_MS,
     RENDER_DELAY_MS,
     MID_RENDER_DELAY_MS,
@@ -564,5 +583,7 @@ export {
     extrapolateStep,
     lerpAngle,
     pingBucket,
-    renderDelayForJitter
+    renderDelayForJitter,
+    tickP95Band,
+    tickP95Bucket
 };

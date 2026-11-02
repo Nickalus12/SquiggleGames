@@ -24,6 +24,8 @@ const OUT_ACTIONS = new Set(['input', 'fire', 'msg', 'set', 'change']);
 const HEARTBEAT_MS = 2000;
 const PING_IDLE_MS = 2000;
 const SILENCE_LIMIT_MS = 10000;
+const RESUME_GRACE_MS = 20000;
+const SLOT_REUSE_MS = 60000;
 
 const socketOrigin = base => String(base || '').replace(/\/+$/, '')
     .replace(/^(wss?:\/\/[^/]+).*$/, '$1');
@@ -115,6 +117,9 @@ const createGameSession = ({
     let lastPingAt = -Infinity;
     let lastOutboundAt = -Infinity;
     let silenced = 0;
+    let droppedAt = null;
+    let graceExpired = false;
+    let lastHealth = null;
 
     const stopHeartbeat = () => {
         if (heartbeatTimer) clearTimer(heartbeatTimer);
@@ -125,6 +130,17 @@ const createGameSession = ({
         const list = handlers.get(type);
         if (!list) return;
         list.slice().forEach(cb => cb(payload));
+    };
+
+    const checkGrace = () => {
+        if (!open && !closing && droppedAt !== null && (now() - droppedAt) >= RESUME_GRACE_MS) {
+            if (!graceExpired) {
+                graceExpired = true;
+                resume = null;
+                emit('grace-expired', {dropMs: now() - droppedAt});
+            }
+        }
+        return graceExpired;
     };
 
     const sendRaw = frame => {
@@ -189,11 +205,17 @@ const createGameSession = ({
     const onWelcome = msg => {
         attempts = 0;
         open = true;
+        const previousSlot = slot;
+        const wasDropped = droppedAt !== null;
+        const dropMs = wasDropped ? Math.max(0, now() - droppedAt) : 0;
+        const wasExpired = graceExpired || (wasDropped && dropMs >= RESUME_GRACE_MS);
         const refused = joinedWithResume && slot !== null && Number.isInteger(msg.slot) && msg.slot !== slot;
-        if (refused) {
+        if (refused || wasExpired) {
             unacked.length = 0;
             s = 0;
         }
+        droppedAt = null;
+        graceExpired = false;
         if (Number.isInteger(msg.slot)) slot = msg.slot;
         if (typeof msg.resume === 'string') resume = msg.resume;
         if (msg.mode === 'rules' || msg.mode === 'relay') mode = msg.mode;
@@ -218,6 +240,9 @@ const createGameSession = ({
         });
         if (unacked.length) s = unacked[unacked.length - 1].s;
         emit('welcome', msg);
+        if (wasDropped && joinedWithResume && !refused && !wasExpired && previousSlot !== null) {
+            emit('resumed', {slot, previousSlot, dropMs});
+        }
         schedule();
     };
 
@@ -240,7 +265,10 @@ const createGameSession = ({
         if (msg.type === 'pong') return;
         if (msg.type === 'welcome') onWelcome(msg);
         else if (msg.type === 'tick') onTick(msg);
-        else if (msg.type === 'rules-status') emit('rules-status', msg);
+        else if (msg.type === 'health') {
+            lastHealth = msg;
+            emit('health', msg);
+        } else if (msg.type === 'rules-status') emit('rules-status', msg);
         else if (msg.type === 'game-ended') emit('ended', msg);
         else if (msg.type === 'error') emit('error', msg);
         else emit(msg.type, msg);
@@ -280,9 +308,12 @@ const createGameSession = ({
             emit('closed', {code, reason: (event && event.reason) || 'refused'});
             return;
         }
-        emit('dropped', {code});
+        if (droppedAt === null) droppedAt = now();
+        checkGrace();
+        emit('dropped', {code, dropMs: now() - droppedAt, graceExpired});
         reconnectTimer = setTimer(() => {
             reconnectTimer = null;
+            checkGrace();
             attempts += 1;
             connect();
         }, reconnectDelay(code));
@@ -297,7 +328,9 @@ const createGameSession = ({
             ws = null;
             try {
                 socket.close();
-            } catch (e) { /* already gone */ }
+            } catch (e) {
+                ws = null;
+            }
             onClose({code: 1006});
             return;
         }
@@ -324,9 +357,10 @@ const createGameSession = ({
             lastPingAt = -Infinity;
             stopHeartbeat();
             heartbeatTimer = setTimer(heartbeat, HEARTBEAT_MS);
+            checkGrace();
             const join = {type: 'join', proto: PROTO};
-            if (resume) join.resume = resume;
-            joinedWithResume = !!resume;
+            if (resume && !graceExpired) join.resume = resume;
+            joinedWithResume = Boolean(resume && !graceExpired);
             sendRaw(join);
         };
         socket.onmessage = event => {
@@ -341,6 +375,32 @@ const createGameSession = ({
     return {
         start () {
             closing = false;
+            connect();
+            return this;
+        },
+        joinAgain () {
+            closing = false;
+            attempts = 0;
+            resume = null;
+            droppedAt = null;
+            graceExpired = false;
+            unacked.length = 0;
+            s = 0;
+            stopHeartbeat();
+            if (reconnectTimer) clearTimer(reconnectTimer);
+            reconnectTimer = null;
+            if (flushTimer) clearTimer(flushTimer);
+            flushTimer = null;
+            const socket = ws;
+            ws = null;
+            open = false;
+            if (socket) {
+                try {
+                    socket.close(1000, 'rejoin');
+                } catch (e) {
+                    ws = null;
+                }
+            }
             connect();
             return this;
         },
@@ -446,6 +506,15 @@ const createGameSession = ({
         },
         get silenced () {
             return silenced;
+        },
+        get droppedAt () {
+            return droppedAt;
+        },
+        get graceExpired () {
+            return checkGrace();
+        },
+        get health () {
+            return lastHealth;
         }
     };
 };
@@ -455,6 +524,8 @@ export {
     BATCH_MS,
     HEARTBEAT_MS,
     SILENCE_LIMIT_MS,
+    RESUME_GRACE_MS,
+    SLOT_REUSE_MS,
     OPS_PER_SECOND,
     OPS_BURST,
     MAX_OPS_PER_FRAME,

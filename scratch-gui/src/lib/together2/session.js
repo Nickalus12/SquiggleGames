@@ -1,4 +1,13 @@
-import {MAX_OP_NAME, MAX_OP_VALUE, RECONNECT_MIN_MS, createGameSession, gameSocketUrl, wireValue} from './net.js';
+import {
+    MAX_OP_NAME,
+    MAX_OP_VALUE,
+    RECONNECT_MIN_MS,
+    RESUME_GRACE_MS,
+    SLOT_REUSE_MS,
+    createGameSession,
+    gameSocketUrl,
+    wireValue
+} from './net.js';
 import {TICK_MS, createConnectionHealth, createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
@@ -155,6 +164,9 @@ const createGameLink = ({
     onClosed,
     onWelcome: onOpen,
     onDropped,
+    onResumed,
+    onGraceExpired,
+    onHealth,
     onSharedVar
 }) => {
     const runtime = vm.runtime;
@@ -181,6 +193,7 @@ const createGameLink = ({
     let lastBadFrameAt = null;
     let latched = null;
     let rejoinTimer = null;
+    let hostHealth = null;
 
     const forgetOwn = () => {
         ownTargets = null;
@@ -306,6 +319,7 @@ const createGameLink = ({
         prediction.reset();
         game = createGameState(tickMs / 1000);
         session = null;
+        hostHealth = null;
         forgetOwn();
         mineSlot = null;
     };
@@ -348,6 +362,17 @@ const createGameLink = ({
                 health.setConnected(false, now());
                 if (onDropped) onDropped(msg);
             }));
+            unsubs.push(session.on('resumed', msg => {
+                health.setConnected(true, now());
+                if (onResumed) onResumed(msg);
+            }));
+            unsubs.push(session.on('grace-expired', msg => {
+                if (onGraceExpired) onGraceExpired(msg);
+            }));
+            unsubs.push(session.on('health', msg => {
+                hostHealth = msg;
+                if (onHealth) onHealth(msg);
+            }));
             unsubs.push(session.on('game', msg => {
                 if (onSharedVar && msg && msg.action === 'var') onSharedVar(msg);
             }));
@@ -380,6 +405,15 @@ const createGameLink = ({
             cancelRejoin();
             if (session) session.stop();
             else reset();
+        },
+        joinAgain () {
+            latched = null;
+            cancelRejoin();
+            if (session && !session.stopped) {
+                session.joinAgain();
+                return session;
+            }
+            return this.start();
         },
         sendInput (input) {
             if (!session || !session.open || session.stopped || !input) return false;
@@ -434,6 +468,15 @@ const createGameLink = ({
         get health () {
             return health;
         },
+        get hostHealth () {
+            return hostHealth;
+        },
+        get reconnecting () {
+            return Boolean(session && !session.open && !session.stopped && session.droppedAt !== null);
+        },
+        get graceExpired () {
+            return Boolean(session && session.graceExpired);
+        },
         get latched () {
             return latched;
         }
@@ -442,6 +485,8 @@ const createGameLink = ({
 };
 
 export {
+    RESUME_GRACE_MS,
+    SLOT_REUSE_MS,
     avatarOf,
     blockedAt,
     createAvatarLayer,

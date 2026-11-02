@@ -1,6 +1,9 @@
-import {createGameLink} from './session.js';
+import {RESUME_GRACE_MS, SLOT_REUSE_MS, createGameLink} from './session.js';
 import {MAX_OP_NAME, pageSocketBase, playSocketUrl} from './net.js';
+import {pingBucket, tickP95Band, tickP95Bucket} from './buffer.js';
+import {teamName} from './game-state.js';
 import {playCloseText} from './texts.js';
+import {RULES_KEY} from '../collab/project-seam.js';
 import {PEER_PALETTE, playerPeerStyle} from '../themes/peers.js';
 import log from '../log.js';
 
@@ -15,6 +18,9 @@ const ENDED_ERROR = 'no-such-session';
 const GAME_ENDED_CODE = 1000;
 const SESSION_FULL_CODE = 1013;
 const LATENCY_EVERY_MS = 1000;
+const TOAST_MS = 2000;
+const RESUME_TOAST_TEXT = 'Back in the game';
+const JOIN_AGAIN_TEXT = 'Join again';
 const PLAYER_COLORS = Object.freeze([
     '#f25f5c', '#2a9d8f', '#5b6ee1', '#f0912b', '#b8336a', '#8cc63f', '#16b3c7', '#b07a4f',
     '#e8505b', '#d9700a', '#b88700', '#5f9e1b', '#1f9d55', '#0f9488', '#0e8fb3', '#3f82e3',
@@ -24,6 +30,72 @@ const PLAYER_COLORS = Object.freeze([
 const orEmpty = value => (typeof value === 'undefined' || value === null ? '' : value);
 
 const colorOf = slot => PLAYER_COLORS[Math.abs(Number(slot) | 0) % PLAYER_COLORS.length];
+
+const createToastQueue = ({now = Date.now, durationMs = TOAST_MS} = {}) => {
+    let active = null;
+
+    const alive = at => {
+        if (active && at >= active.until) active = null;
+        return active;
+    };
+
+    const push = (kind, name, singleText, multiText) => {
+        const at = now();
+        const cur = alive(at);
+        const label = String(name || 'Player').trim() || 'Player';
+        if (cur && cur.kind === kind) {
+            cur.count += 1;
+            cur.names.push(label);
+            cur.text = multiText(cur.count);
+            cur.until = at + durationMs;
+            return cur;
+        }
+        active = {
+            kind,
+            count: 1,
+            names: [label],
+            text: singleText(label),
+            until: at + durationMs
+        };
+        return active;
+    };
+
+    return {
+        join (name) {
+            return push(
+                'join',
+                name,
+                who => `${who} joined`,
+                count => `${count} players joined`
+            );
+        },
+        leave (name) {
+            return push(
+                'leave',
+                name,
+                who => `${who} left`,
+                count => `${count} players left`
+            );
+        },
+        reconnected (text = RESUME_TOAST_TEXT) {
+            const at = now();
+            active = {
+                kind: 'reconnected',
+                count: 1,
+                names: [],
+                text,
+                until: at + durationMs
+            };
+            return active;
+        },
+        current (at = now()) {
+            return alive(at);
+        },
+        clear () {
+            active = null;
+        }
+    };
+};
 
 const createPlayClient = ({
     vm,
@@ -46,6 +118,19 @@ const createPlayClient = ({
     let lastRtt = null;
     let lastRttAt = -Infinity;
     let link = null;
+    let hostHealth = null;
+    const slotRtt = Object.create(null);
+    const toasts = createToastQueue({now});
+
+    const rulesTeams = () => {
+        const targets = (runtime && runtime.targets) || [];
+        for (let i = 0; i < targets.length; i++) {
+            const storage = targets[i] && targets[i].extensionStorage;
+            const mark = storage && storage[RULES_KEY];
+            if (mark && mark.role === 'rules' && Array.isArray(mark.teams)) return mark.teams;
+        }
+        return null;
+    };
 
     const emit = (type, msg, extra) => {
         const list = handlers[type];
@@ -69,10 +154,18 @@ const createPlayClient = ({
     };
 
     const player = slot => {
+        const key = String(slot);
+        const mine = link && link.slot !== null ? String(link.slot) : '';
         const style = playerPeerStyle(slot);
+        const team = link && link.game ? teamName(link.game, key, rulesTeams()) : '';
+        const pvals = link && link.game && link.game.players ? link.game.players[key] : null;
+        let peerRtt = null;
+        if (pvals && Number.isFinite(pvals.ping)) peerRtt = pvals.ping;
+        else if (Number.isFinite(slotRtt[key])) peerRtt = slotRtt[key];
+        else if (key === mine && link && Number.isFinite(link.rtt)) peerRtt = link.rtt;
         return {
             id: Number(slot),
-            name: known[slot],
+            name: known[key],
             color: colorOf(slot),
             shape: style.shape,
             peerColor: style.color,
@@ -80,7 +173,11 @@ const createPlayClient = ({
             hex: style.hex,
             ink: style.ink,
             d: style.d,
-            fillRule: style.fillRule
+            fillRule: style.fillRule,
+            team: team || '',
+            pingMs: Number.isFinite(peerRtt) ? peerRtt : null,
+            ping: pingBucket(peerRtt),
+            you: key === mine
         };
     };
 
@@ -91,7 +188,8 @@ const createPlayClient = ({
             driver: null,
             me: mine !== null && known[mine] ? player(mine) : null,
             queue: [],
-            driving: false
+            driving: false,
+            health: hostHealth
         };
     };
 
@@ -122,11 +220,15 @@ const createPlayClient = ({
         chrome('roster', roster());
         if (!announce) return;
         joined.filter(slot => slot !== mine).forEach(slot => {
+            const toast = toasts.join(known[slot]);
             chrome('joined', player(slot));
+            chrome('toast', {kind: toast.kind, count: toast.count, text: toast.text});
             emit('peer-joined', {peer: {id: Number(slot), name: known[slot]}});
         });
         left.forEach(gone => {
+            const toast = toasts.leave(gone.name);
             chrome('left', gone);
+            chrome('toast', {kind: toast.kind, count: toast.count, text: toast.text});
             emit('peer-left', gone);
         });
     };
@@ -155,6 +257,30 @@ const createPlayClient = ({
             emit('game', msg);
         },
         onWelcome: () => chrome('status', {connected: true, code}),
+        onResumed: msg => {
+            const toast = toasts.reconnected();
+            chrome('reconnected', {slot: msg.slot, dropMs: msg.dropMs, text: toast.text});
+            chrome('toast', {kind: toast.kind, count: toast.count, text: toast.text});
+        },
+        onGraceExpired: msg => {
+            chrome('reconnect-prompt', {action: 'join-again', label: JOIN_AGAIN_TEXT, dropMs: msg.dropMs});
+        },
+        onHealth: msg => {
+            if (!msg || typeof msg !== 'object') return;
+            if (msg.rtt && typeof msg.rtt === 'object') {
+                Object.keys(msg.rtt).forEach(s => {
+                    const ms = Number(msg.rtt[s]);
+                    if (Number.isFinite(ms) && ms >= 0) slotRtt[String(s)] = ms;
+                });
+            }
+            hostHealth = Object.assign({}, msg, {
+                tickBucket: tickP95Bucket(msg.tickP95),
+                tickBand: tickP95Band(msg.tickP95)
+            });
+            chrome('health', hostHealth);
+            if (seenRoster) chrome('roster', roster());
+            emit('health', hostHealth);
+        },
         onDropped: msg => {
             chrome('status', {connected: false, code});
             if (msg && msg.code === SESSION_FULL_CODE) {
@@ -272,11 +398,16 @@ const createPlayClient = ({
         const data = event && event.data;
         if (!win || event.origin !== win.location.origin || !data || data.source !== HOST_SOURCE) return;
         if (data.action === 'roster') chrome('roster', roster());
+        else if (data.action === 'join-again') link.joinAgain();
     };
 
     return {
         bridge,
         link,
+        toasts,
+        joinAgain () {
+            return link.joinAgain();
+        },
         install () {
             runtime.on('PROJECT_START', onFlag);
             runtime.on('PROJECT_STOP_ALL', onStop);
@@ -300,9 +431,15 @@ const createPlayClient = ({
 };
 
 export {
+    JOIN_AGAIN_TEXT,
     NET_BRIDGE_KEYS,
     PEER_PALETTE,
     PLAYER_COLORS,
+    RESUME_GRACE_MS,
+    RESUME_TOAST_TEXT,
+    SLOT_REUSE_MS,
+    TOAST_MS,
     createPlayClient,
+    createToastQueue,
     playerPeerStyle
 };

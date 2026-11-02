@@ -428,4 +428,72 @@ section('20-player palette keeps the first 8 colours and gives 20 distinct peer 
         roster.players.length === 20 && pairs.size === 20, roster.players.length);
 }
 
+section('reconnect feel, burst toast merging, and host health frames');
+{
+    const {open, posted, clock, sockets, win} = playFixture();
+    const ws = open(1);
+    ws.deliver({type: 'welcome', proto: 2, mode: 'relay', slot: 1, ack: 0, resume: 'r-1', tickHz: 20, t: 0});
+    ws.deliver({type: 'tick', t: 1, kf: 1, ack: 0, y: {names: {1: 'Host'}}});
+    ws.deliver({
+        type: 'tick',
+        t: 2,
+        ack: 0,
+        y: {names: {1: 'Host', 2: 'Ada', 3: 'Ben', 4: 'Cam', 5: 'Dee'}}
+    });
+    const toasts = posted('toast');
+    ok('a burst of 4 joins merges into 4 players joined',
+        toasts.length === 4 && toasts[3].text === '4 players joined' && toasts[3].count === 4, toasts);
+
+    ws.deliver({
+        type: 'health',
+        t: 20,
+        players: 5,
+        tickP50: 3,
+        tickP95: 8,
+        bytesPerSec: 18420,
+        downPerPlayer: 4605,
+        upPerPlayer: 410,
+        keyframeBytes: 912,
+        rewindMs: 150,
+        deadlineJumps: 0,
+        rtt: {1: 35, 2: 110, 3: 185},
+        lateTicks: 0
+    });
+    const healthPost = posted('health').slice(-1)[0];
+    const latestRoster = posted('roster').slice(-1)[0];
+    ok('host health frame posts tickBucket and tickBand and updates player rtt buckets',
+        healthPost && healthPost.tickBucket === 'good' && healthPost.tickBand === 'p95' &&
+        latestRoster.players.find(p => p.id === 1).ping === 'good' &&
+        latestRoster.players.find(p => p.id === 2).ping === 'ok' &&
+        latestRoster.players.find(p => p.id === 3).ping === 'weak',
+        {healthPost, players: latestRoster.players.slice(0, 3)});
+
+    ws.close(1006, '');
+    clock.advance(500);
+    const resumedWs = sockets[sockets.length - 1];
+    resumedWs.onopen();
+    resumedWs.deliver({type: 'welcome', slot: 1, ack: 0, resume: 'r-2'});
+    resumedWs.deliver({type: 'tick', t: 3, kf: 1, ack: 0, y: {names: {1: 'Host', 2: 'Ada'}}});
+    const reconnected = posted('reconnected');
+    ok('a drop inside 20s resumes silently and shows Back in the game toast with no you-left copy',
+        reconnected.length === 1 && reconnected[0].text === 'Back in the game' &&
+        posted('left').every(l => l.id !== 1), reconnected);
+
+    resumedWs.close(1006, '');
+    for (let elapsed = 0; elapsed < 25000; elapsed += 5000) {
+        clock.advance(5000);
+        const s = sockets[sockets.length - 1];
+        if (s && s !== resumedWs) s.close(1006, '');
+    }
+    const prompts = posted('reconnect-prompt');
+    ok('a drop past 20s offers Join again without reloading',
+        prompts.length === 1 && prompts[0].label === 'Join again', prompts);
+    const beforeJoin = sockets.length;
+    win.fire('message', {origin: 'https://sq.test', data: {source: 'squiggle-coplay-host', action: 'join-again'}});
+    const freshWs = sockets[sockets.length - 1];
+    freshWs.onopen();
+    ok('Join again connects as a new player without the old resume token',
+        sockets.length === beforeJoin + 1 && !('resume' in freshWs.sent[0]), freshWs.sent);
+}
+
 done();
