@@ -137,6 +137,10 @@ const stepHeadBob = (bobState, opts = {}) => {
     }
     if (speed >= MIN_BOB_SPEED) {
         state.movingTicks = (state.movingTicks || 0) + 1;
+        if (opts.sustainedOnly && state.movingTicks < 2) {
+            state.totalY = state.offsetY - state.landingY;
+            return state;
+        }
         const rawAmp = Math.min(MAX_BOB_AMP, speed * BOB_AMP_PER_SPEED) * scale;
         const blend = Math.min(1, dt / 0.08);
         state.amplitude += (rawAmp - state.amplitude) * blend;

@@ -16,6 +16,16 @@ import {
     triggerLandingBob
 } from './player-settings.js';
 import {readGameSettings} from '../game-settings.js';
+import {
+    createTouchLookState,
+    endTouchLook,
+    gamepadLookDelta,
+    gamepadMoveKeys,
+    keyboardData,
+    moveTouchLook,
+    startTouchLook,
+    syncGamepadKeys
+} from '../touch-keys.js';
 import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, MAX_LIGHTS, WIDTH, clampEye, clampFalloff, clampFog, clampFov,
     createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, render} from './raycast.js';
 
@@ -223,12 +233,8 @@ const createView3d = (runtime, world, options) => {
         fov: DEFAULT_FOV,
         fog: 0,
         eye: DEFAULT_EYE,
-<<<<<<< HEAD
         lightFalloff: 0,
-||||||| parent of d9521c2 (edit-3d-player: add pitch blocks, frame.horizon shift, head-bob curve, and gamepad/touch-look helpers)
-=======
         pitch: 0,
->>>>>>> d9521c2 (edit-3d-player: add pitch blocks, frame.horizon shift, head-bob curve, and gamepad/touch-look helpers)
         floor: DEFAULT_FLOOR,
         ceiling: DEFAULT_CEILING,
         floorTexture: 'color',
@@ -241,10 +247,14 @@ const createView3d = (runtime, world, options) => {
         views: new WeakMap(),
         mouseTurn: false,
         turn: 0,
+        pitchDelta: 0,
         fromPose: null,
         toPose: null,
         pose: null,
         stepAt: 0,
+        gamepadAt: 0,
+        gamepadKeys: new Set(),
+        touchLook: createTouchLookState(),
         rendered: -1,
         sightsHash: -1,
         uploaded: -1,
@@ -460,11 +470,91 @@ const createView3d = (runtime, world, options) => {
         runtime._squiggle3dPose = state.pose;
     };
 
+    const mouseTurnScale = () => (
+        state.usePlayerSettings && state.hasPlayerOverride && state.playerSettings ?
+            (num(state.playerSettings.mouseSpeed, 12) / 100) :
+            TURN_PER_PIXEL
+    );
+
+    const lookOpts = () => {
+        if (!state.usePlayerSettings || !state.playerSettings) {
+            return {mouseSpeed: 12, invertLook: false, lookUpDown: true};
+        }
+        return {
+            mouseSpeed: state.playerSettings.mouseSpeed,
+            invertLook: state.playerSettings.invertLook,
+            lookUpDown: state.playerSettings.lookUpDown
+        };
+    };
+
+    const getGamepads = opts.getGamepads ||
+        (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function' ?
+            () => navigator.getGamepads() :
+            null);
+
+    const postScratchKey = (name, isDown) => {
+        const kb = runtime && runtime.ioDevices && runtime.ioDevices.keyboard;
+        const data = keyboardData(name, isDown);
+        if (kb && data && typeof kb.postData === 'function') {
+            kb.postData(data);
+        }
+    };
+
+    const releaseGamepadKeys = () => {
+        if (state.gamepadKeys && state.gamepadKeys.size > 0) {
+            syncGamepadKeys(postScratchKey, state.gamepadKeys, []);
+        }
+    };
+
+    const pollGamepad = dtSec => {
+        if (!getGamepads || !state.on) return false;
+        let list = null;
+        try {
+            list = getGamepads();
+        } catch (e) {
+            return false;
+        }
+        if (!list) return false;
+        let pad = null;
+        for (let i = 0; i < list.length; i++) {
+            if (list[i] && list[i].connected !== false) {
+                pad = list[i];
+                break;
+            }
+        }
+        if (!pad) {
+            releaseGamepadKeys();
+            return false;
+        }
+        const nextKeys = gamepadMoveKeys(pad, runtime.targets);
+        syncGamepadKeys(postScratchKey, state.gamepadKeys, nextKeys);
+        if (!state.mouseTurn) return false;
+        const axes = Array.isArray(pad.axes) ? pad.axes : [];
+        const look = gamepadLookDelta(axes[2], axes[3], dtSec, lookOpts());
+        if (!look.active) return false;
+        state.turn += look.yawDelta / TURN_PER_PIXEL;
+        state.pitchDelta += look.pitchDelta;
+        return true;
+    };
+
     const applyTurn = () => {
-        if (!state.turn) return false;
+        let changed = false;
+        if (state.pitchDelta) {
+            const pDelta = state.pitchDelta;
+            state.pitchDelta = 0;
+            const currentLook = lookOpts();
+            if (currentLook.lookUpDown !== false) {
+                const nextPitch = clampPitch(state.pitch + pDelta);
+                if (nextPitch !== state.pitch) {
+                    state.pitch = nextPitch;
+                    changed = true;
+                }
+            }
+        }
+        if (!state.turn) return changed;
         const turn = state.turn;
         state.turn = 0;
-        if (!viewerAlive()) return false;
+        if (!viewerAlive()) return changed;
         const delta = turn * TURN_PER_PIXEL;
         const redraw = runtime.redrawRequested;
         state.viewer.setDirection(state.viewer.direction + delta);
@@ -693,7 +783,11 @@ const createView3d = (runtime, world, options) => {
 
     const stepFramePose = () => {
         if (!state.on || !link.seam || !viewerAlive()) return false;
-        if (!state.turn && !poseMoving()) return false;
+        const at = now();
+        const dtSec = state.gamepadAt > 0 ? Math.min(0.1, Math.max(1 / 240, (at - state.gamepadAt) / 1000)) : 1 / 60;
+        state.gamepadAt = at;
+        pollGamepad(dtSec);
+        if (!state.turn && !state.pitchDelta && !poseMoving()) return false;
         flushPending();
         applyTurn();
         advancePose(progressNow());
@@ -806,6 +900,14 @@ const createView3d = (runtime, world, options) => {
 
     const locked = input => input.doc && input.doc.pointerLockElement === input.canvas;
 
+    const canvasRect = canvas => {
+        if (canvas && typeof canvas.getBoundingClientRect === 'function') {
+            const rect = canvas.getBoundingClientRect();
+            if (rect && rect.width > 0) return rect;
+        }
+        return {left: 0, top: 0, width: stageW(), height: stageH()};
+    };
+
     const attachInput = () => {
         if (link.input) return;
         const renderer = runtime.renderer;
@@ -820,11 +922,40 @@ const createView3d = (runtime, world, options) => {
             }
         };
         input.onMove = event => {
-            if (locked(input)) state.turn += num(event.movementX, 0);
+            if (!locked(input)) return;
+            const scale = mouseTurnScale();
+            state.turn += num(event.movementX, 0) * (scale / TURN_PER_PIXEL);
+            const my = num(event.movementY, 0);
+            if (my !== 0) {
+                const currentLook = lookOpts();
+                if (currentLook.lookUpDown !== false) {
+                    const sign = currentLook.invertLook ? 1 : -1;
+                    state.pitchDelta += sign * my * scale;
+                }
+            }
+        };
+        input.onPointerDown = event => {
+            if (!state.on || !state.mouseTurn || !event || event.pointerType !== 'touch') return;
+            startTouchLook(state.touchLook, event.pointerId, event.clientX, event.clientY, canvasRect(canvas));
+        };
+        input.onPointerMove = event => {
+            if (!state.on || !state.mouseTurn || !event || event.pointerType !== 'touch') return;
+            const delta = moveTouchLook(state.touchLook, event.pointerId, event.clientX, event.clientY, lookOpts());
+            if (!delta.active) return;
+            if (delta.yawDelta) state.turn += delta.yawDelta / TURN_PER_PIXEL;
+            if (delta.pitchDelta) state.pitchDelta += delta.pitchDelta;
+        };
+        input.onPointerUp = event => {
+            if (!event || event.pointerType !== 'touch') return;
+            endTouchLook(state.touchLook, event.pointerId);
         };
         canvas.addEventListener('mousedown', input.onClick);
         canvas.addEventListener('click', input.onClick);
+        canvas.addEventListener('pointerdown', input.onPointerDown);
         doc.addEventListener('mousemove', input.onMove);
+        doc.addEventListener('pointermove', input.onPointerMove);
+        doc.addEventListener('pointerup', input.onPointerUp);
+        doc.addEventListener('pointercancel', input.onPointerUp);
         link.input = input;
     };
 
@@ -833,10 +964,17 @@ const createView3d = (runtime, world, options) => {
         if (!input) return;
         input.canvas.removeEventListener('mousedown', input.onClick);
         input.canvas.removeEventListener('click', input.onClick);
+        input.canvas.removeEventListener('pointerdown', input.onPointerDown);
         input.doc.removeEventListener('mousemove', input.onMove);
+        input.doc.removeEventListener('pointermove', input.onPointerMove);
+        input.doc.removeEventListener('pointerup', input.onPointerUp);
+        input.doc.removeEventListener('pointercancel', input.onPointerUp);
         if (locked(input) && typeof input.doc.exitPointerLock === 'function') input.doc.exitPointerLock();
+        endTouchLook(state.touchLook);
+        releaseGamepadKeys();
         link.input = null;
         state.turn = 0;
+        state.pitchDelta = 0;
     };
 
     const hideDrawable = () => {
@@ -846,8 +984,10 @@ const createView3d = (runtime, world, options) => {
 
     const hideView = () => {
         detachInput();
+        releaseGamepadKeys();
         if (!state.on) return;
         state.on = false;
+        stepHeadBob(state.bob, {visible: false});
         if (state.release) state.release();
         state.release = null;
         if (world) world.setTilesHidden(false);
@@ -884,6 +1024,7 @@ const createView3d = (runtime, world, options) => {
         state.tickStart = now();
         state.drawMs = 0;
         state.drew = false;
+        if (!pacing.framed) pollGamepad(stepMs() / 1000);
         applyTurn();
     };
 
@@ -900,6 +1041,18 @@ const createView3d = (runtime, world, options) => {
         pacing.framed = false;
         const next = poseSnapshot(state.viewer);
         const prev = state.toPose || next;
+        const stepDx = next.x - prev.x;
+        const stepDy = next.y - prev.y;
+        const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
+        stepHeadBob(state.bob, {
+            dx: stepDx,
+            dy: stepDy,
+            dt: stepMs() / 1000,
+            elevation: elevationOf(state.viewer),
+            visible: state.on,
+            headBob,
+            sustainedOnly: true
+        });
         state.fromPose = {x: prev.x, y: prev.y, direction: prev.direction};
         state.toPose = next;
         state.stepAt = at;
@@ -1153,12 +1306,7 @@ export {
     createPixelCache,
     createView3d,
     getView3d,
-<<<<<<< HEAD
+    peekView3d,
     stepPose,
     wrapAngle
-||||||| parent of c8b2ecc (edit-3d-player: add player 3D settings store, panel, quality rungs, and lock block)
-    getView3d
-=======
-    peekView3d
->>>>>>> c8b2ecc (edit-3d-player: add player 3D settings store, panel, quality rungs, and lock block)
 };
