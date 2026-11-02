@@ -6,7 +6,7 @@ const SNAP_WINDOW_MS = 10000;
 const pruneWindow = (list, nowMs, windowMs) => {
     if (!Number.isFinite(nowMs)) return;
     const cutoff = nowMs - windowMs;
-    while (list.length && list[0] < cutoff) list.shift();
+    while (list.length && list[0] <= cutoff) list.shift();
 };
 
 const createPrediction = ({

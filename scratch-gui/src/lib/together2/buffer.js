@@ -504,20 +504,25 @@ const createConnectionHealth = ({
             const anyTrigger = Boolean(reconnecting || rttBad || jitterBad || extrapBad || discreteBad);
 
             const rtt5Bad = rtt5.p50 > WEAK_RTT_P50_MS || rtt5.p95 > WEAK_RTT_P95_MS;
+            const jitter5 = buffer && buffer.clock ? buffer.clock.jitterP95(nowMs, offMs) : 0;
+            const jitter5Bad = jitter5 > JITTER_HIGH_MS;
             const extrap5Bad = extrap5 > WEAK_EXTRAPOLATE_RATIO;
-            const recentBad = Boolean(reconnecting || rtt5Bad || jitterBad || extrap5Bad);
-            if (recentBad) lastBadAt = nowMs;
+            if (reconnecting) lastBadAt = nowMs;
 
             if (anyTrigger) {
                 if (badSince === null) badSince = nowMs;
-                if (nowMs - badSince >= onMs) weak = true;
+                if (nowMs - badSince >= onMs) {
+                    if (!weak) lastBadAt = nowMs;
+                    weak = true;
+                }
             } else {
                 badSince = null;
             }
 
             if (weak) {
                 const quietStart = lastBadAt === null ? nowMs : lastBadAt;
-                if (!reconnecting && !rtt5Bad && !extrap5Bad && gaps5 === 0 && (nowMs - quietStart) >= offMs) {
+                if (!reconnecting && !rtt5Bad && !jitter5Bad && !extrap5Bad &&
+                    gaps5 === 0 && (nowMs - quietStart) >= offMs) {
                     weak = false;
                     badSince = null;
                     latchUntil = -Infinity;

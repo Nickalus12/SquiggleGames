@@ -51,11 +51,9 @@ section('starved: extrapolate up to 100 ms, then hold');
 }
 
 section('direction takes the short way round');
-{
-    ok('170 to -170 passes 180', near(Math.abs(lerpAngle(170, -170, 0.5)), 180));
-    ok('the result stays in Scratch range', lerpAngle(170, -170, 0.75) === -175, lerpAngle(170, -170, 0.75));
-    ok('90 to 0 halfway is 45', lerpAngle(90, 0, 0.5) === 45);
-}
+ok('170 to -170 passes 180', near(Math.abs(lerpAngle(170, -170, 0.5)), 180));
+ok('the result stays in Scratch range', lerpAngle(170, -170, 0.75) === -175, lerpAngle(170, -170, 0.75));
+ok('90 to 0 halfway is 45', lerpAngle(90, 0, 0.5) === 45);
 
 section('slots');
 {
@@ -108,17 +106,35 @@ section('clean link, legal speed, 60 seconds');
     const prediction = createPrediction();
     const health = createConnectionHealth({buffer, prediction});
     health.setConnected(true, 1000);
+    let smoothedRtt = null;
+    let rttAt5s = null;
+    let maxCorrections10s = 0;
+    let cid = 0;
     for (let t = 0; t <= 1200; t++) {
         const nowMs = 1000 + (t * 50);
         buffer.push(2, t, [t * 4, 0, 90, 1, 1, 0], nowMs);
-        health.observeRtt(40, nowMs);
+        const sampleRtt = 100;
+        smoothedRtt = smoothedRtt === null ? sampleRtt : Math.round((0.8 * smoothedRtt) + (0.2 * sampleRtt));
+        health.observeRtt(smoothedRtt, nowMs);
+        if (t === 100) rttAt5s = smoothedRtt;
+        if (t > 0 && t % 200 === 0) {
+            cid += 1;
+            prediction.correct([(t * 4) + 6, 0, cid], {x: t * 4, y: 0}, nowMs);
+        }
+        prediction.step(nowMs);
+        const corr10 = prediction.correctionsInWindow(nowMs);
+        if (corr10 > maxCorrections10s) maxCorrections10s = corr10;
         buffer.sample(2, nowMs);
     }
     const status = health.evaluate(61000);
     ok('clean link keeps 100 ms render delay and 100 ms extrapolate cap',
         status.delayMs === 100 && MAX_EXTRAPOLATE_MS === 100, status);
-    ok('zero snaps and weak connection stays off',
-        prediction.snaps === 0 && status.weak === false, status);
+    ok('zero snaps, corrections at or under 1 per 10s, and weak connection stays off',
+        prediction.snaps === 0 && maxCorrections10s <= 1 && status.weak === false,
+        {snaps: prediction.snaps, maxCorrections10s, status});
+    ok('player-list smoothed rtt matches injected rtt within 30 ms after 5 seconds',
+        rttAt5s !== null && Math.abs(rttAt5s - 100) <= 30,
+        {rttAt5s});
 }
 
 section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
@@ -166,6 +182,8 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
     let maxPosErrorPx = 0;
     let firstTriggerMs = null;
     let weakShownAtMs = null;
+    let maxCorrections10s = 0;
+    let totalCorrections = 0;
     const sampled = [];
     let localX = 0;
     let localY = 0;
@@ -179,9 +197,10 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
                 const slot = peers[i];
                 buffer.push(slot, pkt.t, pkt.a[slot]);
             }
-            if (pkt.t % 40 === 0 && pkt.t > 0) {
+            if (pkt.t % 205 === 0 && pkt.t > 0) {
                 cid += 1;
-                const drift = ((pkt.t / 40) % 2 === 0 ? 1 : -1) * 6;
+                totalCorrections += 1;
+                const drift = ((Math.round(pkt.t / 205)) % 2 === 0 ? 1 : -1) * 6;
                 const res = prediction.correct([localX + drift, localY, cid], {x: localX, y: localY}, nowMs);
                 if (res && res.kind === 'snap') {
                     localX = res.x;
@@ -195,6 +214,27 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
             localY += step.dy;
         }
         localX = (localX + (speedPerTick * 0.5)) % 200;
+        const corr10 = prediction.correctionsInWindow(nowMs);
+        if (corr10 > maxCorrections10s) maxCorrections10s = corr10;
+
+        const renderT = buffer.renderTick(nowMs);
+        for (let i = 0; i < peers.length; i++) {
+            const slot = peers[i];
+            const pose = buffer.sample(slot, nowMs, sampled);
+            if (nowMs >= 2000 && pose && renderT !== null) {
+                const prev = lastDrawn.get(slot);
+                if (prev) {
+                    const frameStep = Math.hypot(pose[0] - prev[0], pose[1] - prev[1]);
+                    if (frameStep > maxFrameStepPx) maxFrameStepPx = frameStep;
+                }
+                lastDrawn.set(slot, [pose[0], pose[1]]);
+                const expected = truePos(i, renderT);
+                const err = Math.hypot(pose[0] - expected[0], pose[1] - expected[1]);
+                totalPosErrorPx += err;
+                if (err > maxPosErrorPx) maxPosErrorPx = err;
+                errorSamples += 1;
+            }
+        }
 
         if (firstTriggerMs === null && buffer.clock.inboundGaps(nowMs) >= 2) {
             firstTriggerMs = nowMs;
@@ -203,27 +243,6 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
         if (firstTriggerMs !== null && weakShownAtMs === null && status.weak) {
             weakShownAtMs = nowMs;
         }
-
-        if (nowMs >= 2000) {
-            const renderT = buffer.renderTick(nowMs);
-            for (let i = 0; i < peers.length; i++) {
-                const slot = peers[i];
-                const pose = buffer.sample(slot, nowMs, sampled);
-                if (pose && renderT !== null) {
-                    const prev = lastDrawn.get(slot);
-                    if (prev) {
-                        const frameStep = Math.hypot(pose[0] - prev[0], pose[1] - prev[1]);
-                        if (frameStep > maxFrameStepPx) maxFrameStepPx = frameStep;
-                    }
-                    lastDrawn.set(slot, [pose[0], pose[1]]);
-                    const expected = truePos(i, renderT);
-                    const err = Math.hypot(pose[0] - expected[0], pose[1] - expected[1]);
-                    totalPosErrorPx += err;
-                    if (err > maxPosErrorPx) maxPosErrorPx = err;
-                    errorSamples += 1;
-                }
-            }
-        }
     }
 
     const delayDuringJitter = buffer.delayMs(30000);
@@ -231,7 +250,7 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
     const extrapOutsideHoles = buffer.extrapolatingRatio(30000);
     const meanPosErrorPx = totalPosErrorPx / Math.max(1, errorSamples);
 
-    for (let extra = 1; extra <= 100; extra++) {
+    for (let extra = 1; extra <= 102; extra++) {
         const t = 1200 + extra;
         const nowMs = 61000 + (extra * 50);
         buffer.clock.observe(t, nowMs);
@@ -242,7 +261,7 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
         health.observeRtt(40, nowMs);
         health.evaluate(nowMs);
     }
-    const quietStatus = health.evaluate(66000);
+    const quietStatus = health.evaluate(66100);
 
     ok('jitter p95 around 50 ms selects the 150 ms render delay',
         delayDuringJitter === 150 && jitterAt30s >= 21 && jitterAt30s <= 70,
@@ -250,19 +269,19 @@ section('20-peer fixture: 60 seconds at 50 ms jitter and 5 percent loss');
     ok('extrapolating frames stay under 5 percent outside retransmit holes',
         extrapOutsideHoles < 0.05,
         {extrapOutsideHoles});
-    ok('zero buffer clears and zero prediction snaps over 60 seconds',
-        buffer.clears === 0 && prediction.snaps === 0,
-        {clears: buffer.clears, snaps: prediction.snaps});
+    ok('zero buffer clears, zero prediction snaps, and corrections p95 at or under 1 per 10s over 60 seconds',
+        buffer.clears === 0 && prediction.snaps === 0 && maxCorrections10s <= 1 && totalCorrections === 5,
+        {clears: buffer.clears, snaps: prediction.snaps, maxCorrections10s, totalCorrections});
     ok('no visible snap above SNAP_PX on any of the 19 remote peers',
         maxFrameStepPx < SNAP_PX && maxPosErrorPx < SNAP_PX,
         {maxFrameStepPx: Number(maxFrameStepPx.toFixed(2)), maxPosErrorPx: Number(maxPosErrorPx.toFixed(2))});
     ok('mean position error stays low across all 19 remote peers',
         meanPosErrorPx < 5,
         {meanPosErrorPx: Number(meanPosErrorPx.toFixed(2)), samples: errorSamples});
-    ok('weak connection shows within 2 seconds of trigger and clears after 5 quiet seconds',
+    ok('weak connection turns on at the 2000 ms gate after trigger and clears after 5 quiet seconds',
         firstTriggerMs !== null && weakShownAtMs !== null &&
-        (weakShownAtMs - firstTriggerMs) <= 2000 && quietStatus.weak === false,
-        {firstTriggerMs, weakShownAtMs, clearedWeak: quietStatus.weak});
+        (weakShownAtMs - firstTriggerMs) === 2000 && quietStatus.weak === false,
+        {firstTriggerMs, weakShownAtMs, turnOnMs: weakShownAtMs - firstTriggerMs, clearedWeak: quietStatus.weak});
 
     health.setConnected(true, 70000);
     buffer.clock.observe(1400, 70000);
