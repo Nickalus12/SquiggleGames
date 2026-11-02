@@ -99,10 +99,12 @@ export const squiggleSettingsText = (text, extra) => {
 
 const findOptionsComment = runtime => {
     if (!runtime) return null;
+    const hasStageLookup = typeof runtime.getTargetForStage === 'function';
+    const stage = hasStageLookup ? runtime.getTargetForStage() : null;
+    if (hasStageLookup && !(stage && stage.comments)) return null;
     if (typeof runtime.findProjectOptionsComment === 'function') {
         return runtime.findProjectOptionsComment();
     }
-    const stage = typeof runtime.getTargetForStage === 'function' ? runtime.getTargetForStage() : null;
     const comments = stage && stage.comments ? Object.values(stage.comments) : [];
     return comments.find(c => c && typeof c.text === 'string' && c.text.includes(CONFIG_MAGIC)) || null;
 };

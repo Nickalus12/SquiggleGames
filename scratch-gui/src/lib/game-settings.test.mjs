@@ -66,6 +66,17 @@ ok('readGameSettings round-trips custom controls and HUD from _twconfig_',
     reloaded.touchMode === 'dpad' &&
     reloaded.actionLabels.e === 'Use' &&
     reloaded.hud.teams === false);
+let askedVm = false;
+const emptyRuntime = {
+    getTargetForStage: () => null,
+    findProjectOptionsComment: () => {
+        askedVm = true;
+        throw new TypeError('no stage');
+    }
+};
+const beforeLoad = readGameSettings({runtime: emptyRuntime});
+ok('readGameSettings returns defaults before a project has a stage and never asks the VM',
+    beforeLoad.touchMode === 'thumbstick' && beforeLoad.hud.enabled === true && askedVm === false);
 ok('normalizeSquiggleSettings handles invalid input safely',
     normalizeSquiggleSettings({touchMode: 'invalid'}).touchMode === 'thumbstick');
 
