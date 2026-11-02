@@ -2,18 +2,19 @@ import log from '../log.js';
 import {FLAGS, flagsAt} from './tilemap.js';
 import {browserCanvas, browserImageLoader, costumeFor} from './textures.js';
 import {chainHook} from './world.js';
+import {createScalePolicy} from './render-scale.js';
+import {readGameSettings} from '../game-settings.js';
 import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, WIDTH, clampEye, clampFog, clampFov, createFrame, facingIndex, gridMap,
     parseColor, pixel, render} from './raycast.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_STOP_ALL = 'PROJECT_STOP_ALL';
+const SETTINGS_CHANGED = 'SQUIGGLE_SETTINGS_CHANGED';
 const LAYER = 'sq-tiles-back';
 const RESOLUTION = 0.5;
 const TEXTURE_SIZE = 64;
 const SPRITE_MAX = 64;
 const SAMPLES = 240;
-const SLOW_FRAME_MS = 8;
-const SLOW_STREAK = 12;
 const VIEW_NAME = /^(.*)-([1-8])$/;
 const LOOKS = Object.freeze({picture: 1, views: 2, nothing: 0});
 const TURN_PER_PIXEL = 0.25;
@@ -123,11 +124,33 @@ const createView3d = (runtime, world, options) => {
     const now = opts.now || (() => (typeof performance === 'undefined' ? Date.now() : performance.now()));
     const toBitmap = opts.toBitmap ||
         ((pixels, width, height) => new ImageData(new Uint8ClampedArray(pixels.buffer), width, height));
-    const defaultScale = Number.isFinite(Number(opts.resolution)) ?
+    const fixedScale = Number.isFinite(Number(opts.resolution)) ?
         Math.max(0.25, Math.min(2, Number(opts.resolution))) :
-        RESOLUTION;
+        null;
     const stageW = () => Math.max(120, Number(runtime && runtime.stageWidth) || (WIDTH / RESOLUTION));
     const stageH = () => Math.max(90, Number(runtime && runtime.stageHeight) || (HEIGHT / RESOLUTION));
+    const pixelRatio = () => {
+        if (Number.isFinite(Number(opts.devicePixelRatio))) return Number(opts.devicePixelRatio);
+        const ratio = typeof window === 'undefined' ? 0 : Number(window.devicePixelRatio);
+        return ratio > 0 ? ratio : 1;
+    };
+    const frameMs = () => {
+        const loop = runtime && runtime.frameLoop;
+        if (!loop) return 1000 / 30;
+        const fps = Number(loop.framerate);
+        return fps > 0 ? 1000 / fps : 1000 / 60;
+    };
+    const quality = () => {
+        try {
+            return readGameSettings(runtime).render3d;
+        } catch (e) {
+            return 'auto';
+        }
+    };
+    const policy = createScalePolicy();
+    const configure = mode => policy.configure({mode, dpr: pixelRatio(), width: stageW(), height: stageH()});
+    const firstScale = () => (fixedScale === null ? configure(quality()) : fixedScale);
+    const defaultScale = firstScale();
     let frame = createFrame(Math.round(stageW() * defaultScale), Math.round(stageH() * defaultScale));
     const cameraOwner = {kit: 'squiggle3d'};
     const serials = new WeakMap();
@@ -152,7 +175,9 @@ const createView3d = (runtime, world, options) => {
         crosshair: '',
         target: null,
         samples: [],
-        slow: 0,
+        tickStart: 0,
+        drawMs: 0,
+        manual: fixedScale !== null,
         scale: defaultScale
     });
     let state = fresh();
@@ -246,6 +271,17 @@ const createView3d = (runtime, world, options) => {
         return true;
     };
 
+    const applyScale = next => {
+        if (next === state.scale) return;
+        state.scale = next;
+        ensureFrame();
+    };
+
+    const setQuality = mode => {
+        state.manual = false;
+        applyScale(configure(mode));
+    };
+
     const frameHash = () => {
         ensureFrame();
         const viewer = state.viewer;
@@ -331,10 +367,7 @@ const createView3d = (runtime, world, options) => {
         const elapsed = now() - started;
         state.samples.push(elapsed);
         if (state.samples.length > SAMPLES) state.samples.shift();
-        if (opts.adaptive !== false && state.scale > RESOLUTION) {
-            state.slow = elapsed > SLOW_FRAME_MS ? state.slow + 1 : 0;
-            if (state.slow >= SLOW_STREAK) state.scale = RESOLUTION;
-        }
+        state.drawMs += elapsed;
     };
 
     const present = () => {
@@ -478,7 +511,10 @@ const createView3d = (runtime, world, options) => {
     };
 
     const onBefore = () => {
-        if (!state.on || !state.turn) return;
+        if (!state.on) return;
+        state.tickStart = now();
+        state.drawMs = 0;
+        if (!state.turn) return;
         const turn = state.turn;
         state.turn = 0;
         if (viewerAlive()) state.viewer.setDirection(state.viewer.direction + (turn * TURN_PER_PIXEL));
@@ -492,6 +528,11 @@ const createView3d = (runtime, world, options) => {
         }
         syncGhosts();
         refresh();
+        if (state.drawMs > 0 && state.tickStart > 0 && !state.manual && opts.adaptive !== false) {
+            const next = policy.sample(now() - state.tickStart, state.drawMs, frameMs());
+            if (next !== null) applyScale(next);
+        }
+        state.drawMs = 0;
     };
 
     const destroy = () => {
@@ -505,7 +546,9 @@ const createView3d = (runtime, world, options) => {
     const reset = () => {
         hideView();
         destroy();
+        const scale = firstScale();
         state = fresh();
+        state.scale = scale;
         scene.spriteCount = 0;
         cache.grid = false;
         pixels.clear();
@@ -517,8 +560,14 @@ const createView3d = (runtime, world, options) => {
         link.seam = null;
     };
 
+    const onSettings = settings => {
+        if (fixedScale !== null || !settings) return;
+        setQuality(settings.render3d);
+    };
+
     runtime.on(PROJECT_STOP_ALL, hideView);
     runtime.on(PROJECT_LOADED, reset);
+    runtime.on(SETTINGS_CHANGED, onSettings);
 
     const view = {
         runtime,
@@ -572,12 +621,12 @@ const createView3d = (runtime, world, options) => {
             if (!state.mouseTurn) detachInput();
         },
         scale: () => state.scale,
+        quality: () => (state.manual ? 'manual' : policy.mode),
         setScale (nextScale) {
-            const clamped = Math.max(0.25, Math.min(2, num(nextScale, state.scale)));
-            if (clamped === state.scale) return;
-            state.scale = clamped;
-            ensureFrame();
+            state.manual = true;
+            applyScale(Math.max(0.25, Math.min(2, num(nextScale, state.scale))));
         },
+        setQuality,
         crosshair () {
             if (!state.on || !viewerAlive()) return '';
             const hash = frameHash();
@@ -592,7 +641,10 @@ const createView3d = (runtime, world, options) => {
                 uploads: state.uploads,
                 medianMs: percentile(sorted, 0.5),
                 p95Ms: percentile(sorted, 0.95),
-                maxMs: sorted.length ? sorted[sorted.length - 1] : 0
+                maxMs: sorted.length ? sorted[sorted.length - 1] : 0,
+                scale: state.scale,
+                quality: state.manual ? 'manual' : policy.mode,
+                steps: policy.steps
             };
         },
         reset,
@@ -601,6 +653,7 @@ const createView3d = (runtime, world, options) => {
             detach();
             runtime.removeListener(PROJECT_STOP_ALL, hideView);
             runtime.removeListener(PROJECT_LOADED, reset);
+            runtime.removeListener(SETTINGS_CHANGED, onSettings);
             states.delete(runtime);
         }
     };

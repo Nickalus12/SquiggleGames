@@ -129,6 +129,7 @@ const doc = Object.assign(fakeTarget(listeners.doc), {
     }
 });
 const view = createView3d(runtime, world, {
+    resolution: RESOLUTION,
     canvas,
     document: doc,
     toBitmap: (data, width, height) => ({data, width, height}),
@@ -294,33 +295,31 @@ runtime.stageHeight = 360;
 runtime._step();
 ok('restoring 480x360 and 0.5 scale returns frame to 240x180',
     view.frame.width === WIDTH && view.frame.height === HEIGHT);
-globalThis.ImageData = class {};
-const browserView = createView3d(runtime, world, {canvas, document: doc});
-ok('a browser view starts at half resolution, not full', browserView.scale() === RESOLUTION &&
-    browserView.frame.width === WIDTH && browserView.frame.height === HEIGHT, browserView.scale());
-browserView.detach();
-delete globalThis.ImageData;
-view.setScale(1);
-const realNow = performance.now;
-let fakeClock = 0;
-performance.now = () => {
-    fakeClock += 10;
-    return fakeClock;
-};
-const startX = hero.x;
-for (let i = 0; i < 11; i++) {
-    hero.setXY(startX + ((i % 2) * 2), hero.y);
-    runtime._step();
-}
-const stillSharp = view.scale() === 1;
-hero.setXY(startX + 3, hero.y);
-runtime._step();
-performance.now = realNow;
-ok('twelve slow frames in a row drop a sharp view back to half resolution',
-    stillSharp && view.scale() === RESOLUTION, view.scale());
-hero.setXY(startX, hero.y);
-runtime._step();
-ok('the dropped view renders a half resolution frame', view.frame.width === WIDTH && view.frame.height === HEIGHT);
+const bitmap = (data, width, height) => ({data, width, height});
+const autoAt = dpr => createView3d(runtime, world, {canvas, document: doc, toBitmap: bitmap, devicePixelRatio: dpr});
+const plainView = autoAt(1);
+ok('Auto starts a 1x screen at three quarter resolution', plainView.scale() === 0.75 &&
+    plainView.quality() === 'auto' && plainView.frame.width === 360 && plainView.frame.height === 270,
+plainView.scale());
+const retina = autoAt(2);
+ok('Auto starts a 2x screen at full resolution', retina.scale() === 1);
+runtime.stageWidth = 640;
+runtime.stageHeight = 360;
+const wideRetina = autoAt(2);
+ok('a wide stage on a 2x screen starts at three quarters to stay in the pixel budget', wideRetina.scale() === 0.75);
+runtime.stageWidth = 480;
+runtime.stageHeight = 360;
+plainView.setQuality('crisp');
+ok('Crisp draws at full resolution', plainView.scale() === 1 && plainView.quality() === 'crisp');
+plainView.setQuality('fast');
+ok('Fast draws at half resolution', plainView.scale() === RESOLUTION && plainView.frame.width === WIDTH);
+runtime.emit('SQUIGGLE_SETTINGS_CHANGED', {render3d: 'crisp'});
+ok('changing 3D quality in Game settings reaches every auto view', plainView.scale() === 1 && retina.scale() === 1);
+ok('a view with a fixed resolution ignores Game settings', view.scale() === RESOLUTION);
+plainView.setScale(0.75);
+ok('setScale pins the view as manual', plainView.quality() === 'manual' && plainView.scale() === 0.75);
+[plainView, retina, wideRetina].forEach(extra => extra.dispose());
+ok('disposed views stop listening for settings', runtime.listenerCount('SQUIGGLE_SETTINGS_CHANGED') === 1);
 
 section('mouse turning');
 view.setMouseTurn(true);
@@ -395,5 +394,39 @@ guard.setEffect('ghost', 20);
 ok('after detach the drawableEffect hook is gone', !seam.hooks.drawableEffect && ghosts.get(guard.drawableID) === 20);
 view.dispose();
 ok('dispose turns it off', !view.isOn());
+
+section('auto quality steps with tick time');
+let clock = 0;
+let costPerCall = 12;
+const adaptive = createView3d(runtime, world, {canvas, document: doc, toBitmap: bitmap, devicePixelRatio: 1,
+    now: () => {
+        clock += costPerCall;
+        return clock;
+    }});
+adaptive.attach(seam);
+adaptive.show(hero);
+const homeX = hero.x;
+let stride = 0;
+const walk = ticks => {
+    for (let i = 0; i < ticks; i++) {
+        stride++;
+        hero.setXY(homeX + ((stride % 2) * 2), hero.y);
+        runtime._step();
+    }
+};
+walk(44);
+const beforeWindow = adaptive.scale();
+walk(1);
+ok('a full window of slow ticks steps Auto down from 0.75 to 0.5',
+    beforeWindow === 0.75 && adaptive.scale() === RESOLUTION && adaptive.stats().steps === 1, adaptive.stats());
+walk(45);
+ok('it never goes below half resolution', adaptive.scale() === RESOLUTION);
+costPerCall = 0.01;
+walk(45);
+ok('a window with headroom steps back up to the starting scale', adaptive.scale() === 0.75, adaptive.stats());
+walk(90);
+ok('Auto never climbs above the scale this screen started at', adaptive.scale() === 0.75);
+ok('the frame follows the scale', adaptive.frame.width === 360 && adaptive.frame.height === 270);
+adaptive.dispose();
 
 done();
