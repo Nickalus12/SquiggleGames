@@ -79,6 +79,16 @@ ok('readGameSettings returns defaults before a project has a stage and never ask
     beforeLoad.touchMode === 'thumbstick' && beforeLoad.hud.enabled === true && askedVm === false);
 ok('normalizeSquiggleSettings handles invalid input safely',
     normalizeSquiggleSettings({touchMode: 'invalid'}).touchMode === 'thumbstick');
+ok('own HUD sprites and 3D quality default to auto',
+    defaults.ownHud === 'auto' && defaults.render3d === 'auto');
+ok('unknown own HUD and 3D quality values fall back to auto',
+    normalizeSquiggleSettings({ownHud: 'hide', render3d: 'ultra'}).ownHud === 'auto' &&
+    normalizeSquiggleSettings({ownHud: 'hide', render3d: 'ultra'}).render3d === 'auto');
+const kept = updateGameSettings(vm, {ownHud: 'keep', render3d: 'fast'});
+const keptBack = readGameSettings({runtime: {findProjectOptionsComment: () => comment}});
+ok('own HUD and 3D quality persist and keep the other settings',
+    kept.ownHud === 'keep' && kept.render3d === 'fast' && kept.touchMode === 'dpad' &&
+    keptBack.ownHud === 'keep' && keptBack.render3d === 'fast' && keptBack.hud.teams === false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

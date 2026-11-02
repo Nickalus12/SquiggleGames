@@ -127,13 +127,167 @@ const ACTION_KEY_SLOTS = [
     {key: 'q', label: 'Q key', placeholder: 'Dash'}
 ];
 
+const choiceMessages = defineMessages({
+    ownHudLabel: {
+        defaultMessage: 'The game\'s own HUD sprites',
+        description: 'Label of the choice for what the Squiggle HUD does with sprites named StatusHUD or TimerHUD',
+        id: 'sq.settings.ownHud'
+    },
+    ownHudAuto: {
+        defaultMessage: 'Auto',
+        description: 'Own HUD choice: replace them when the game uses Arena or Scores',
+        id: 'sq.settings.ownHud.auto'
+    },
+    ownHudAutoDetail: {
+        defaultMessage: 'Replace with Arena or Scores',
+        description: 'Short help under the Auto own HUD choice',
+        id: 'sq.settings.ownHud.autoDetail'
+    },
+    ownHudReplace: {
+        defaultMessage: 'Replace',
+        description: 'Own HUD choice: hide StatusHUD and TimerHUD and show the Squiggle bar',
+        id: 'sq.settings.ownHud.replace'
+    },
+    ownHudReplaceDetail: {
+        defaultMessage: 'Show the Squiggle bar',
+        description: 'Short help under the Replace own HUD choice',
+        id: 'sq.settings.ownHud.replaceDetail'
+    },
+    ownHudKeep: {
+        defaultMessage: 'Keep',
+        description: 'Own HUD choice: keep StatusHUD and TimerHUD and leave out the matching Squiggle parts',
+        id: 'sq.settings.ownHud.keep'
+    },
+    ownHudKeepDetail: {
+        defaultMessage: 'Show my own sprites',
+        description: 'Short help under the Keep own HUD choice',
+        id: 'sq.settings.ownHud.keepDetail'
+    },
+    render3dLabel: {
+        defaultMessage: '3D picture quality',
+        description: 'Label of the choice for how sharp the first person 3D view is drawn',
+        id: 'sq.settings.render3d'
+    },
+    render3dAuto: {
+        defaultMessage: 'Auto',
+        description: '3D quality choice: pick sharpness from the device and step down when slow',
+        id: 'sq.settings.render3d.auto'
+    },
+    render3dAutoDetail: {
+        defaultMessage: 'Sharp when it can be',
+        description: 'Short help under the Auto 3D quality choice',
+        id: 'sq.settings.render3d.autoDetail'
+    },
+    render3dCrisp: {
+        defaultMessage: 'Crisp',
+        description: '3D quality choice: always draw at full sharpness',
+        id: 'sq.settings.render3d.crisp'
+    },
+    render3dCrispDetail: {
+        defaultMessage: 'Full detail',
+        description: 'Short help under the Crisp 3D quality choice',
+        id: 'sq.settings.render3d.crispDetail'
+    },
+    render3dFast: {
+        defaultMessage: 'Fast',
+        description: '3D quality choice: always draw chunky pixels for speed',
+        id: 'sq.settings.render3d.fast'
+    },
+    render3dFastDetail: {
+        defaultMessage: 'Chunky and smooth',
+        description: 'Short help under the Fast 3D quality choice',
+        id: 'sq.settings.render3d.fastDetail'
+    }
+});
+
+const OWN_HUD_CHOICES = [
+    {value: 'auto', label: choiceMessages.ownHudAuto, detail: choiceMessages.ownHudAutoDetail},
+    {value: 'replace', label: choiceMessages.ownHudReplace, detail: choiceMessages.ownHudReplaceDetail},
+    {value: 'keep', label: choiceMessages.ownHudKeep, detail: choiceMessages.ownHudKeepDetail}
+];
+
+const RENDER_3D_CHOICES = [
+    {value: 'auto', label: choiceMessages.render3dAuto, detail: choiceMessages.render3dAutoDetail},
+    {value: 'crisp', label: choiceMessages.render3dCrisp, detail: choiceMessages.render3dCrispDetail},
+    {value: 'fast', label: choiceMessages.render3dFast, detail: choiceMessages.render3dFastDetail}
+];
+
+class ActionLabelInput extends React.Component {
+    constructor (props) {
+        super(props);
+        this.handleSubmit = this.handleSubmit.bind(this);
+    }
+    handleSubmit (value) {
+        if (this.props.onChange) this.props.onChange(this.props.slotKey, value);
+    }
+    render () {
+        return (
+            <BufferedInput
+                value={this.props.value}
+                placeholder={this.props.placeholder}
+                onSubmit={this.handleSubmit}
+                className={styles.textInput}
+                type="text"
+            />
+        );
+    }
+}
+ActionLabelInput.propTypes = {
+    onChange: PropTypes.func,
+    placeholder: PropTypes.string,
+    slotKey: PropTypes.string,
+    value: PropTypes.string
+};
+
+const Choice = ({label, choices, value, attribute, onChange}) => (
+    <div className={styles.choice}>
+        <span
+            className={styles.choiceLabel}
+            id={`sq-choice-${attribute}`}
+        >
+            <FormattedMessage {...label} />
+        </span>
+        <div
+            className={styles.presets}
+            role="group"
+            aria-labelledby={`sq-choice-${attribute}`}
+        >
+            {choices.map(choice => (
+                <button
+                    key={choice.value}
+                    type="button"
+                    {...{[`data-${attribute}`]: choice.value}}
+                    className={classNames(styles.preset, {[styles.selected]: value === choice.value})}
+                    aria-pressed={value === choice.value}
+                    onClick={onChange}
+                >
+                    <FormattedMessage {...choice.label} />
+                    <small><FormattedMessage {...choice.detail} /></small>
+                </button>
+            ))}
+        </div>
+    </div>
+);
+Choice.propTypes = {
+    attribute: PropTypes.string,
+    choices: PropTypes.arrayOf(PropTypes.object),
+    label: PropTypes.object,
+    onChange: PropTypes.func,
+    value: PropTypes.string
+};
+
 const ControlsAndHud = ({
     touchMode,
     actionLabels,
     hudSettings,
+    ownHud,
+    render3d,
     onTouchModeChange,
     onActionLabelChange,
-    onHudToggle
+    onHudToggle,
+    onHudEnabledChange,
+    onOwnHudChange,
+    onRender3dChange
 }) => {
     const hud = hudSettings || {enabled: true, scores: true, teams: true, timer: true, health: true};
     const labels = actionLabels || {};
@@ -179,19 +333,18 @@ const ControlsAndHud = ({
                         className={styles.actionLabelItem}
                     >
                         <span>{slot.label}</span>
-                        <BufferedInput
+                        <ActionLabelInput
+                            slotKey={slot.key}
                             value={labels[slot.key] || ''}
                             placeholder={slot.placeholder}
-                            onSubmit={val => onActionLabelChange && onActionLabelChange(slot.key, val)}
-                            className={styles.textInput}
-                            type="text"
+                            onChange={onActionLabelChange}
                         />
                     </label>
                 ))}
             </div>
             <Setting
                 value={hud.enabled !== false}
-                onChange={e => onHudToggle && onHudToggle('enabled', e.target.checked)}
+                onChange={onHudEnabledChange}
                 label={
                     <FormattedMessage
                         defaultMessage="Show game HUD bar"
@@ -201,7 +354,8 @@ const ControlsAndHud = ({
                 }
                 detail={
                     <FormattedMessage
-                        defaultMessage="Displays sleek scoreboards, team tallies, round timers, and health bars automatically."
+                        defaultMessage={'Displays sleek scoreboards, team tallies, round timers, ' +
+                            'and health bars automatically.'}
                         description="Help text for the automatic HUD setting"
                         id="sq.settings.hudEnabledDetail"
                     />
@@ -222,7 +376,8 @@ const ControlsAndHud = ({
                                 <FancyCheckbox
                                     className={styles.checkbox}
                                     checked={hud[item.id] !== false}
-                                    onChange={e => onHudToggle && onHudToggle(item.id, e.target.checked)}
+                                    data-hud-section={item.id}
+                                    onChange={onHudToggle}
                                 />
                                 <span>{item.text}</span>
                             </label>
@@ -230,10 +385,31 @@ const ControlsAndHud = ({
                     </div>
                 )}
             </Setting>
+            {hud.enabled !== false && (
+                <Choice
+                    attribute="own-hud"
+                    choices={OWN_HUD_CHOICES}
+                    label={choiceMessages.ownHudLabel}
+                    value={ownHud || 'auto'}
+                    onChange={onOwnHudChange}
+                />
+            )}
+            <Choice
+                attribute="render-3d"
+                choices={RENDER_3D_CHOICES}
+                label={choiceMessages.render3dLabel}
+                value={render3d || 'auto'}
+                onChange={onRender3dChange}
+            />
         </React.Fragment>
     );
 };
 ControlsAndHud.propTypes = {
+    onHudEnabledChange: PropTypes.func,
+    ownHud: PropTypes.string,
+    render3d: PropTypes.string,
+    onOwnHudChange: PropTypes.func,
+    onRender3dChange: PropTypes.func,
     touchMode: PropTypes.string,
     actionLabels: PropTypes.objectOf(PropTypes.string),
     hudSettings: PropTypes.shape({
@@ -492,9 +668,14 @@ const SettingsModalComponent = props => (
                         touchMode={props.touchMode}
                         actionLabels={props.actionLabels}
                         hudSettings={props.hudSettings}
+                        ownHud={props.ownHud}
+                        render3d={props.render3d}
                         onTouchModeChange={props.onTouchModeChange}
                         onActionLabelChange={props.onActionLabelChange}
                         onHudToggle={props.onHudToggle}
+                        onHudEnabledChange={props.onHudEnabledChange}
+                        onOwnHudChange={props.onOwnHudChange}
+                        onRender3dChange={props.onRender3dChange}
                     />
                 </React.Fragment>
             )}
@@ -574,6 +755,11 @@ const SettingsModalComponent = props => (
 
 SettingsModalComponent.propTypes = {
     intl: intlShape,
+    onHudEnabledChange: PropTypes.func,
+    ownHud: PropTypes.string,
+    render3d: PropTypes.string,
+    onOwnHudChange: PropTypes.func,
+    onRender3dChange: PropTypes.func,
     onClose: PropTypes.func,
     isEmbedded: PropTypes.bool,
     framerate: PropTypes.number,

@@ -24,9 +24,15 @@ export const TOUCH_MODES = ['thumbstick', 'dpad'];
 
 export const HUD_SECTIONS = ['scores', 'teams', 'timer', 'health'];
 
+export const OWN_HUD_MODES = ['auto', 'replace', 'keep'];
+
+export const RENDER_3D_MODES = ['auto', 'crisp', 'fast'];
+
 export const DEFAULT_SQUIGGLE_SETTINGS = Object.freeze({
     touchMode: 'thumbstick',
     actionLabels: Object.freeze({}),
+    ownHud: 'auto',
+    render3d: 'auto',
     hud: Object.freeze({
         enabled: true,
         scores: true,
@@ -57,13 +63,16 @@ export const normalizeSquiggleSettings = raw => {
         timer: rawHud.timer !== false,
         health: rawHud.health !== false
     };
-    return {touchMode, actionLabels, hud};
+    const ownHud = OWN_HUD_MODES.indexOf(src.ownHud) !== -1 ? src.ownHud : 'auto';
+    const render3d = RENDER_3D_MODES.indexOf(src.render3d) !== -1 ? src.render3d : 'auto';
+    return {touchMode, actionLabels, hud, ownHud, render3d};
 };
 
 export const hasCustomSquiggleSettings = settings => {
     const norm = normalizeSquiggleSettings(settings);
     if (norm.touchMode !== 'thumbstick') return true;
     if (Object.keys(norm.actionLabels).length > 0) return true;
+    if (norm.ownHud !== 'auto' || norm.render3d !== 'auto') return true;
     return !norm.hud.enabled || !norm.hud.scores || !norm.hud.teams || !norm.hud.timer || !norm.hud.health;
 };
 
@@ -150,7 +159,9 @@ export const updateGameSettings = (vm, patch) => {
     const next = normalizeSquiggleSettings({
         touchMode: patch && typeof patch.touchMode !== 'undefined' ? patch.touchMode : current.touchMode,
         actionLabels: patch && patch.actionLabels ? patch.actionLabels : current.actionLabels,
-        hud: patch && patch.hud ? Object.assign({}, current.hud, patch.hud) : current.hud
+        hud: patch && patch.hud ? Object.assign({}, current.hud, patch.hud) : current.hud,
+        ownHud: patch && typeof patch.ownHud !== 'undefined' ? patch.ownHud : current.ownHud,
+        render3d: patch && typeof patch.render3d !== 'undefined' ? patch.render3d : current.render3d
     });
     runtime._squiggleSettings = next;
     if (vm && typeof vm.storeProjectOptions === 'function') {

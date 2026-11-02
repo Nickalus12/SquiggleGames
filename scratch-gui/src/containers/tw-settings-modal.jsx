@@ -32,7 +32,10 @@ class GameSettingsModal extends React.Component {
             'handleDisableCompilerChange',
             'handleTouchModeChange',
             'handleActionLabelChange',
-            'handleHudToggle'
+            'handleHudToggle',
+            'handleHudEnabledChange',
+            'handleOwnHudChange',
+            'handleRender3dChange'
         ]);
         this.state = {
             squiggle: readGameSettings(props.vm)
@@ -123,16 +126,33 @@ class GameSettingsModal extends React.Component {
         const next = updateGameSettings(this.props.vm, {actionLabels: labels});
         this.setState({squiggle: next});
     }
-    handleHudToggle (section, checked) {
+    setHudSection (section, checked) {
         const current = readGameSettings(this.props.vm);
         const hud = Object.assign({}, current.hud, {[section]: !!checked});
         const next = updateGameSettings(this.props.vm, {hud});
         this.setState({squiggle: next});
     }
+    handleHudToggle (e) {
+        const section = e.target.getAttribute('data-hud-section');
+        if (section) this.setHudSection(section, e.target.checked);
+    }
+    handleHudEnabledChange (e) {
+        this.setHudSection('enabled', e.target.checked);
+    }
+    handleOwnHudChange (e) {
+        const mode = e.currentTarget.getAttribute('data-own-hud');
+        if (!mode) return;
+        this.setState({squiggle: updateGameSettings(this.props.vm, {ownHud: mode})});
+    }
+    handleRender3dChange (e) {
+        const mode = e.currentTarget.getAttribute('data-render-3d');
+        if (!mode) return;
+        this.setState({squiggle: updateGameSettings(this.props.vm, {render3d: mode})});
+    }
     render () {
         const {
             onClose,
-            vm,
+            vm: _vm,
             customStageSize,
             ...props
         } = this.props;
@@ -154,9 +174,14 @@ class GameSettingsModal extends React.Component {
                 onTouchModeChange={this.handleTouchModeChange}
                 onActionLabelChange={this.handleActionLabelChange}
                 onHudToggle={this.handleHudToggle}
+                onHudEnabledChange={this.handleHudEnabledChange}
                 touchMode={this.state.squiggle.touchMode}
                 actionLabels={this.state.squiggle.actionLabels}
                 hudSettings={this.state.squiggle.hud}
+                ownHud={this.state.squiggle.ownHud}
+                render3d={this.state.squiggle.render3d}
+                onOwnHudChange={this.handleOwnHudChange}
+                onRender3dChange={this.handleRender3dChange}
                 stageWidth={customStageSize.width}
                 stageHeight={customStageSize.height}
                 stagePreset={presetFor(customStageSize.width, customStageSize.height)}
