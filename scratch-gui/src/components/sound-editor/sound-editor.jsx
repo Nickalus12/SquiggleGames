@@ -64,9 +64,9 @@ const messages = defineMessages({
         defaultMessage: 'Paste'
     },
     copyToNew: {
-        id: 'gui.soundEditor.copyToNew',
+        id: 'sq.soundEditor.copyToNew',
         description: 'Title of the button to copy the selection into a new sound',
-        defaultMessage: 'Copy to New'
+        defaultMessage: 'Copy to new'
     },
     delete: {
         id: 'gui.soundEditor.delete',
@@ -115,7 +115,7 @@ const messages = defineMessages({
     },
     softer: {
         id: 'gui.soundEditor.softer',
-        description: 'Title of the button to apply thr.softer effect',
+        description: 'Title of the button to apply the softer effect',
         defaultMessage: 'Softer'
     },
     reverse: {
@@ -151,21 +151,13 @@ const formatTime = timeSeconds => {
 };
 
 const formatDuration = (playheadPercent, trimStartPercent, trimEndPercent, durationSeconds) => {
-    // If no selection, the trim is the entire sound.
     trimStartPercent = trimStartPercent === null ? 0 : trimStartPercent;
     trimEndPercent = trimEndPercent === null ? 1 : trimEndPercent;
-
-    // If the playhead doesn't exist, assume it's at the start of the selection.
     playheadPercent = playheadPercent === null ? trimStartPercent : playheadPercent;
-
-    // If selection has zero length, treat it as the entire sound being selected.
-    // This happens when the user first clicks to start making a selection.
     const trimSize = (trimEndPercent - trimStartPercent) || 1;
     const trimDuration = trimSize * durationSeconds;
-
     const progressInTrim = (playheadPercent - trimStartPercent) / trimSize;
     const currentTime = progressInTrim * trimDuration;
-
     return `${formatTime(currentTime)} / ${formatTime(trimDuration)}`;
 };
 
@@ -364,35 +356,34 @@ const SoundEditor = props => (
                 {props.isStereo ? (
                     <FormattedMessage
                         defaultMessage="Stereo"
-                        description="Refers to a 'Stereo Sound' (2 channels)"
+                        description="Refers to a Stereo Sound (2 channels)"
                         id="tw.stereo"
                     />
                 ) : (
                     <FormattedMessage
                         defaultMessage="Mono"
-                        description="Refers to a 'Mono Sound' (1 channel)"
+                        description="Refers to a Mono Sound (1 channel)"
                         id="tw.mono"
                     />
                 )}
                 {` (${formatSoundSize(props.size)})`}
             </div>
         </div>
-        {/* TODO: don't know whether this should be > or >=. Using >= for now to be safe */}
         {props.size >= SOUND_BYTE_LIMIT && (
             <div className={classNames(styles.alert, styles.tooLarge)}>
                 <FormattedMessage
-                    defaultMessage="This sound may be too large to upload to Scratch."
-                    description="Message that appears when a sound exceeds the Scratch sound size limit."
-                    id="tw.tooLarge"
+                    defaultMessage="This sound is very big and might not save."
+                    description="Message that appears when a sound exceeds the sound size limit"
+                    id="sq.soundEditor.tooLarge"
                 />
             </div>
         )}
         {props.isStereo && (
             <div className={classNames(styles.alert, styles.stereo)}>
                 <FormattedMessage
-                    defaultMessage="Editing this stereo sound will irreversibly convert it to mono."
-                    description="Message that appears when editing a stereo sound."
-                    id="tw.stereoAlert"
+                    defaultMessage="Editing this sound turns it into a single channel."
+                    description="Message that appears when editing a stereo sound"
+                    id="sq.soundEditor.stereoAlert"
                 />
             </div>
         )}

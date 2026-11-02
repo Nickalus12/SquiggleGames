@@ -277,5 +277,26 @@ const greenFlagSource = readFileSync(
 ok('green flag stage cover renders Click to play copy',
     /defaultMessage="Click to play"/.test(greenFlagSource) && /id="sq\.stage\.clickToPlay"/.test(greenFlagSource));
 
+const blocksCss = readFileSync(
+    fileURLToPath(new URL('../blocks/blocks.css', import.meta.url)),
+    'utf8'
+);
+ok('scratch-blocks category labels use 14px text',
+    /\.scratchCategoryMenuItemLabel\)\s*\{[\s\S]*?font-size:\s*var\(--sq-text-sm,\s*14px\)/.test(blocksCss));
+
+const outlineSource = readFileSync(
+    fileURLToPath(new URL('../menu-bar/outline-panel.jsx', import.meta.url)),
+    'utf8'
+);
+ok('outline panel empty state is device-neutral sentence case without arrow glyphs',
+    !/Right-click the canvas →/.test(outlineSource) && /id:\s*'sq\.outline\.empty'/.test(outlineSource));
+
+const soundSource = readFileSync(
+    fileURLToPath(new URL('../sound-editor/sound-editor.jsx', import.meta.url)),
+    'utf8'
+);
+ok('sound editor toolbar uses sentence case and no Scratch branding',
+    /defaultMessage:\s*'Copy to new'/.test(soundSource) && !/upload to Scratch/.test(soundSource));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

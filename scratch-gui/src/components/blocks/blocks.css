@@ -45,13 +45,6 @@
     border-bottom: 1px solid $ui-black-transparent;
     box-sizing: content-box;
     height: calc(100% - 3.25rem) !important;
-
-    /*
-        For now, the layout cannot support scrollbars in the category menu.
-        The line below works for Edge, the `::-webkit-scrollbar` line
-        below that is for webkit browsers. It isn't possible to do the
-        same for Firefox, so a different solution may be needed for them.
-    */
     -ms-overflow-style: none;
 }
 
@@ -74,23 +67,16 @@
     border-left: 1px solid $ui-black-transparent;
 }
 
-
 .blocks :global(.blocklyBlockDragSurface) {
-    /*
-        Fix an issue where the drag surface was preventing hover events for sharing blocks.
-        This does not prevent user interaction on the blocks themselves.
-    */
     pointer-events: none;
-    z-index: $z-index-drag-layer; /* make blocks match gui drag layer */
+    z-index: $z-index-drag-layer;
 }
 
-/*
-    Shrink category font to fit "My Blocks" for now.
-    Probably will need different solutions for language support later, so
-    make the change here instead of in scratch-blocks.
-*/
 .blocks :global(.scratchCategoryMenuItemLabel) {
-    font-size: 0.65rem;
+    font-family: var(--sq-font, "Nunito", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: var(--sq-text-sm, 14px) !important;
+    font-weight: 700;
+    line-height: 1.15;
 }
 
 .blocks :global(.blocklyMinimalBody) {

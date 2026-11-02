@@ -19,6 +19,21 @@ const messages = defineMessages({
         id: 'sq.menuBar.outlineTitle',
         defaultMessage: 'Every note and section in this sprite',
         description: 'Tooltip on the Outline button'
+    },
+    searchPlaceholder: {
+        id: 'sq.outline.searchPlaceholder',
+        defaultMessage: 'Search notes',
+        description: 'Placeholder for the note search input in the Outline panel'
+    },
+    noMatches: {
+        id: 'sq.outline.noMatches',
+        defaultMessage: 'Nothing matches that.',
+        description: 'Shown when no notes match the search in the Outline panel'
+    },
+    empty: {
+        id: 'sq.outline.empty',
+        defaultMessage: 'No notes yet. Press and hold or right-click the code area to add a comment, then pick a type.',
+        description: 'Device-neutral empty state in the Outline panel'
     }
 });
 
@@ -33,9 +48,9 @@ const T = {
 };
 
 const label = {
-    fontSize: '10px',
+    fontSize: '12px',
     fontWeight: 800,
-    letterSpacing: '0.7px',
+    letterSpacing: '0.6px',
     textTransform: 'uppercase',
     color: T.faint
 };
@@ -89,12 +104,12 @@ const Chip = ({type}) => {
         <span
             style={{
                 flex: '0 0 auto',
-                width: '17px',
-                height: '17px',
+                width: '18px',
+                height: '18px',
                 borderRadius: '5px',
                 background: info.color,
                 color: '#fff',
-                fontSize: '10px',
+                fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -112,6 +127,7 @@ const Row = ({entry, indent, onGo}) => {
     const text = summarize(entry.parsed) || typeInfo(entry.parsed.type).label;
     return (
         <div
+            data-comment-id={entry.id}
             onClick={onGo}
             role="button"
             style={{
@@ -122,7 +138,7 @@ const Row = ({entry, indent, onGo}) => {
                 marginLeft: indent ? '14px' : 0,
                 borderRadius: '8px',
                 cursor: 'pointer',
-                fontSize: '12.5px'
+                fontSize: '14px'
             }}
             tabIndex={0}
             title={entry.parsed.body || text}
@@ -139,7 +155,7 @@ const Row = ({entry, indent, onGo}) => {
             </span>
             {entry.attached ? (
                 <span
-                    style={{color: T.faint, fontSize: '10px'}}
+                    style={{color: T.faint, fontSize: '12px'}}
                     title={'Attached to a block'}
                 >
                     {'⛓'}
@@ -162,6 +178,7 @@ class OutlinePanel extends React.Component {
         this.handleToggle = this.handleToggle.bind(this);
         this.handleRefresh = this.handleRefresh.bind(this);
         this.handleQuery = this.handleQuery.bind(this);
+        this.handleReveal = this.handleReveal.bind(this);
     }
     componentDidMount () {
         this.timer = setInterval(this.handleRefresh, 900);
@@ -178,17 +195,22 @@ class OutlinePanel extends React.Component {
     handleToggle () {
         this.setState(s => ({open: !s.open}));
     }
+    handleReveal (e) {
+        const id = e.currentTarget.getAttribute('data-comment-id');
+        if (id) revealComment(id);
+    }
     render () {
         const target = this.props.vm && this.props.vm.editingTarget;
         const {groups, loose, total} = buildOutline(target && target.comments, this.state.query);
         const {open} = this.state;
+        const {intl} = this.props;
 
         return (
             <div style={{position: 'relative'}}>
                 <button
                     aria-expanded={!!open}
                     className={classNames(barStyles.barPill, {[barStyles.barPillOpen]: open})}
-                    title={this.props.intl.formatMessage(messages.outlineTitle)}
+                    title={intl.formatMessage(messages.outlineTitle)}
                     type="button"
                     onClick={this.handleToggle}
                 >
@@ -196,7 +218,7 @@ class OutlinePanel extends React.Component {
                         name="outline"
                         size={20}
                     />
-                    <span>{this.props.intl.formatMessage(messages.outline)}</span>
+                    <span>{intl.formatMessage(messages.outline)}</span>
                     {total ? (
                         <span className={barStyles.barPillCount}>{total}</span>
                     ) : null}
@@ -223,15 +245,15 @@ class OutlinePanel extends React.Component {
                         }}
                     >
                         <div style={{padding: '13px 14px 11px', borderBottom: `1px solid ${T.line}`}}>
-                            <div style={label}>{'Outline'}</div>
+                            <div style={label}>{intl.formatMessage(messages.outline)}</div>
                             <input
                                 onChange={this.handleQuery}
-                                placeholder="Search notes…"
+                                placeholder={intl.formatMessage(messages.searchPlaceholder)}
                                 style={{
                                     width: '100%',
                                     marginTop: '8px',
                                     padding: '7px 10px',
-                                    fontSize: '12.5px',
+                                    fontSize: '14px',
                                     color: T.ink,
                                     background: 'rgba(0,0,0,.3)',
                                     border: `1.5px solid ${T.line}`,
@@ -251,8 +273,8 @@ class OutlinePanel extends React.Component {
                                     style={{marginBottom: '6px'}}
                                 >
                                     <div
-                                        // eslint-disable-next-line react/jsx-no-bind
-                                        onClick={() => revealComment(g.section.id)}
+                                        data-comment-id={g.section.id}
+                                        onClick={this.handleReveal}
                                         role="button"
                                         style={{
                                             display: 'flex',
@@ -261,7 +283,7 @@ class OutlinePanel extends React.Component {
                                             padding: '6px 8px',
                                             borderRadius: '8px',
                                             cursor: 'pointer',
-                                            fontSize: '12px',
+                                            fontSize: '14px',
                                             fontWeight: 800,
                                             letterSpacing: '0.2px'
                                         }}
@@ -277,7 +299,7 @@ class OutlinePanel extends React.Component {
                                         >
                                             {summarize(g.section.parsed) || 'Section'}
                                         </span>
-                                        <span style={{color: T.faint, fontSize: '11px'}}>
+                                        <span style={{color: T.faint, fontSize: '12px'}}>
                                             {g.children.length || ''}
                                         </span>
                                     </div>
@@ -286,8 +308,7 @@ class OutlinePanel extends React.Component {
                                             entry={e}
                                             indent
                                             key={e.id}
-                                            // eslint-disable-next-line react/jsx-no-bind
-                                            onGo={() => revealComment(e.id)}
+                                            onGo={this.handleReveal}
                                         />
                                     ))}
                                 </div>
@@ -297,21 +318,20 @@ class OutlinePanel extends React.Component {
                                 <Row
                                     entry={e}
                                     key={e.id}
-                                    // eslint-disable-next-line react/jsx-no-bind
-                                    onGo={() => revealComment(e.id)}
+                                    onGo={this.handleReveal}
                                 />
                             ))}
 
                             {!groups.length && !loose.length ? (
                                 <div
-                                    style={{fontSize: '12px',
+                                    style={{fontSize: '14px',
                                         color: T.faint,
                                         padding: '6px 8px',
                                         lineHeight: 1.55}}
                                 >
                                     {total ?
-                                        'Nothing matches that.' :
-                                        'No notes yet. Right-click the canvas → Add Comment, then give it a type.'}
+                                        intl.formatMessage(messages.noMatches) :
+                                        intl.formatMessage(messages.empty)}
                                 </div>
                             ) : null}
                         </div>
