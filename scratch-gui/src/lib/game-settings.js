@@ -63,8 +63,8 @@ export const normalizeSquiggleSettings = raw => {
         timer: rawHud.timer !== false,
         health: rawHud.health !== false
     };
-    const ownHud = OWN_HUD_MODES.indexOf(src.ownHud) !== -1 ? src.ownHud : 'auto';
-    const render3d = RENDER_3D_MODES.indexOf(src.render3d) !== -1 ? src.render3d : 'auto';
+    const ownHud = OWN_HUD_MODES.indexOf(src.ownHud) === -1 ? 'auto' : src.ownHud;
+    const render3d = RENDER_3D_MODES.indexOf(src.render3d) === -1 ? 'auto' : src.render3d;
     return {touchMode, actionLabels, hud, ownHud, render3d};
 };
 
