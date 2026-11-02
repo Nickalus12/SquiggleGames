@@ -491,6 +491,12 @@ const createView3d = (runtime, world, options) => {
         (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function' ?
             () => navigator.getGamepads() :
             null);
+    let gamepadKnown = Boolean(opts.getGamepads);
+    if (!gamepadKnown && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('gamepadconnected', () => {
+            gamepadKnown = true;
+        });
+    }
 
     const postScratchKey = (name, isDown) => {
         const kb = runtime && runtime.ioDevices && runtime.ioDevices.keyboard;
@@ -507,7 +513,7 @@ const createView3d = (runtime, world, options) => {
     };
 
     const pollGamepad = dtSec => {
-        if (!getGamepads || !state.on) return false;
+        if (!gamepadKnown || !getGamepads || !state.on) return false;
         let list = null;
         try {
             list = getGamepads();
@@ -524,6 +530,7 @@ const createView3d = (runtime, world, options) => {
         }
         if (!pad) {
             releaseGamepadKeys();
+            if (!opts.getGamepads) gamepadKnown = false;
             return false;
         }
         const nextKeys = gamepadMoveKeys(pad, runtime.targets);
@@ -616,7 +623,6 @@ const createView3d = (runtime, world, options) => {
         h = mix(h, state.eye);
         h = mix(h, state.lightFalloff);
         h = mix(h, effectivePitch());
-        h = mix(h, effectiveBobY());
         h = mix(h, state.floor);
         h = mix(h, state.ceiling);
         h = mixStr(h, state.floorTexture);
@@ -783,23 +789,20 @@ const createView3d = (runtime, world, options) => {
 
     const stepFramePose = () => {
         if (!state.on || !link.seam || !viewerAlive()) return false;
-        const at = now();
-        const dtSec = state.gamepadAt > 0 ? Math.min(0.1, Math.max(1 / 240, (at - state.gamepadAt) / 1000)) : 1 / 60;
-        state.gamepadAt = at;
-        pollGamepad(dtSec);
+        if (gamepadKnown) {
+            const at = now();
+            const dtSec = state.gamepadAt > 0 ?
+                Math.min(0.1, Math.max(1 / 240, (at - state.gamepadAt) / 1000)) :
+                1 / 60;
+            state.gamepadAt = at;
+            pollGamepad(dtSec);
+        }
         if (!state.turn && !state.pitchDelta && !poseMoving()) return false;
         flushPending();
-        const frameStart = now();
-        state.drawMs = 0;
-        state.drew = false;
         applyTurn();
         advancePose(progressNow());
         const beforeUploads = state.uploads;
         refresh();
-        if (state.drew && !state.manual && opts.adaptive !== false) {
-            state.pendingWork = now() - frameStart;
-            state.pendingDraw = state.drawMs;
-        }
         state.drawMs = 0;
         state.drew = false;
         return state.uploads !== beforeUploads;
@@ -925,8 +928,14 @@ const createView3d = (runtime, world, options) => {
         const input = {canvas, doc};
         input.onClick = () => {
             if (state.on && state.mouseTurn && !locked(input) && typeof canvas.requestPointerLock === 'function') {
+                const isWebdriver = typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
+                if (isWebdriver || input.rawLockFailed) {
+                    Promise.resolve(canvas.requestPointerLock()).catch(() => {});
+                    return;
+                }
                 Promise.resolve(canvas.requestPointerLock({unadjustedMovement: true})).catch(err => {
                     if (err && err.name === 'NotSupportedError') {
+                        input.rawLockFailed = true;
                         Promise.resolve(canvas.requestPointerLock()).catch(() => {});
                     }
                 });

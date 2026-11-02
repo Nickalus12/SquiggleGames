@@ -273,6 +273,7 @@ class PlayerSettingsComponent extends React.Component {
     }
 
     handleAfterStep () {
+        if (this.state.available && !this.state.open) return;
         const now = Date.now();
         if (now - this.lastPoll < POLL_MS) return;
         this.lastPoll = now;
