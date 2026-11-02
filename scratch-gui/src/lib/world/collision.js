@@ -50,8 +50,8 @@ const blocks = (grid, col, row, mask, low, high) => {
 const columnBlocked = (grid, col, rows, mask, top, bottom) => {
     const ts = grid.tileSize;
     for (let row = rows[0]; row <= rows[1]; row++) {
-        const relLow = typeof top === 'number' ? Math.max(0, top - (row * ts)) : undefined;
-        const relHigh = typeof bottom === 'number' ? Math.min(ts, bottom - (row * ts)) : undefined;
+        const relLow = typeof top === 'number' ? Math.max(0, top - (row * ts)) : null;
+        const relHigh = typeof bottom === 'number' ? Math.min(ts, bottom - (row * ts)) : null;
         if (blocks(grid, col, row, mask, relLow, relHigh)) return true;
     }
     return false;
@@ -60,8 +60,8 @@ const columnBlocked = (grid, col, rows, mask, top, bottom) => {
 const rowBlocked = (grid, row, cols, mask, left, right) => {
     const ts = grid.tileSize;
     for (let col = cols[0]; col <= cols[1]; col++) {
-        const relLow = typeof left === 'number' ? Math.max(0, left - (col * ts)) : undefined;
-        const relHigh = typeof right === 'number' ? Math.min(ts, right - (col * ts)) : undefined;
+        const relLow = typeof left === 'number' ? Math.max(0, left - (col * ts)) : null;
+        const relHigh = typeof right === 'number' ? Math.min(ts, right - (col * ts)) : null;
         if (blocks(grid, col, row, mask, relLow, relHigh)) return true;
     }
     return false;
@@ -137,8 +137,8 @@ const castRay = (grid, x, y, dx, dy, maxDistance) => {
     if (!len) return null;
     const ux = dx / len;
     const uy = dy / len;
-    let gx = (x - grid.origin[0]) / ts;
-    let gy = (grid.origin[1] - y) / ts;
+    const gx = (x - grid.origin[0]) / ts;
+    const gy = (grid.origin[1] - y) / ts;
     const vy = -uy;
     let col = Math.floor(gx);
     let row = Math.floor(gy);

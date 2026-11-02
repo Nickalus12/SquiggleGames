@@ -18,7 +18,17 @@ import {
 } from '../../reducers/world-ui';
 import styles from './tile-painter.css';
 
-const SHORTCUTS = {b: 'paint', e: 'erase', g: 'fill', r: 'rect', i: 'pick', f: 'flag', h: 'height', s: 'spawn', c: 'bounds'};
+const SHORTCUTS = {
+    b: 'paint',
+    e: 'erase',
+    g: 'fill',
+    r: 'rect',
+    i: 'pick',
+    f: 'flag',
+    h: 'height',
+    s: 'spawn',
+    c: 'bounds'
+};
 const KEY_OF = Object.keys(SHORTCUTS).reduce((map, key) => Object.assign(map, {[SHORTCUTS[key]]: key}), {});
 const FLAG_COLORS = {
     solid: '#3a6ff0',
@@ -62,7 +72,11 @@ const messages = defineMessages({
     rect: {id: 'sq.painter.tool.rect', defaultMessage: 'Box', description: 'Tile painter tool that fills a rectangle'},
     pick: {id: 'sq.painter.tool.pick', defaultMessage: 'Pick', description: 'Tile painter tool that picks a tile'},
     flag: {id: 'sq.painter.tool.flag', defaultMessage: 'Flag', description: 'Tile painter tool that marks cells'},
-    height: {id: 'sq.painter.tool.height', defaultMessage: 'Height', description: 'Tile painter tool that sets 3D wall height'},
+    height: {
+        id: 'sq.painter.tool.height',
+        defaultMessage: 'Height',
+        description: 'Tile painter tool that sets 3D wall height'
+    },
     spawn: {
         id: 'sq.painter.tool.spawn',
         defaultMessage: 'Spawn',

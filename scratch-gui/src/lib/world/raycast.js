@@ -1034,30 +1034,10 @@ const castColumns = (frame, scene, view) => {
     }
     const {colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colRx, colRy, hit} = frame;
     const {dir: vDir, plane} = view;
-    if (!frame._multiHit) {
-        for (let x = 0; x < w; x++) {
-            const camX = ((2 * (x + 0.5)) / w) - 1;
-            const rx = vDir.x + (plane.x * camX);
-            const ry = vDir.y + (plane.y * camX);
-            colRx[x] = rx;
-            colRy[x] = ry;
-            const h = castRay(map, u, v, rx, ry, hit);
-            if (!h) {
-                colOk[x] = 0;
-                colDoor[x] = 0;
-                continue;
-            }
-            colOk[x] = 1;
-            colSide[x] = h.side;
-            colDoor[x] = h.door ? 1 : 0;
-            colVal[x] = h.value;
-            colCol[x] = h.col;
-            colRow[x] = h.row;
-            colDist[x] = h.dist;
-            colWallX[x] = h.wallX;
-        }
-    } else {
-        const {colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow, hitSide, hitFlags, _multiPool} = frame;
+    if (frame._multiHit) {
+        const {
+            colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow, hitSide, hitFlags, _multiPool
+        } = frame;
         for (let x = 0; x < w; x++) {
             const camX = ((2 * (x + 0.5)) / w) - 1;
             const rx = vDir.x + (plane.x * camX);
@@ -1094,6 +1074,28 @@ const castColumns = (frame, scene, view) => {
                 hitSide[idx] = hi.side;
                 hitFlags[idx] = (hi.door ? HIT_DOOR : 0) | (hi.seethrough ? HIT_SEETHROUGH : 0);
             }
+        }
+    } else {
+        for (let x = 0; x < w; x++) {
+            const camX = ((2 * (x + 0.5)) / w) - 1;
+            const rx = vDir.x + (plane.x * camX);
+            const ry = vDir.y + (plane.y * camX);
+            colRx[x] = rx;
+            colRy[x] = ry;
+            const h = castRay(map, u, v, rx, ry, hit);
+            if (!h) {
+                colOk[x] = 0;
+                colDoor[x] = 0;
+                continue;
+            }
+            colOk[x] = 1;
+            colSide[x] = h.side;
+            colDoor[x] = h.door ? 1 : 0;
+            colVal[x] = h.value;
+            colCol[x] = h.col;
+            colRow[x] = h.row;
+            colDist[x] = h.dist;
+            colWallX[x] = h.wallX;
         }
     }
     frame._rayMap = map;
@@ -1608,11 +1610,10 @@ const pickCrosshair = (frame, scene) => {
     const info = inspectMap(scene.map);
     let crosshairDepth = Infinity;
     let centerHits = null;
-    if (!info.multi) {
-        const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit);
-        crosshairDepth = hit ? Math.max(1e-4, hit.dist) : Infinity;
-    } else {
-        centerHits = castRayMulti(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame._multiPool, MAX_SEETHROUGH);
+    if (info.multi) {
+        centerHits = castRayMulti(
+            scene.map, scene.player.u, scene.player.v, rx0, ry0, frame._multiPool, MAX_SEETHROUGH
+        );
         for (let i = 0; i < centerHits.length; i++) {
             const hi = centerHits[i];
             if (!hi.seethrough && hi.height >= 1) {
@@ -1620,6 +1621,9 @@ const pickCrosshair = (frame, scene) => {
                 break;
             }
         }
+    } else {
+        const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit);
+        crosshairDepth = hit ? Math.max(1e-4, hit.dist) : Infinity;
     }
     let crosshair = '';
     let target = null;

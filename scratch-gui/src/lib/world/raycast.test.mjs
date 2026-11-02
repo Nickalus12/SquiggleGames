@@ -418,15 +418,16 @@ section('no allocation per frame');
         near(out.focal, b90.focal) && near(out.plane.y, b90.plane.y));
 }
 
+const hashPixels = pixels => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < pixels.length; i++) {
+        h = Math.imul(h ^ pixels[i], 16777619) >>> 0;
+    }
+    return h >>> 0;
+};
+
 section('golden frame hash and column caching');
 {
-    const hashPixels = pixels => {
-        let h = 2166136261 >>> 0;
-        for (let i = 0; i < pixels.length; i++) {
-            h = Math.imul(h ^ pixels[i], 16777619) >>> 0;
-        }
-        return h >>> 0;
-    };
     const grid = createGrid({id: 'golden', name: 'Golden', cols: 16, rows: 16, tileSize: 32, origin: [-256, 256]});
     addTexture(grid, 'brick', FLAGS.solid);
     for (let i = 0; i < 16; i++) {
@@ -671,10 +672,38 @@ section('doors: recessed raycast and pure timing');
     stepDoors(grid, 400, []);
     ok('door finishes closing to 0 when unblocked', near(doorOpenAt(grid, 6, 5), 0, 1e-6));
     const frame = createFrame(120, 90);
-    render(frame, {map, player: {u: 6.5, v: 7.5, direction: 0}, fov: 66, floor: BLUE, ceiling: RED});
+    const backWallColor = pixel(90, 140, 210);
+    render(frame, {
+        map,
+        player: {u: 6.5, v: 7.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => backWallColor
+    });
+    const closedDoorHash = hashPixels(frame.pixels);
     const centerColor = frame.pixels[(45 * 120) + 60];
-    ok('closed door renders with DEFAULT_DOOR_TEXTURE',
-        DEFAULT_DOOR_TEXTURE.data.includes(centerColor) || centerColor !== BLUE);
+    ok('closed door renders with DEFAULT_DOOR_TEXTURE on single-hit path',
+        frame._multiHit === false && (DEFAULT_DOOR_TEXTURE.data.includes(centerColor) || centerColor !== BLUE));
+    ok('closed door matches golden hash', closedDoorHash === 0xf47d207a, closedDoorHash.toString(16));
+    openDoorAt(grid, 6, 5, {cell: true, holdMs: 1000});
+    stepDoors(grid, 200);
+    render(frame, {
+        map,
+        player: {u: 6.5, v: 7.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => backWallColor,
+        wallKey: 2
+    });
+    const halfOpenDoorHash = hashPixels(frame.pixels);
+    const openingPixel = frame.pixels[(45 * 120) + 52];
+    const slabPixel = frame.pixels[(45 * 120) + 68];
+    ok('half-open door opening columns match the back wall, not the door texture',
+        openingPixel === ray.shade(backWallColor, 0.72) && slabPixel !== openingPixel,
+        [openingPixel, slabPixel]);
+    ok('half-open door matches golden hash', halfOpenDoorHash === 0xe413585b, halfOpenDoorHash.toString(16));
     const capGrid = room(24, 24);
     for (let c = 1; c <= 20; c++) {
         setCell(capGrid, 'flags', c, 5, FLAGS.door);
@@ -731,6 +760,8 @@ section('see-through tiles and 4-hit cap');
     ok('see-through texture draws opaque bars and skips transparent texels to show wall and sprite behind',
         sawGrateBar && sawBehindWall && sawSpriteThroughGrate,
         [sawGrateBar, sawBehindWall, sawSpriteThroughGrate]);
+    const fenceHash = hashPixels(frame.pixels);
+    ok('fence frame matches golden hash', fenceHash === 0x3bc51ea5, fenceHash.toString(16));
 }
 
 section('per-tile wall heights (0.25 to 4) and running top edge');
@@ -775,6 +806,8 @@ section('per-tile wall heights (0.25 to 4) and running top edge');
     ok('running top edge stacks tall wall above mid wall above low wall',
         tallTop < midTop && midTop < lowTop && lowTop > 45, [tallTop, midTop, lowTop]);
     ok('floor shows behind the 0.25 low wall', floorBetween);
+    const shortWallHash = hashPixels(frame.pixels);
+    ok('variable wall heights frame matches golden hash', shortWallHash === 0xde5e759f, shortWallHash.toString(16));
 }
 
 section('frame.horizon contract');
