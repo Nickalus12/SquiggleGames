@@ -49,6 +49,7 @@ import {findRulesTarget} from '../lib/rules/rule-blocks.js';
 import {toolboxModeFor} from '../lib/rules/toolbox-mode.js';
 import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
+import {patchJointGlow} from '../lib/workspace/joint-glow';
 
 // TW: Strings we add to scratch-blocks are localized here
 const messages = defineMessages({
@@ -146,6 +147,7 @@ class Blocks extends React.Component {
         this.ScratchBlocks.recordSoundCallback = this.handleOpenSoundRecorder;
 
         patchComments(this.ScratchBlocks);
+        patchJointGlow(this.ScratchBlocks);
 
         this.ScratchBlocks.FieldColourSlider.activateEyedropper_ = this.props.onActivateColorPicker;
         this.ScratchBlocks.Procedures.externalProcedureDefCallback = this.props.onActivateCustomProcedures;
