@@ -41,9 +41,30 @@ ok('the next slow window steps to 0.5', feed(auto, slow, 6) === 0.5);
 ok('there is no rung below 0.5', feed(auto, slow, 4) === null && auto.scale === 0.5);
 const between = ((HEADROOM + OVER_BUDGET) / 2) * FRAME;
 ok('a tick between headroom and budget holds still', feed(auto, between, 1) === null && auto.scale === 0.5);
-ok('headroom steps back up one rung at a time', feed(auto, 2, 1) === 0.75 && feed(auto, 2, 1) === 1);
+const ups = [];
+let firstUp = -1;
+for (let w = 0; w < 20; w++) {
+    const next = feed(auto, 2, 1);
+    if (next !== null) {
+        ups.push(next);
+        if (firstUp < 0) firstUp = w;
+    }
+}
+ok('headroom steps back up one rung at a time after a hold', ups.join() === '0.75,1' && firstUp > 0,
+    {ups, firstUp});
 ok('Auto stops at the starting scale', feed(auto, 1, 0.5) === null && auto.scale === 1);
 ok('every step is counted', auto.steps === 4, auto.steps);
+
+const flappy = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
+const windowsToRecover = () => {
+    feed(flappy, slow, 8);
+    for (let w = 1; w <= 20; w++) {
+        if (feed(flappy, 2, 1) !== null) return w;
+    }
+    return -1;
+};
+const waits = [windowsToRecover(), windowsToRecover(), windowsToRecover(), windowsToRecover()];
+ok('each step down doubles the wait before trying sharper again, up to a cap', waits.join() === '3,5,9,9', waits);
 
 const heavyRender = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
 feed(heavyRender, slow, 9);
@@ -68,7 +89,12 @@ ok('late display frames step Auto down even when the tick is cheap', feed(janky,
 pace(janky, 90, 3);
 ok('three percent late frames block stepping back up', feed(janky, 2, 1) === null && janky.scale === 0.75);
 pace(janky, 90, 0);
-ok('a smooth window steps back up', feed(janky, 2, 1) === 1);
+let smoothUp = null;
+for (let w = 0; w < 4 && smoothUp === null; w++) {
+    pace(janky, 90, 0);
+    smoothUp = feed(janky, 2, 1);
+}
+ok('smooth windows step back up once the hold runs out', smoothUp === 1);
 const fewFrames = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
 pace(fewFrames, MIN_PACED_FRAMES - 1, MIN_PACED_FRAMES - 1);
 ok('too few display frames to judge are ignored', feed(fewFrames, 2, 1) === null && fewFrames.scale === 1);

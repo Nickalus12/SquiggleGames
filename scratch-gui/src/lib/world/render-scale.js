@@ -8,6 +8,7 @@ const CRISP_DPR = 1.5;
 const LATE_SHARE_DOWN = 0.05;
 const LATE_SHARE_UP = 0.02;
 const MIN_PACED_FRAMES = 30;
+const MAX_HOLD = 8;
 
 const rungFor = scale => {
     for (let i = 0; i < LADDER.length; i++) {
@@ -34,7 +35,7 @@ const createScalePolicy = (options = {}) => {
     const ticks = new Float64Array(WINDOW);
     const renders = new Float64Array(WINDOW);
     const scratch = new Float64Array(WINDOW);
-    const state = {mode: 'auto', rung: 1, ceiling: 1, count: 0, steps: 0, frames: 0, late: 0};
+    const state = {mode: 'auto', rung: 1, ceiling: 1, count: 0, steps: 0, frames: 0, late: 0, downs: 0, hold: 0};
 
     const fixedRung = mode => (mode === 'crisp' ? 0 : LADDER.length - 1);
 
@@ -53,6 +54,8 @@ const createScalePolicy = (options = {}) => {
             state.count = 0;
             state.frames = 0;
             state.late = 0;
+            state.downs = 0;
+            state.hold = 0;
             if (state.mode === 'auto') {
                 state.ceiling = rungFor(startScale({dpr, width, height}));
                 state.rung = state.ceiling;
@@ -86,7 +89,13 @@ const createScalePolicy = (options = {}) => {
             if (over && state.rung < LADDER.length - 1) {
                 state.rung++;
                 state.steps++;
+                state.downs++;
+                state.hold = Math.min(MAX_HOLD, 2 ** state.downs);
                 return LADDER[state.rung];
+            }
+            if (state.hold > 0) {
+                state.hold--;
+                return null;
             }
             if (state.rung > state.ceiling) {
                 const up = LADDER[state.rung - 1] / LADDER[state.rung];
@@ -108,6 +117,7 @@ export {
     HEADROOM,
     LATE_SHARE_DOWN,
     LATE_SHARE_UP,
+    MAX_HOLD,
     MIN_PACED_FRAMES,
     LADDER,
     MODES,
