@@ -50,6 +50,7 @@ import {toolboxModeFor} from '../lib/rules/toolbox-mode.js';
 import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 import {patchJointGlow} from '../lib/workspace/joint-glow';
+import {patchSnapPolicy} from '../lib/workspace/snap-policy';
 
 // TW: Strings we add to scratch-blocks are localized here
 const messages = defineMessages({
@@ -147,6 +148,7 @@ class Blocks extends React.Component {
         this.ScratchBlocks.recordSoundCallback = this.handleOpenSoundRecorder;
 
         patchComments(this.ScratchBlocks);
+        patchSnapPolicy(this.ScratchBlocks);
         patchJointGlow(this.ScratchBlocks);
 
         this.ScratchBlocks.FieldColourSlider.activateEyedropper_ = this.props.onActivateColorPicker;
