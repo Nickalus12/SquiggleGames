@@ -1,20 +1,5 @@
-/**
- * Copyright (C) 2021 Thomas Weber
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 3 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
 import classNames from 'classnames';
+import omit from 'lodash.omit';
 import PropTypes from 'prop-types';
 import React from 'react';
 import {connect} from 'react-redux';
@@ -40,10 +25,11 @@ import {loadServiceWorker} from './load-service-worker';
 import runAddons from '../addons/entry';
 import InvalidEmbed from '../components/tw-invalid-embed/invalid-embed.jsx';
 import {APP_NAME} from '../lib/brand.js';
+import {isAllowedEmbed, isInvalidEmbed as checkInvalidEmbed} from './embed-guard.js';
 
 import styles from './interface.css';
 
-const isInvalidEmbed = window.parent !== window;
+const isInvalidEmbed = checkInvalidEmbed(typeof window === 'undefined' ? null : window);
 
 const handleClickAddonSettings = addonId => {
     const path = process.env.ROUTING_STYLE === 'wildcard' ? 'addons' : 'addons.html';
@@ -78,12 +64,19 @@ if (AddonChannels.changeChannel) {
 
 runAddons();
 
+const BUILT_ON_MESSAGE = '{APP_NAME} is made by Lumina Games LLC. ' +
+    'It is built on TurboWarp and Scratch, which are free software under the GPL.';
+const DISCLAIMER_MESSAGE = '{APP_NAME} is not affiliated with Scratch, ' +
+    'the Scratch Team, or the Scratch Foundation.';
+const HOME_DESCRIPTION_MESSAGE = 'Click the green flag to play. ' +
+    'Want to change it? Open it in the editor and make it yours.';
+
 const Footer = () => (
     <footer className={styles.footer}>
         <div className={styles.footerContent}>
             <div className={styles.footerText}>
                 <FormattedMessage
-                    defaultMessage="{APP_NAME} is made by Lumina Games LLC. It is built on TurboWarp and Scratch, which are free software under the GPL."
+                    defaultMessage={BUILT_ON_MESSAGE}
                     description="Footer line on the player page that credits the projects Squiggle is built on"
                     id="sq.footer.builtOn"
                     values={{
@@ -93,7 +86,7 @@ const Footer = () => (
             </div>
             <div className={styles.footerText}>
                 <FormattedMessage
-                    defaultMessage="{APP_NAME} is not affiliated with Scratch, the Scratch Team, or the Scratch Foundation."
+                    defaultMessage={DISCLAIMER_MESSAGE}
                     description="Disclaimer that Squiggle is not connected to Scratch"
                     id="tw.footer.disclaimer"
                     values={{
@@ -164,18 +157,22 @@ class Interface extends React.Component {
         }
 
         const {
-            /* eslint-disable no-unused-vars */
-            intl,
-            hasCloudVariables,
             description,
             isFullScreen,
-            isLoading,
             isPlayerOnly,
             isRtl,
-            projectId,
-            /* eslint-enable no-unused-vars */
-            ...props
+            projectId
         } = this.props;
+        const props = omit(this.props, [
+            'intl',
+            'hasCloudVariables',
+            'description',
+            'isFullScreen',
+            'isLoading',
+            'isPlayerOnly',
+            'isRtl',
+            'projectId'
+        ]);
         const isHomepage = isPlayerOnly && !isFullScreen;
         const isEditor = !isPlayerOnly;
         return (
@@ -228,7 +225,7 @@ class Interface extends React.Component {
                             <div className={styles.section}>
                                 <p>
                                     <FormattedMessage
-                                        defaultMessage="Click the green flag to play. Want to change it? Open it in the editor and make it yours."
+                                        defaultMessage={HOME_DESCRIPTION_MESSAGE}
                                         description="Line under the game on the player page"
                                         id="sq.home.description"
                                     />
@@ -286,5 +283,10 @@ const WrappedInterface = compose(
     TWStateManagerHOC,
     TWPackagerIntegrationHOC
 )(ConnectedInterface);
+
+export {
+    isAllowedEmbed,
+    checkInvalidEmbed as isInvalidEmbed
+};
 
 export default WrappedInterface;
