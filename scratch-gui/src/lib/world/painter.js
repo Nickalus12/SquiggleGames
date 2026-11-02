@@ -1,5 +1,6 @@
 import {
-    DEFAULT_HEIGHT, DEFAULT_LIGHT, FLAGS, cellAt, cellCenter, clampHeight, encodeHeight, flagBit, getCell, inside
+    DEFAULT_FLOOR_HEIGHT, DEFAULT_HEIGHT, DEFAULT_LIGHT, FLAGS, cellAt, cellCenter, clampFloorHeight, clampHeight,
+    encodeFloorHeight, encodeHeight, flagBit, getCell, inside
 } from './tilemap.js';
 
 const BOXED = Object.freeze(['rect', 'bounds']);
@@ -8,6 +9,7 @@ const TOOLS = Object.freeze(['paint', 'erase', 'fill', 'rect', 'pick', 'flag', '
 const PAINT_LAYERS = Object.freeze(['back', 'main', 'front', 'floor', 'ceiling']);
 const FLAG_NAMES = Object.freeze(Object.keys(FLAGS));
 const HEIGHT_CHOICES = Object.freeze([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]);
+const FLOOR_HEIGHT_CHOICES = Object.freeze([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]);
 const ORIGIN = 'painter';
 const MAX_UNDO = 100;
 const STAGE_W = 480;
@@ -174,11 +176,25 @@ const createPainter = options => {
         return true;
     };
 
-    const isHeightStroke = (tool, settings) => tool === 'height' ||
-        (tool === 'flag' && settings && settings.flag === 'height');
+    const isFloorHeightStroke = (tool, settings) => tool === 'floorHeight' ||
+        Boolean(settings && (
+            settings.layer === 'floorHeights' ||
+            (tool === 'height' && (
+                settings.layer === 'floor' ||
+                settings.heightTarget === 'floor' ||
+                typeof settings.floorHeight === 'number'
+            ))
+        ));
+
+    const isHeightStroke = (tool, settings) => !isFloorHeightStroke(tool, settings) && (
+        tool === 'height' || (tool === 'flag' && settings && settings.flag === 'height')
+    );
 
     const valueFor = (tool, settings, current) => {
         if (tool === 'erase') return settings.layer === 'light' ? DEFAULT_LIGHT : 0;
+        if (isFloorHeightStroke(tool, settings)) {
+            return settings.floorHeightOn ? settings.encodedFloorHeight : 0;
+        }
         if (isHeightStroke(tool, settings)) {
             return settings.heightOn ? settings.encodedHeight : 0;
         }
@@ -190,6 +206,7 @@ const createPainter = options => {
     };
 
     const layerFor = (tool, settings) => {
+        if (isFloorHeightStroke(tool, settings)) return 'floorHeights';
         if (isHeightStroke(tool, settings)) return 'heights';
         if (tool === 'flag') return 'flags';
         return settings.layer;
@@ -197,14 +214,22 @@ const createPainter = options => {
 
     const begin = (tool, settings, cell) => {
         const target = grid();
-        if (!target || !cell || TOOLS.indexOf(tool) === -1) return null;
+        if (!target || !cell || (TOOLS.indexOf(tool) === -1 && tool !== 'floorHeight')) return null;
         const layer = layerFor(tool, settings);
         if (tool === 'pick') {
             return {tool, value: getCell(target, settings.layer, cell.col, cell.row)};
         }
         const entry = {level: target.id, layer, before: new Map(), after: new Map()};
         const opts = Object.assign({}, settings);
-        if (isHeightStroke(tool, opts)) {
+        if (isFloorHeightStroke(tool, opts)) {
+            const rawFh = typeof opts.floorHeight === 'number' ?
+                opts.floorHeight :
+                (typeof opts.height === 'number' ? opts.height : DEFAULT_FLOOR_HEIGHT);
+            const fh = clampFloorHeight(rawFh);
+            const encoded = fh === DEFAULT_FLOOR_HEIGHT ? 0 : encodeFloorHeight(fh);
+            opts.encodedFloorHeight = encoded;
+            opts.floorHeightOn = encoded !== 0 && getCell(target, 'floorHeights', cell.col, cell.row) !== encoded;
+        } else if (isHeightStroke(tool, opts)) {
             const h = clampHeight(typeof opts.height === 'number' ? opts.height : DEFAULT_HEIGHT);
             const encoded = h === DEFAULT_HEIGHT ? 0 : encodeHeight(h);
             opts.encodedHeight = encoded;
@@ -224,7 +249,8 @@ const createPainter = options => {
             return {tool, done: true};
         }
         stroke = {tool, entry, start: cell, last: cell, paintAt};
-        if (tool === 'paint' || tool === 'erase' || tool === 'flag' || tool === 'height') paintAt([cell]);
+        if (tool === 'paint' || tool === 'erase' || tool === 'flag' ||
+            tool === 'height' || tool === 'floorHeight') paintAt([cell]);
         return {tool};
     };
 
@@ -345,6 +371,7 @@ export {
     PAINT_LAYERS,
     FLAG_NAMES,
     HEIGHT_CHOICES,
+    FLOOR_HEIGHT_CHOICES,
     ORIGIN,
     MAX_UNDO,
     toStage,

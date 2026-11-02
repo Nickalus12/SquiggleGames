@@ -1,9 +1,9 @@
 import {ok, near, section, done} from './harness.mjs';
 
-const {FLAGS, createGrid, addTexture, getCell, setCell, heightAt} = await import('./tilemap.js');
+const {FLAGS, createGrid, addTexture, getCell, setCell, heightAt, floorHeightAt} = await import('./tilemap.js');
 const {
-    TOOLS, MAX_UNDO, ORIGIN, toStage, toWorld, cellFromClient, cellToClient, line, floodCells, rectCells, createPainter,
-    clampZoom, zoomAround, panBy, pinchView, revealCell
+    TOOLS, FLOOR_HEIGHT_CHOICES, MAX_UNDO, ORIGIN, toStage, toWorld, cellFromClient, cellToClient, line, floodCells,
+    rectCells, createPainter, clampZoom, zoomAround, panBy, pinchView, revealCell
 } = await import('./painter.js');
 const {createTilemapSync, decodeSegments} = await import('./tilemap-sync.js');
 const {createTrayFocus, mountPlan, needsSync, openStep, releasePointer, shouldFocusToggle} =
@@ -211,6 +211,25 @@ section('fill, rect, pick, flag, spawn');
         near(heightAt(world.grid, 5, 6), 1) && near(heightAt(world.grid, 6, 6), 2.5));
     painter.undo();
     ok('undo restores the toggled height', near(heightAt(world.grid, 5, 6), 2.5));
+    ok('FLOOR_HEIGHT_CHOICES covers -1 to 2 in 0.25 steps',
+        FLOOR_HEIGHT_CHOICES[0] === -1 &&
+        FLOOR_HEIGHT_CHOICES[FLOOR_HEIGHT_CHOICES.length - 1] === 2 &&
+        FLOOR_HEIGHT_CHOICES.length === 13);
+    painter.begin('height', {layer: 'floor', tile: 1, floorHeight: 0.25}, {col: 1, row: 8});
+    painter.move({col: 2, row: 8});
+    painter.end();
+    ok('height tool on floor layer paints per-cell 3D floor elevation',
+        near(floorHeightAt(world.grid, 1, 8), 0.25) && near(floorHeightAt(world.grid, 2, 8), 0.25));
+    painter.begin('height', {layer: 'floor', tile: 1, floorHeight: 0.25}, {col: 1, row: 8});
+    painter.end();
+    ok('repeating floorHeight stroke on a cell with that elevation toggles it back to 0',
+        near(floorHeightAt(world.grid, 1, 8), 0) && near(floorHeightAt(world.grid, 2, 8), 0.25));
+    painter.begin('height', {layer: 'floor', tile: 1, floorHeight: -0.75}, {col: 3, row: 8});
+    painter.end();
+    ok('height tool on floor layer paints negative pit elevations down to -1',
+        near(floorHeightAt(world.grid, 3, 8), -0.75));
+    painter.undo();
+    ok('undo restores pit floor elevation', near(floorHeightAt(world.grid, 3, 8), 0));
 }
 
 section('undo stack is bounded');
@@ -404,6 +423,11 @@ section('world-ui reducer');
     state = reduce(state, worldUi.setPainterTool('height'));
     state = reduce(state, worldUi.setPainterHeight(0.5));
     ok('height tool and height setting update in world-ui', state.tool === 'height' && state.height === 0.5);
+    state = reduce(state, worldUi.setPainterFloorHeight(0.25));
+    ok('floorHeight setting updates in world-ui and switches height tool to floor layer',
+        state.floorHeight === 0.25 && state.layer === 'floor');
+    state = reduce(state, worldUi.setPainterFloorHeight(-0.5));
+    ok('floorHeight setting accepts negative pit steps', state.floorHeight === -0.5);
     ok('bad flag is ignored', reduce(state, worldUi.setPainterFlag('lava')) === state);
 }
 

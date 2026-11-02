@@ -1,8 +1,8 @@
 import {ok, section, done} from './harness.mjs';
 import {
     FLAGS, FLAG_MASK, MAX_SIZE, encodeRow, decodeRow, createGrid, encodeLevel, cloneGrid, setCell, getCell, flagsAt,
-    flagBit, heightAt, setHeight, cellAt, cellCenter, levelRect, tileIndex, addTexture, base64, solidBits,
-    toRulesLevel, solidRows
+    flagBit, heightAt, setHeight, floorHeightAt, setFloorHeight, clampFloorHeight, cellAt, cellCenter, levelRect,
+    tileIndex, addTexture, base64, solidBits, toRulesLevel, solidRows
 } from './tilemap.js';
 
 section('RLE rows');
@@ -124,5 +124,30 @@ ok('heights round trip through encodeLevel', heightAt(hBack, 1, 1) === 0.5 &&
     heightAt(hBack, 2, 1) === 2.5 && heightAt(hBack, 3, 1) === 0.25 && heightAt(hBack, 4, 1) === 4);
 setHeight(hBack, 2, 1, 0);
 ok('setting height to 0 clears cell override', heightAt(hBack, 2, 1) === 1);
+
+setFloorHeight(hGrid, 1, 2, 0.25);
+setFloorHeight(hGrid, 2, 2, 0.5);
+setFloorHeight(hGrid, 3, 2, 2.7);
+setFloorHeight(hGrid, 4, 2, -0.5);
+setFloorHeight(hGrid, 5, 2, -3);
+ok('floorHeightAt defaults to 0 and clamps -1..2 in 0.25 steps',
+    floorHeightAt(hGrid, 0, 2) === 0 &&
+    floorHeightAt(hGrid, 1, 2) === 0.25 &&
+    floorHeightAt(hGrid, 2, 2) === 0.5 &&
+    floorHeightAt(hGrid, 3, 2) === 2 &&
+    floorHeightAt(hGrid, 4, 2) === -0.5 &&
+    floorHeightAt(hGrid, 5, 2) === -1 &&
+    clampFloorHeight(0.37) === 0.25 &&
+    clampFloorHeight(0.38) === 0.5);
+const fhStored = encodeLevel(hGrid);
+const fhBack = createGrid(JSON.parse(JSON.stringify(fhStored)));
+ok('floorHeights round trip through encodeLevel',
+    floorHeightAt(fhBack, 1, 2) === 0.25 &&
+    floorHeightAt(fhBack, 2, 2) === 0.5 &&
+    floorHeightAt(fhBack, 3, 2) === 2 &&
+    floorHeightAt(fhBack, 4, 2) === -0.5 &&
+    floorHeightAt(fhBack, 5, 2) === -1);
+setFloorHeight(fhBack, 2, 2, 0);
+ok('setting floorHeight to 0 clears cell floor elevation', floorHeightAt(fhBack, 2, 2) === 0);
 
 done();

@@ -24,6 +24,13 @@ const DEFAULT_HEIGHT = 1;
 const HEIGHT_SCALE = 60;
 const HEIGHT_MAX = 240;
 const HEIGHT_ANIM_MS = 250;
+const MIN_FLOOR_HEIGHT = -1;
+const MAX_FLOOR_HEIGHT = 2;
+const DEFAULT_FLOOR_HEIGHT = 0;
+const FLOOR_HEIGHT_STEP = 0.25;
+const FLOOR_HEIGHT_BIAS = 120;
+const FLOOR_HEIGHT_SCALE = 60;
+const FLOOR_HEIGHT_MAX = 240;
 
 const maxForLayer = layer => {
     if (layer === 'flags') return FLAG_MASK;
@@ -118,6 +125,31 @@ const decodeHeight = byte => {
     return clampHeight(b / HEIGHT_SCALE);
 };
 
+const clampFloorHeight = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return DEFAULT_FLOOR_HEIGHT;
+    const stepped = Math.round(n / FLOOR_HEIGHT_STEP) * FLOOR_HEIGHT_STEP;
+    const clamped = Math.min(MAX_FLOOR_HEIGHT, Math.max(MIN_FLOOR_HEIGHT, stepped));
+    return Object.is(clamped, -0) ? 0 : clamped;
+};
+
+const encodeFloorHeight = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 0) return 0;
+    if (Number.isInteger(n) && n >= 60 && n <= FLOOR_HEIGHT_MAX) {
+        return n === FLOOR_HEIGHT_BIAS ? 0 : n;
+    }
+    const h = clampFloorHeight(n);
+    if (h === 0) return 0;
+    return Math.round(FLOOR_HEIGHT_BIAS + (h * FLOOR_HEIGHT_SCALE));
+};
+
+const decodeFloorHeight = byte => {
+    const b = int(byte, 0);
+    if (b <= 0 || b === FLOOR_HEIGHT_BIAS) return DEFAULT_FLOOR_HEIGHT;
+    return clampFloorHeight((b - FLOOR_HEIGHT_BIAS) / FLOOR_HEIGHT_SCALE);
+};
+
 const normalizeTiles = tiles => {
     if (!Array.isArray(tiles)) return [];
     return tiles.slice(0, MAX_TEXTURES).map(tile => {
@@ -157,6 +189,7 @@ const createGrid = spec => {
         grid[name] = decodeGrid(layers[name], cols, rows, maxForLayer(name), defaultForLayer(name));
     });
     grid.heights = decodeGrid(layers.heights, cols, rows, HEIGHT_MAX);
+    grid.floorHeights = decodeGrid(layers.floorHeights, cols, rows, FLOOR_HEIGHT_MAX);
     return grid;
 };
 
@@ -167,6 +200,9 @@ const encodeLevel = grid => {
     });
     if (grid.heights && grid.heights.some(v => v !== 0)) {
         layers.heights = encodeGrid(grid.heights, grid.cols, grid.rows);
+    }
+    if (grid.floorHeights && grid.floorHeights.some(v => v !== 0)) {
+        layers.floorHeights = encodeGrid(grid.floorHeights, grid.cols, grid.rows);
     }
     return {
         id: grid.id,
@@ -197,6 +233,9 @@ const cloneGrid = grid => {
         copy[name] = Uint8Array.from(grid[name]);
     });
     copy.heights = grid.heights ? Uint8Array.from(grid.heights) : new Uint8Array(grid.cols * grid.rows);
+    copy.floorHeights = grid.floorHeights ?
+        Uint8Array.from(grid.floorHeights) :
+        new Uint8Array(grid.cols * grid.rows);
     if (copy._doors) delete copy._doors;
     if (copy._doorRev) delete copy._doorRev;
     if (copy._heightAnims) delete copy._heightAnims;
@@ -221,6 +260,7 @@ const getCell = (grid, layer, col, row) => {
     const i = indexOf(grid, col, row);
     if (i === -1) return defaultForLayer(layer);
     if (layer === 'heights') return grid.heights ? grid.heights[i] : 0;
+    if (layer === 'floorHeights') return grid.floorHeights ? grid.floorHeights[i] : 0;
     return grid[layer] ? grid[layer][i] : defaultForLayer(layer);
 };
 
@@ -236,6 +276,16 @@ const setCell = (grid, layer, col, row, value) => {
         grid.heights[i] = v;
         grid.heights._version = (grid.heights._version | 0) + 1;
         markDirtyWallCell(grid, col, row);
+        return true;
+    }
+    if (layer === 'floorHeights') {
+        if (!grid.floorHeights) grid.floorHeights = new Uint8Array(grid.cols * grid.rows);
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < MIN_FLOOR_HEIGHT || n > FLOOR_HEIGHT_MAX) return false;
+        const v = n === 0 ? 0 : encodeFloorHeight(n);
+        if (grid.floorHeights[i] === v) return false;
+        grid.floorHeights[i] = v;
+        grid.floorHeights._version = (grid.floorHeights._version | 0) + 1;
         return true;
     }
     if (GRIDS.indexOf(layer) === -1) return false;
@@ -354,6 +404,23 @@ const stepHeights = (grid, dtMs) => {
     return changed;
 };
 
+const floorHeightAt = (grid, col, row) => {
+    const i = indexOf(grid, col, row);
+    if (i === -1) return DEFAULT_FLOOR_HEIGHT;
+    const raw = grid.floorHeights ? grid.floorHeights[i] : 0;
+    return raw > 0 ? decodeFloorHeight(raw) : DEFAULT_FLOOR_HEIGHT;
+};
+
+const setFloorHeight = (grid, col, row, floorHeight) => setCell(
+    grid,
+    'floorHeights',
+    col,
+    row,
+    floorHeight === 0 || floorHeight === null || typeof floorHeight === 'undefined' ?
+        0 :
+        encodeFloorHeight(floorHeight)
+);
+
 const cellAt = (grid, x, y) => ({
     col: Math.floor((x - grid.origin[0]) / grid.tileSize),
     row: Math.floor((grid.origin[1] - y) / grid.tileSize)
@@ -465,9 +532,19 @@ export {
     HEIGHT_SCALE,
     HEIGHT_MAX,
     HEIGHT_ANIM_MS,
+    MIN_FLOOR_HEIGHT,
+    MAX_FLOOR_HEIGHT,
+    DEFAULT_FLOOR_HEIGHT,
+    FLOOR_HEIGHT_STEP,
+    FLOOR_HEIGHT_BIAS,
+    FLOOR_HEIGHT_SCALE,
+    FLOOR_HEIGHT_MAX,
     clampHeight,
     encodeHeight,
     decodeHeight,
+    clampFloorHeight,
+    encodeFloorHeight,
+    decodeFloorHeight,
     encodeRow,
     decodeRow,
     encodeGrid,
@@ -488,6 +565,8 @@ export {
     setHeight,
     animateHeightAt,
     stepHeights,
+    floorHeightAt,
+    setFloorHeight,
     cellAt,
     cellCenter,
     levelRect,

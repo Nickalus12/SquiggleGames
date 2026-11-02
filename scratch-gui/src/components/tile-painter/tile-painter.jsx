@@ -6,15 +6,16 @@ import ReactDOM from 'react-dom';
 import {connect} from 'react-redux';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
-import {FLAGS, decodeHeight} from '../../lib/world/tilemap.js';
+import {FLAGS, decodeFloorHeight, decodeHeight} from '../../lib/world/tilemap.js';
 import {
-    FLAG_NAMES, HEIGHT_CHOICES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom, createPainter, panBy,
-    pinchView, revealCell, toStage, zoomAround
+    FLAG_NAMES, FLOOR_HEIGHT_CHOICES, HEIGHT_CHOICES, PAINT_LAYERS, TOOLS, cellFromClient, cellToClient, clampZoom,
+    createPainter, panBy, pinchView, revealCell, toStage, zoomAround
 } from '../../lib/world/painter.js';
 import {createTrayFocus, releasePointer} from '../../lib/world/painter-shell.js';
 import {peekScenes} from '../../lib/world/scenes.js';
 import {
-    setPainterFlag, setPainterGrid, setPainterHeight, setPainterLayer, setPainterOpen, setPainterTile, setPainterTool
+    setPainterFlag, setPainterFloorHeight, setPainterGrid, setPainterHeight, setPainterLayer, setPainterOpen,
+    setPainterTile, setPainterTool
 } from '../../reducers/world-ui';
 import styles from './tile-painter.css';
 
@@ -110,6 +111,11 @@ const messages = defineMessages({
         defaultMessage: 'Wall height',
         description: 'Label for which 3D wall height the Height tool sets'
     },
+    floorHeightAmount: {
+        id: 'sq.painter.floorHeightAmount',
+        defaultMessage: 'Floor height',
+        description: 'Label for which 3D floor elevation the Height tool sets'
+    },
     undo: {id: 'sq.painter.undo', defaultMessage: 'Undo', description: 'Undo the last tile stroke'},
     redo: {id: 'sq.painter.redo', defaultMessage: 'Redo', description: 'Redo a tile stroke'},
     grid: {id: 'sq.painter.grid', defaultMessage: 'Grid', description: 'Show or hide grid lines'},
@@ -172,6 +178,7 @@ class TilePainter extends React.Component {
             'handleLayer',
             'handleFlag',
             'handleHeight',
+            'handleFloorHeight',
             'handlePointerDown',
             'handlePointerLeave',
             'handlePointerMove',
@@ -326,17 +333,31 @@ class TilePainter extends React.Component {
             }
             ctx.globalAlpha = 1;
         }
-        if (this.props.tool === 'height' && grid.heights) {
+        if (this.props.tool === 'height' && (grid.heights || grid.floorHeights)) {
             for (let r = firstRow; r <= lastRow; r++) {
                 for (let c = firstCol; c <= lastCol; c++) {
-                    const raw = grid.heights[(r * grid.cols) + c];
-                    if (!raw) continue;
-                    const hVal = decodeHeight(raw);
-                    const frac = Math.min(1, hVal / 4);
-                    ctx.fillStyle = '#f39c12';
-                    ctx.globalAlpha = 0.45;
-                    const barH = Math.max(2, size * frac);
-                    ctx.fillRect(corner.left + (c * size), corner.top + ((r + 1) * size) - barH, size, barH);
+                    const idx = (r * grid.cols) + c;
+                    const raw = grid.heights ? grid.heights[idx] : 0;
+                    if (raw) {
+                        const hVal = decodeHeight(raw);
+                        const frac = Math.min(1, hVal / 4);
+                        ctx.fillStyle = '#f39c12';
+                        ctx.globalAlpha = 0.45;
+                        const barH = Math.max(2, size * frac);
+                        ctx.fillRect(corner.left + (c * size), corner.top + ((r + 1) * size) - barH, size, barH);
+                    }
+                    const fRaw = grid.floorHeights ? grid.floorHeights[idx] : 0;
+                    if (fRaw) {
+                        const fVal = decodeFloorHeight(fRaw);
+                        if (fVal !== 0) {
+                            const frac = Math.min(1, Math.abs(fVal) / 2);
+                            ctx.fillStyle = fVal > 0 ? '#16a085' : '#2980b9';
+                            ctx.globalAlpha = 0.45;
+                            const barH = Math.max(2, size * frac);
+                            const y = fVal > 0 ? corner.top + ((r + 1) * size) - barH : corner.top + (r * size);
+                            ctx.fillRect(corner.left + (c * size), y, size, barH);
+                        }
+                    }
                 }
             }
             ctx.globalAlpha = 1;
@@ -368,7 +389,14 @@ class TilePainter extends React.Component {
         ctx.setLineDash([]);
     }
     settings () {
-        return {layer: this.props.layer, tile: this.props.tile, flag: this.props.flag, height: this.props.height};
+        const out = {
+            layer: this.props.layer,
+            tile: this.props.tile,
+            flag: this.props.flag,
+            height: this.props.height
+        };
+        if (this.props.layer === 'floor') out.floorHeight = this.props.floorHeight;
+        return out;
     }
     cellAt (event) {
         return cellFromClient(this.grid(), this.view, this.state.rect, event.clientX, event.clientY);
@@ -607,6 +635,9 @@ class TilePainter extends React.Component {
     handleHeight (event) {
         this.props.onHeight(Number(event.target.value));
     }
+    handleFloorHeight (event) {
+        this.props.onFloorHeight(Number(event.target.value));
+    }
     handleTile (event) {
         const name = event.currentTarget.getAttribute('data-name');
         const grid = this.grid();
@@ -696,21 +727,38 @@ class TilePainter extends React.Component {
         }
         if (tool === 'height') {
             return (
-                <label className={styles.group}>
-                    <span className={styles.label}>{intl.formatMessage(messages.heightAmount)}</span>
-                    <select
-                        className={styles.select}
-                        value={this.props.height}
-                        onChange={this.handleHeight}
-                    >
-                        {HEIGHT_CHOICES.map(val => (
-                            <option
-                                key={val}
-                                value={val}
-                            >{`${val}x`}</option>
-                        ))}
-                    </select>
-                </label>
+                <div className={styles.group}>
+                    <label className={styles.group}>
+                        <span className={styles.label}>{intl.formatMessage(messages.heightAmount)}</span>
+                        <select
+                            className={styles.select}
+                            value={this.props.height}
+                            onChange={this.handleHeight}
+                        >
+                            {HEIGHT_CHOICES.map(val => (
+                                <option
+                                    key={val}
+                                    value={val}
+                                >{`${val}x`}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.group}>
+                        <span className={styles.label}>{intl.formatMessage(messages.floorHeightAmount)}</span>
+                        <select
+                            className={styles.select}
+                            value={this.props.floorHeight}
+                            onChange={this.handleFloorHeight}
+                        >
+                            {FLOOR_HEIGHT_CHOICES.map(val => (
+                                <option
+                                    key={val}
+                                    value={val}
+                                >{`${val}`}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
             );
         }
         return (
@@ -877,11 +925,13 @@ TilePainter.propTypes = {
     canvas: PropTypes.shape({getBoundingClientRect: PropTypes.func}),
     docked: PropTypes.bool,
     flag: PropTypes.oneOf(FLAG_NAMES).isRequired,
+    floorHeight: PropTypes.number,
     height: PropTypes.number,
     intl: intlShape.isRequired,
     layer: PropTypes.oneOf(PAINT_LAYERS).isRequired,
     onClose: PropTypes.func.isRequired,
     onFlag: PropTypes.func.isRequired,
+    onFloorHeight: PropTypes.func,
     onGrid: PropTypes.func.isRequired,
     onHeight: PropTypes.func,
     onLayer: PropTypes.func.isRequired,
@@ -915,7 +965,9 @@ TilePainter.propTypes = {
 
 TilePainter.defaultProps = {
     docked: false,
+    floorHeight: 0,
     height: 1,
+    onFloorHeight: () => {},
     onHeight: () => {},
     toolbarHost: null
 };
@@ -929,6 +981,7 @@ const mapStateToProps = state => {
         layer: ui.layer,
         flag: ui.flag,
         height: ui.height || 1,
+        floorHeight: typeof ui.floorHeight === 'number' ? ui.floorHeight : 0,
         showGrid: ui.showGrid
     };
 };
@@ -936,6 +989,7 @@ const mapStateToProps = state => {
 const mapDispatchToProps = dispatch => ({
     onClose: () => dispatch(setPainterOpen(false)),
     onFlag: flag => dispatch(setPainterFlag(flag)),
+    onFloorHeight: floorHeight => dispatch(setPainterFloorHeight(floorHeight)),
     onGrid: show => dispatch(setPainterGrid(show)),
     onHeight: height => dispatch(setPainterHeight(height)),
     onLayer: layer => dispatch(setPainterLayer(layer)),

@@ -1,8 +1,9 @@
 import {
-    DEFAULT_HEIGHT, FLAG_MASK, GRIDS, HEIGHT_MAX, LAYERS, MAX_LIGHT, MAX_SIZE, MAX_TEXTURES, clampHeight
+    DEFAULT_HEIGHT, FLAG_MASK, FLOOR_HEIGHT_MAX, GRIDS, HEIGHT_MAX, LAYERS, MAX_LIGHT, MAX_SIZE, MAX_TEXTURES,
+    clampHeight
 } from './tilemap.js';
 
-const SYNC_GRIDS = Object.freeze(GRIDS.concat(['heights']));
+const SYNC_GRIDS = Object.freeze(GRIDS.concat(['heights', 'floorHeights']));
 
 const PATCH_TYPE = 'tilemap-patch';
 const DELAY = 50;
@@ -101,7 +102,9 @@ const readPatch = patch => {
     for (const layer of Object.keys(patch.layers)) {
         if (SYNC_GRIDS.indexOf(layer) === -1) return null;
         const maxVal = layer === 'flags' ? FLAG_MASK :
-            (layer === 'light' ? MAX_LIGHT : (layer === 'heights' ? HEIGHT_MAX : palette.length));
+            (layer === 'light' ? MAX_LIGHT :
+                (layer === 'heights' ? HEIGHT_MAX :
+                    (layer === 'floorHeights' ? FLOOR_HEIGHT_MAX : palette.length)));
         const cells = decodeSegments(patch.layers[layer], maxVal);
         if (!cells) return null;
         layers[layer] = cells;

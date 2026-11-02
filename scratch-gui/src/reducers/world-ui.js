@@ -1,5 +1,5 @@
 import {FLAG_NAMES, PAINT_LAYERS, TOOLS} from '../lib/world/painter.js';
-import {clampHeight} from '../lib/world/tilemap.js';
+import {clampFloorHeight, clampHeight} from '../lib/world/tilemap.js';
 
 const SET_PAINTER_OPEN = 'scratch-gui/world-ui/SET_PAINTER_OPEN';
 const SET_PAINTER_TOOL = 'scratch-gui/world-ui/SET_PAINTER_TOOL';
@@ -7,6 +7,7 @@ const SET_PAINTER_TILE = 'scratch-gui/world-ui/SET_PAINTER_TILE';
 const SET_PAINTER_LAYER = 'scratch-gui/world-ui/SET_PAINTER_LAYER';
 const SET_PAINTER_FLAG = 'scratch-gui/world-ui/SET_PAINTER_FLAG';
 const SET_PAINTER_HEIGHT = 'scratch-gui/world-ui/SET_PAINTER_HEIGHT';
+const SET_PAINTER_FLOOR_HEIGHT = 'scratch-gui/world-ui/SET_PAINTER_FLOOR_HEIGHT';
 const SET_PAINTER_GRID = 'scratch-gui/world-ui/SET_PAINTER_GRID';
 
 const initialState = {
@@ -16,6 +17,7 @@ const initialState = {
     layer: 'main',
     flag: 'solid',
     height: 1,
+    floorHeight: 0,
     showGrid: true
 };
 
@@ -45,8 +47,17 @@ const reducer = function (state, action) {
         const num = Number(action.height);
         if (!Number.isFinite(num)) return state;
         const height = clampHeight(num);
-        if (height === state.height) return state;
-        return Object.assign({}, state, {height});
+        const layer = state.tool === 'height' && state.layer === 'floor' ? 'main' : state.layer;
+        if (height === state.height && layer === state.layer) return state;
+        return Object.assign({}, state, {height, layer});
+    }
+    case SET_PAINTER_FLOOR_HEIGHT: {
+        const num = Number(action.floorHeight);
+        if (!Number.isFinite(num)) return state;
+        const floorHeight = clampFloorHeight(num);
+        const layer = state.tool === 'height' ? 'floor' : state.layer;
+        if (floorHeight === state.floorHeight && layer === state.layer) return state;
+        return Object.assign({}, state, {floorHeight, layer});
     }
     case SET_PAINTER_GRID:
         if (!!action.show === state.showGrid) return state;
@@ -86,6 +97,11 @@ const setPainterHeight = height => ({
     height
 });
 
+const setPainterFloorHeight = floorHeight => ({
+    type: SET_PAINTER_FLOOR_HEIGHT,
+    floorHeight
+});
+
 const setPainterGrid = show => ({
     type: SET_PAINTER_GRID,
     show
@@ -100,5 +116,6 @@ export {
     setPainterLayer,
     setPainterFlag,
     setPainterHeight,
+    setPainterFloorHeight,
     setPainterGrid
 };
