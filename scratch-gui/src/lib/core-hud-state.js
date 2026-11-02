@@ -8,7 +8,10 @@ const AMMO_KEYS = ['ammo', 'bolts', 'charges', 'shells', 'p1 ammo', 'p1_ammo'];
 const AMMO_KINDS = ['bullets', 'shells', 'cells', 'rockets', 'bolts', 'charges', 'arrows', 'darts', 'gems'];
 const WEAPON_KEYS = ['weapon', 'cur_wpn', 'wpn', 'cur_weapon', 'current_weapon'];
 const WEAPON_SLOT_KEYS = ['weapon_slots', 'weapons', 'wpn_slots'];
-const ITEM_PATTERN = /(^|[_ ])(key|keycard|card|pass)$/;
+const ITEM_COLOR_WORDS = 'gold|yellow|amber|red|crimson|blue|cyan|ice|green|lime|jade|purple|violet';
+const ITEM_PATTERN = new RegExp(`(^|[_ ]|${ITEM_COLOR_WORDS})(key|keycard|card|pass)$`);
+const ITEM_CONCAT_PATTERN = new RegExp(`(${ITEM_COLOR_WORDS})(key|keycard|card|pass)\\b`, 'gi');
+const ITEM_EXACT_PATTERN = new RegExp(`^(${ITEM_COLOR_WORDS})(key|keycard|card|pass)$`, 'i');
 const ITEM_TONES = [
     ['gold', /gold|yellow|amber/],
     ['red', /red|crimson/],
@@ -24,6 +27,15 @@ const TIMER_KEYS = [
     'time_left', 'time left', 'timer', 'cur_timer', 'last_timer',
     'countdown', 'round_time', 'round timer', 'round_timer'
 ];
+const ROUND_NAME_KEYS = [
+    'round_name', 'round name', 'roundname', 'round_title', 'round title',
+    'phase_name', 'phase name', 'phase'
+];
+const TIMER_SUFFIX_WORDS = new Set(['timer', 'clock', 'time', 'left', 'countdown']);
+const GENERIC_TIMER_WORDS = new Set([
+    'time', 'timer', 'clock', 'countdown', 'left',
+    'round', 'match', 'game', 'main', 'cur', 'current', 'last', 'default'
+]);
 const STATUS_KEYS = ['core_carrier', 'core carrier', 'last_core_state', 'wave', 'checkpoint', 'objective', 'status'];
 
 const numOrNull = val => {
@@ -92,10 +104,61 @@ const pickFirstNumber = (sources, keys) => {
     return null;
 };
 
-const titleCase = text => {
-    const words = String(text).replace(/[_]+/g, ' ')
-        .trim();
+const splitIdentifierWords = text => String(text === null || typeof text === 'undefined' ? '' : text)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(ITEM_CONCAT_PATTERN, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const hasIdentifierShape = text => (
+    /[_-]/.test(text) ||
+    /[a-z0-9][A-Z]/.test(text) ||
+    /[A-Z]{2,}[a-z]/.test(text) ||
+    ITEM_EXACT_PATTERN.test(text)
+);
+
+const humanLabel = (raw, fallback = '') => {
+    const str = String(raw === null || typeof raw === 'undefined' ? '' : raw).trim();
+    if (!str) return fallback;
+    if (!hasIdentifierShape(str)) {
+        const clean = str.replace(/\s+/g, ' ');
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+    const words = splitIdentifierWords(str).toLowerCase();
+    if (!words) return fallback;
     return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+const roundNameFromRules = (mark, gameValues, vars) => {
+    const fromMark = mark && (mark.roundName || mark.round_name || mark.phaseName || mark.phase_name);
+    if (typeof fromMark === 'string' && fromMark.trim()) {
+        return humanLabel(fromMark, 'Time');
+    }
+    for (const key of ROUND_NAME_KEYS) {
+        const val = gameValues[key] ?? vars[key];
+        if (typeof val === 'string' && val.trim()) {
+            return humanLabel(val, 'Time');
+        }
+    }
+    return '';
+};
+
+const timerLabel = (rawName, mark, gameValues, vars) => {
+    const roundLabel = roundNameFromRules(mark, gameValues, vars);
+    if (roundLabel) return roundLabel;
+    const words = splitIdentifierWords(rawName)
+        .toLowerCase()
+        .split(' ')
+        .filter(Boolean);
+    while (words.length > 0 && TIMER_SUFFIX_WORDS.has(words[words.length - 1])) {
+        words.pop();
+    }
+    const meaningful = words.filter(w => !GENERIC_TIMER_WORDS.has(w));
+    if (meaningful.length === 0) return 'Time';
+    const joined = words.join(' ');
+    return joined.charAt(0).toUpperCase() + joined.slice(1);
 };
 
 const itemTone = name => {
@@ -119,7 +182,7 @@ const collectItems = (sources, declared) => {
     return names.slice(0, MAX_ITEMS).map(id => {
         const hit = pickFirstNumber(sources, [id]);
         const count = hit ? Math.max(0, hit.value) : 0;
-        return {id, label: titleCase(id), tone: itemTone(id), count, owned: count > 0};
+        return {id, label: humanLabel(id, 'Key'), tone: itemTone(id), count, owned: count > 0};
     });
 };
 
@@ -127,7 +190,7 @@ const collectAmmoKinds = (sources, mainKey) => AMMO_KINDS
     .filter(kind => kind !== mainKey)
     .map(kind => {
         const hit = pickFirstNumber(sources, [kind]);
-        return hit ? {id: kind, label: titleCase(kind), value: Math.max(0, hit.value)} : null;
+        return hit ? {id: kind, label: humanLabel(kind), value: Math.max(0, hit.value)} : null;
     })
     .filter(Boolean);
 
@@ -261,7 +324,7 @@ export const extractHudState = (vm, netOverride) => {
             const activeName = names[0];
             const rem = timeLeft(game, activeName);
             timer = {
-                label: activeName === 'timer' || activeName === 'match' ? 'Round' : activeName,
+                label: timerLabel(activeName, mark, gameValues, vars),
                 seconds: rem,
                 formatted: formatClock(rem)
             };
@@ -269,7 +332,7 @@ export const extractHudState = (vm, netOverride) => {
             const foundTimer = pickFirstNumber([gameValues, vars], TIMER_KEYS);
             if (foundTimer && foundTimer.value >= 0) {
                 timer = {
-                    label: 'Time',
+                    label: roundNameFromRules(mark, gameValues, vars) || 'Time',
                     seconds: foundTimer.value,
                     formatted: formatClock(foundTimer.value)
                 };
@@ -296,7 +359,7 @@ export const extractHudState = (vm, netOverride) => {
                         .reduce((sum, slot) => sum + (numOrNull(playerValue(game, slot, boardKey)) || 0), 0);
                 }
                 teams.push({
-                    name,
+                    name: humanLabel(name, name),
                     score,
                     tone: teamTone(name),
                     mine: !!(game && game.teams) && teamName(game, mySlot, declaredTeams) === name
@@ -367,8 +430,8 @@ export const extractHudState = (vm, netOverride) => {
             const rows = first.top.slice(0, 6).map((entry, idx) => {
                 const slot = entry[0];
                 const score = Number.isFinite(Number(entry[1])) ? Number(entry[1]) : 0;
-                const pName = playerName(game, slot) || `Player ${slot}`;
-                const tName = teamName(game, slot, declaredTeams);
+                const pName = (game.names && playerName(game, slot)) || `Player ${slot}`;
+                const tName = game.teams ? teamName(game, slot, declaredTeams) : '';
                 return {
                     rank: idx + 1,
                     slot,
@@ -379,7 +442,7 @@ export const extractHudState = (vm, netOverride) => {
                 };
             });
             leaderboard = {
-                boardName: titleCase(String(first.n || first.name || 'Score')),
+                boardName: humanLabel(first.n || first.name || 'Score', 'Score'),
                 rows
             };
         } else {
@@ -418,7 +481,7 @@ export const extractHudState = (vm, netOverride) => {
                     });
                 }
                 leaderboard = {
-                    boardName: label.charAt(0).toUpperCase() + label.slice(1),
+                    boardName: humanLabel(label, 'Score'),
                     rows: rows.slice(0, 6)
                 };
             }
@@ -429,7 +492,8 @@ export const extractHudState = (vm, netOverride) => {
     for (const key of STATUS_KEYS) {
         const val = gameValues[key] ?? vars[key];
         if (typeof val === 'string' && val.trim()) {
-            statusPill = val.trim();
+            const trimmed = val.trim();
+            statusPill = hasIdentifierShape(trimmed) ? humanLabel(trimmed) : trimmed;
             break;
         }
     }
@@ -462,5 +526,7 @@ export {
     OWN_HUD_KITS,
     OWN_HUD_SPRITES,
     formatClock,
-    moodFor
+    humanLabel,
+    moodFor,
+    timerLabel
 };

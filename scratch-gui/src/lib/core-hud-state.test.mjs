@@ -1,6 +1,6 @@
 process.removeAllListeners('warning');
 
-const {extractHudState, formatClock, moodFor} = await import('./core-hud-state.js');
+const {extractHudState, formatClock, humanLabel, moodFor, timerLabel} = await import('./core-hud-state.js');
 const {RULES_KEY} = await import('./collab/project-seam.js');
 
 let pass = 0;
@@ -8,9 +8,8 @@ let fail = 0;
 const ok = (label, cond, detail) => {
     if (cond) pass++;
     else fail++;
-    console.log(
-        `  ${cond ? 'PASS' : 'FAIL'}  ${label}${!cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : ''}`
-    );
+    const extra = !cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : '';
+    console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${extra}`);
 };
 
 ok('formatClock formats seconds into MM:SS', formatClock(125) === '02:05' && formatClock(0) === '00:00');
@@ -180,12 +179,20 @@ ok('Auto replaces the game\'s own StatusHUD when Arena or Scores is loaded',
 const plain = extractHudState(hangarVm([]), null);
 ok('Auto keeps the game\'s own StatusHUD when no Arena or Scores kit is loaded',
     plain.bar === null && plain.replaces.bar === false, plain.replaces);
-const keep = extractHudState(hangarVm(undefined, {ownHud: 'keep'}), null);
+const keep = extractHudState(hangarVm(['squigglearena', 'squigglescores'], {ownHud: 'keep'}), null);
 ok('Keep leaves the game\'s own StatusHUD even with Arena', keep.bar === null && keep.replaces.bar === false);
 const forced = extractHudState(hangarVm([], {ownHud: 'replace'}), null);
 ok('Replace takes over even without the kits', forced.bar && forced.replaces.bar === true);
-const noSprite = extractHudState({runtime: {targets: [{isStage: true, isOriginal: true, comments: {},
-    variables: vars({hp: 80, armor: 20})}]}}, null);
+const noSprite = extractHudState({
+    runtime: {
+        targets: [{
+            isStage: true,
+            isOriginal: true,
+            comments: {},
+            variables: vars({hp: 80, armor: 20})
+        }]
+    }
+}, null);
 ok('a game without its own HUD sprite gets the band and replaces nothing',
     noSprite.bar && noSprite.bar.layout === 'band' && noSprite.replaces.bar === false);
 
@@ -210,8 +217,17 @@ ok('the band shows my live frags, not the board\'s last post', one.bar.frags.val
 ok('a team with one member scores that member\'s frags and is marked mine',
     one.teams[1].name === 'Blue' && one.teams[1].score === 3 && one.teams[1].mine === true &&
     one.teams[0].score === 0 && one.teams[0].mine === false, one.teams);
-const fresh = extractHudState(hangarVm(), {slot: 1, game: {players: {1: {hp: 100}}, values: {}, names: {},
-    teams: {}, timers: {}, boards: []}});
+const fresh = extractHudState(hangarVm(), {
+    slot: 1,
+    game: {
+        players: {1: {hp: 100}},
+        values: {},
+        names: {},
+        teams: {},
+        timers: {},
+        boards: []
+    }
+});
 ok('a session before any names or posts still shows one You row',
     fresh.leaderboard.rows.length === 1 && fresh.leaderboard.rows[0].name === 'You' && fresh.bar.foldsBoard === true,
     fresh.leaderboard);
@@ -219,6 +235,68 @@ ok('a session before any names or posts still shows one You row',
 ok('mood steps down with health',
     moodFor(100, 100) === 'great' && moodFor(60, 100) === 'good' && moodFor(35, 100) === 'worried' &&
     moodFor(10, 100) === 'low' && moodFor(0, 100) === 'out');
+
+ok('generic room timers such as round_timer, roundTimer, timer and match say Time',
+    timerLabel('round_timer', null, {}, {}) === 'Time' &&
+    timerLabel('roundTimer', null, {}, {}) === 'Time' &&
+    timerLabel('time_left', null, {}, {}) === 'Time' &&
+    timerLabel('timer', null, {}, {}) === 'Time' &&
+    timerLabel('match', null, {}, {}) === 'Time');
+
+ok('named room timers and Game Rules round names turn into sentence case words',
+    timerLabel('meteor_wave', null, {}, {}) === 'Meteor wave' &&
+    timerLabel('wave_clock', null, {}, {}) === 'Wave' &&
+    timerLabel('warmupTimer', null, {}, {}) === 'Warmup' &&
+    timerLabel('round_timer', null, {round_name: 'sudden_death'}, {}) === 'Sudden death' &&
+    humanLabel('captureTheFlag') === 'Capture the flag');
+
+const roomWithIdentifiers = {
+    slot: 1,
+    game: {
+        tickSeconds: 0.05,
+        t: 100,
+        players: {
+            1: {hp: 80, armor: 20, ammo: 15, topFrags: 4, blueKeycard: 1}
+        },
+        values: {core_carrier: 'red_flag_carrier'},
+        names: {1: 'Ada'},
+        teams: {1: 1},
+        timers: {round_timer: 3100},
+        boards: [{n: 'top_frags', top: [[1, 4]]}]
+    }
+};
+const idVm = {
+    runtime: {
+        targets: [
+            {isStage: true, isOriginal: true, variables: {}, comments: {}},
+            {
+                isStage: false,
+                isOriginal: true,
+                getName: () => 'Game Rules',
+                variables: vars({red_team_score: 2, blueSquad_score: 5}),
+                extensionStorage: {
+                    [RULES_KEY]: {
+                        role: 'rules',
+                        teams: ['red_team', 'blueSquad'],
+                        boards: [{n: 'top_frags', name: 'top_frags'}],
+                        players: [{name: 'hp', default: 100}, {name: 'blueKeycard', default: 1}]
+                    }
+                }
+            }
+        ]
+    }
+};
+const cleaned = extractHudState(idVm, roomWithIdentifiers);
+ok('round_timer in a live room shows Time 02:30 and never snake_case',
+    cleaned.timer && cleaned.timer.label === 'Time' && cleaned.timer.formatted === '02:30', cleaned.timer);
+ok('no snake_case or camelCase identifier leaks into teams, boards, items, frags or status pill',
+    cleaned.teams[0].name === 'Red team' &&
+    cleaned.teams[1].name === 'Blue squad' &&
+    cleaned.leaderboard.boardName === 'Top frags' &&
+    cleaned.bar.frags.label === 'Top frags' &&
+    cleaned.vitals.items[0].label === 'Blue keycard' &&
+    cleaned.statusPill === 'Red flag carrier',
+    cleaned);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
