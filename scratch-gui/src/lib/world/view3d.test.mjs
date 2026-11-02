@@ -733,4 +733,73 @@ section('per-frame pose interpolation and mouse turn');
     smooth.dispose();
 }
 
+section('2.0x rung and bilinear texture filter');
+{
+    ext.view.dispose();
+    const prevStageW = runtime.stageWidth;
+    const prevStageH = runtime.stageHeight;
+    runtime.stageWidth = 640;
+    runtime.stageHeight = 360;
+    const texData = new Uint32Array(64 * 64);
+    for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+            texData[(y * 64) + x] = ((x + y) & 1) ? pixel(220, 40, 40) : pixel(20, 180, 240);
+        }
+    }
+    hero.setXY(cellX(8), cellY(12));
+    hero.setDirection(0);
+    const v2x = createView3d(runtime, world, {
+        canvas,
+        document: doc,
+        toBitmap: bitmap,
+        devicePixelRatio: 1,
+        loadImage: () => ({width: 64, height: 64}),
+        createCanvas: (w, h) => ({
+            width: w,
+            height: h,
+            getContext: () => ({
+                clearRect () {},
+                drawImage () {},
+                getImageData: () => ({data: new Uint8ClampedArray(texData.buffer.slice(0))})
+            })
+        })
+    });
+    v2x.attach(seam);
+    v2x.setSurfaceTexture('floor', 'brick');
+    v2x.setQuality('crisp');
+    v2x.show(hero);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    runtime._step();
+    const crispNearest = v2x.frame.pixels.slice();
+    ok('bilinear texture filter is off by default on Crisp',
+        v2x.textureFilter() === false && v2x.effectiveSettings().textureFilter === false);
+    v2x.setTextureFilter(true);
+    const crispBilinear = v2x.frame.pixels.slice();
+    let diffCount = 0;
+    for (let i = 0; i < crispNearest.length; i++) {
+        if (crispNearest[i] !== crispBilinear[i]) diffCount++;
+    }
+    ok('enabling bilinear texture filter on Crisp blends wall and floor texels',
+        v2x.textureFilter() === true && diffCount > 100, diffCount);
+    v2x.setTextureFilter(false);
+    let sameCount = 0;
+    for (let i = 0; i < crispNearest.length; i++) {
+        if (crispNearest[i] === v2x.frame.pixels[i]) sameCount++;
+    }
+    ok('turning bilinear filter back off at 1.0x restores pixel-identical frame',
+        sameCount === crispNearest.length);
+    v2x.setPlayerSettings({quality: '2x', textureFilter: true});
+    ok('2.0x rung renders at 1280x720 on a 640x360 stage with bilinear filter active',
+        v2x.scale() === 2 && v2x.frame.width === 1280 && v2x.frame.height === 720 && v2x.textureFilter() === true);
+    v2x.setPlayerSettings({quality: 'fast', textureFilter: true});
+    ok('bilinear texture filter stays off on Fast (0.5x) even when setting is enabled',
+        v2x.scale() === 0.5 && v2x.textureFilter() === false);
+    v2x.setPlayerSettings({quality: 'sharpest', textureFilter: true});
+    ok('bilinear texture filter stays off on Sharpest (1.5x) so only Crisp and 2.0x activate it',
+        v2x.scale() === 1.5 && v2x.textureFilter() === false);
+    v2x.dispose();
+    runtime.stageWidth = prevStageW;
+    runtime.stageHeight = prevStageH;
+}
+
 done();

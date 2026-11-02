@@ -1101,4 +1101,49 @@ section('dirty-cell column cache, 0.25 s height animation, and cell-change golde
         marked === midRecastCols && frame._lastRecastCols === marked);
 }
 
+section('bilinear texture filter for walls and floors');
+{
+    const grid = room(16, 16);
+    setCell(grid, 'main', 8, 6, 1);
+    const twoByTwo = new Uint32Array([
+        pixel(200, 20, 20), pixel(20, 20, 200),
+        pixel(20, 200, 20), pixel(200, 200, 20)
+    ]);
+    const tex = {width: 2, height: 2, data: twoByTwo};
+    const frameNearest = createFrame(240, 180);
+    const frameBilinear = createFrame(240, 180);
+    const baseScene = {
+        map: mapOf(grid),
+        player: {u: 8.5, v: 8.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        floorMode: 'tex',
+        floorTex: tex,
+        texture: () => tex
+    };
+    render(frameNearest, Object.assign({}, baseScene, {bilinear: false}));
+    render(frameBilinear, Object.assign({}, baseScene, {bilinear: true}));
+    const exactTexels = new Set(Array.from(twoByTwo));
+    let blendedWallPixels = 0;
+    let blendedFloorPixels = 0;
+    for (let y = 60; y < 120; y++) {
+        const c = frameBilinear.pixels[(y * 240) + 120];
+        if (!exactTexels.has(c) && c !== RED && c !== BLUE) blendedWallPixels++;
+    }
+    for (let y = 140; y < 175; y++) {
+        for (let x = 40; x < 200; x++) {
+            const c = frameBilinear.pixels[(y * 240) + x];
+            if (!exactTexels.has(c) && c !== RED && c !== BLUE) blendedFloorPixels++;
+        }
+    }
+    ok('bilinear filter blends adjacent wall texels into smooth intermediate colors',
+        blendedWallPixels > 10, blendedWallPixels);
+    ok('bilinear filter blends adjacent floor texels into smooth intermediate colors',
+        blendedFloorPixels > 100, blendedFloorPixels);
+    render(frameBilinear, Object.assign({}, baseScene, {bilinear: false}));
+    ok('disabling bilinear invalidates cached background and matches nearest-neighbour bit-for-bit',
+        hashPixels(frameBilinear.pixels) === hashPixels(frameNearest.pixels));
+}
+
 done();

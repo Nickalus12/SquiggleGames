@@ -2,9 +2,10 @@ import log from '../log.js';
 import {FLAGS, flagsAt} from './tilemap.js';
 import {browserCanvas, browserImageLoader, costumeByName, costumeFor, defaultSkyTexture} from './textures.js';
 import {chainHook} from './world.js';
-import {createScalePolicy} from './render-scale.js';
+import {createScalePolicy, textureFilterFor} from './render-scale.js';
 import {
     PLAYER_SETTINGS_CHANGED,
+    PLAYER_SETTINGS_KEY,
     clampPitch,
     createHeadBob,
     fogForDrawDistance,
@@ -216,11 +217,42 @@ const createView3d = (runtime, world, options) => {
         }
     };
     const playerStore = opts.storage || null;
-    const initialPlayer = readPlayerSettings(playerStore);
+    const readRawPlayerPatch = storage => {
+        try {
+            const store = storage || (typeof window !== 'undefined' && window.localStorage) || null;
+            if (!store || typeof store.getItem !== 'function') return null;
+            const raw = store.getItem(PLAYER_SETTINGS_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    };
+    const normalizeViewPlayerSettings = (input, prev) => {
+        const src = input && typeof input === 'object' ? input : {};
+        const base = prev && typeof prev === 'object' ? Object.assign({}, prev, src) : Object.assign({}, src);
+        if (base.quality === '2.0x') base.quality = '2x';
+        const norm = normalizePlayerSettings(base);
+        let filterVal = prev && typeof prev.textureFilter === 'boolean' ? prev.textureFilter : false;
+        if (typeof src.textureFilter === 'boolean') filterVal = src.textureFilter;
+        else if (typeof src.bilinear === 'boolean') filterVal = src.bilinear;
+        norm.textureFilter = Boolean(filterVal);
+        return norm;
+    };
+    const readViewPlayerSettings = storage => normalizeViewPlayerSettings(
+        readRawPlayerPatch(storage),
+        readPlayerSettings(storage)
+    );
+    const initialPlayer = readViewPlayerSettings(playerStore);
     const policy = createScalePolicy();
-    const configure = mode => policy.configure({mode, dpr: pixelRatio(), width: stageW(), height: stageH()});
+    const configure = (mode, textureFilter) => policy.configure({
+        mode,
+        dpr: pixelRatio(),
+        width: stageW(),
+        height: stageH(),
+        textureFilter
+    });
     const firstScale = () => (fixedScale === null ?
-        configure((initialPlayer && initialPlayer.quality) || quality()) :
+        configure((initialPlayer && initialPlayer.quality) || quality(), initialPlayer && initialPlayer.textureFilter) :
         fixedScale);
     const defaultScale = firstScale();
     let frame = createFrame(Math.round(stageW() * defaultScale), Math.round(stageH() * defaultScale));
@@ -240,6 +272,7 @@ const createView3d = (runtime, world, options) => {
         floorTexture: 'color',
         ceilingTexture: 'color',
         floorTextures: null,
+        textureFilter: null,
         looks: new WeakMap(),
         elevations: new WeakMap(),
         glows: new WeakMap(),
@@ -268,10 +301,11 @@ const createView3d = (runtime, world, options) => {
         drew: false,
         pendingWork: -1,
         pendingDraw: 0,
+        lastWorkMs: -1,
         manual: fixedScale !== null,
         scale: defaultScale,
         usePlayerSettings: true,
-        playerSettings: readPlayerSettings(playerStore),
+        playerSettings: readViewPlayerSettings(playerStore),
         hasPlayerOverride: hasStoredPlayerSettings(playerStore),
         bob: createHeadBob()
     });
@@ -290,6 +324,19 @@ const createView3d = (runtime, world, options) => {
         state.usePlayerSettings && state.playerSettings && state.playerSettings.quality ?
             state.playerSettings.quality :
             quality()
+    );
+    const effectiveTextureFilter = () => {
+        if (state.textureFilter !== null) return Boolean(state.textureFilter);
+        const ps = state.playerSettings;
+        if (state.usePlayerSettings && ps && typeof ps.textureFilter === 'boolean') {
+            return ps.textureFilter;
+        }
+        return false;
+    };
+    const textureFilterOn = () => textureFilterFor(
+        state.manual ? 'manual' : policy.mode,
+        state.scale,
+        effectiveTextureFilter()
     );
     const effectivePitch = () => clampPitch(state.pitch);
     const effectiveBobY = () => {
@@ -336,6 +383,8 @@ const createView3d = (runtime, world, options) => {
         ceilingTex: null,
         skyTex: defaultSkyTexture(),
         floorTextures: true,
+        bilinear: false,
+        textureFilter: false,
         wallColor: () => WALL_COLOR,
         texture: value => cache.textures[value] || null,
         wallKey: 0,
@@ -600,12 +649,13 @@ const createView3d = (runtime, world, options) => {
         if (state.pendingWork < 0) return;
         const work = state.pendingWork;
         state.pendingWork = -1;
+        state.lastWorkMs = work;
         sampleTick(work, state.pendingDraw);
     };
 
     const setQuality = mode => {
         state.manual = false;
-        applyScale(configure(mode));
+        applyScale(configure(mode, effectiveTextureFilter()));
     };
 
     const frameHash = () => {
@@ -628,6 +678,7 @@ const createView3d = (runtime, world, options) => {
         h = mixStr(h, state.floorTexture);
         h = mixStr(h, state.ceilingTexture);
         h = mix(h, floorTexturesOn() ? 1 : 0);
+        if (textureFilterOn()) h = mix(h, 1);
         h = mix(h, serialOf(grid()));
         h = mix(h, revision());
         h = mix(h, pixels.loaded());
@@ -727,6 +778,8 @@ const createView3d = (runtime, world, options) => {
         scene.floorTex = textureByName(level, scene.floorMode);
         scene.ceilingTex = textureByName(level, scene.ceilingMode);
         scene.floorTextures = floorTexturesOn();
+        scene.bilinear = textureFilterOn();
+        scene.textureFilter = scene.bilinear;
         const halfFovRad = (scene.fov * Math.PI / 180) * 0.5;
         const focal = (frame.width / 2) / Math.max(1e-5, Math.tan(halfFovRad));
         const horizon = horizonForPitch(effectivePitch(), frame.height, focal, effectiveBobY());
@@ -825,7 +878,7 @@ const createView3d = (runtime, world, options) => {
         if (pacing.last > 0 && !state.manual && opts.adaptive !== false) {
             const gap = at - pacing.last;
             pacing.shortest = Math.max(MIN_REFRESH_MS, Math.min(pacing.shortest, gap));
-            policy.paced(gap > Math.max(LATE_FRAME_MS, pacing.shortest * 1.75));
+            policy.paced(gap > Math.max(LATE_FRAME_MS, pacing.shortest * 1.75), state.lastWorkMs);
         }
         pacing.last = at;
         pacing.framed = true;
@@ -1106,7 +1159,7 @@ const createView3d = (runtime, world, options) => {
         hideView();
         destroy();
         state = fresh();
-        state.scale = fixedScale === null ? configure(effectiveQuality()) : fixedScale;
+        state.scale = fixedScale === null ? configure(effectiveQuality(), effectiveTextureFilter()) : fixedScale;
         scene.spriteCount = 0;
         scene.lights.length = 0;
         cache.grid = false;
@@ -1130,8 +1183,12 @@ const createView3d = (runtime, world, options) => {
     };
 
     const onPlayerSettings = next => {
-        state.playerSettings = normalizePlayerSettings(next);
+        if (next && (typeof next.textureFilter !== 'undefined' || typeof next.bilinear !== 'undefined')) {
+            state.textureFilter = null;
+        }
+        state.playerSettings = normalizeViewPlayerSettings(next, state.playerSettings);
         state.hasPlayerOverride = true;
+        policy.setTextureFilter(effectiveTextureFilter());
         if (fixedScale === null) setQuality(effectiveQuality());
         if (state.on && viewerAlive()) refresh();
     };
@@ -1172,7 +1229,8 @@ const createView3d = (runtime, world, options) => {
             fog: effectiveFog(),
             eye: state.eye,
             quality: state.manual ? 'manual' : policy.mode,
-            floorTextures: policy.floorTextures
+            floorTextures: policy.floorTextures,
+            textureFilter: textureFilterOn()
         }),
         setSetting (name, value) {
             if (name === 'fov') state.fov = clampFov(value);
@@ -1180,6 +1238,10 @@ const createView3d = (runtime, world, options) => {
             else if (name === 'eye') state.eye = clampEye(value);
             else if (name === 'falloff' || name === 'lightFalloff') state.lightFalloff = clampFalloff(value);
             else if (name === 'pitch') state.pitch = clampPitch(value);
+            else if (name === 'textureFilter' || name === 'bilinear') {
+                state.textureFilter = value === null || typeof value === 'undefined' ? null : Boolean(value);
+                policy.setTextureFilter(effectiveTextureFilter());
+            }
         },
         lightFalloff: () => state.lightFalloff,
         setLightFalloff (value) {
@@ -1216,13 +1278,18 @@ const createView3d = (runtime, world, options) => {
         usePlayerSettings: () => state.usePlayerSettings,
         setUsePlayerSettings (on) {
             state.usePlayerSettings = !!on;
+            policy.setTextureFilter(effectiveTextureFilter());
             if (fixedScale === null) setQuality(effectiveQuality());
             if (state.on && viewerAlive()) refresh();
         },
         playerSettings: () => Object.assign({}, state.playerSettings),
         setPlayerSettings (patch) {
-            state.playerSettings = normalizePlayerSettings(Object.assign({}, state.playerSettings, patch || {}));
+            if (patch && (typeof patch.textureFilter !== 'undefined' || typeof patch.bilinear !== 'undefined')) {
+                state.textureFilter = null;
+            }
+            state.playerSettings = normalizeViewPlayerSettings(patch, state.playerSettings);
             state.hasPlayerOverride = true;
+            policy.setTextureFilter(effectiveTextureFilter());
             if (fixedScale === null) setQuality(effectiveQuality());
             if (state.on && viewerAlive()) refresh();
         },
@@ -1240,6 +1307,18 @@ const createView3d = (runtime, world, options) => {
         floorTextures: floorTexturesOn,
         setFloorTextures (on) {
             state.floorTextures = on === null || typeof on === 'undefined' ? null : Boolean(on);
+        },
+        textureFilter: textureFilterOn,
+        setTextureFilter (on) {
+            state.textureFilter = on === null || typeof on === 'undefined' ? null : Boolean(on);
+            policy.setTextureFilter(effectiveTextureFilter());
+            if (state.on && viewerAlive()) refresh();
+        },
+        bilinear: textureFilterOn,
+        setBilinear (on) {
+            state.textureFilter = on === null || typeof on === 'undefined' ? null : Boolean(on);
+            policy.setTextureFilter(effectiveTextureFilter());
+            if (state.on && viewerAlive()) refresh();
         },
         setLook (target, look) {
             if (!target || target.isStage || !(look in LOOKS)) return;

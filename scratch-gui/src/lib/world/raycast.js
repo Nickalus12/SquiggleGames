@@ -712,6 +712,7 @@ const createFrame = (width, height) => {
         _bgFloorTextures: true,
         _bgFloorVer: -1,
         _bgCeilVer: -1,
+        _bgBilinear: false,
         _bgLightVersion: -1
     };
 };
@@ -795,6 +796,62 @@ const markCellDirty = (frame, col, row) => {
     return marked;
 };
 
+const isBilinear = scene => Boolean(
+    scene && (scene.bilinear || scene.textureFilter === true || scene.textureFilter === 'bilinear')
+);
+
+const sampleBilinearSurfaceTexel = (texData, texW, texH, tex64, fu, fv) => {
+    let tx0 = 0;
+    let tx1 = 0;
+    let ty0 = 0;
+    let ty1 = 0;
+    let wx = 0;
+    let wy = 0;
+    if (tex64) {
+        const u64 = (fu - 512) | 0;
+        const v64 = (fv - 512) | 0;
+        tx0 = (u64 >>> 10) & 63;
+        tx1 = (tx0 + 1) & 63;
+        ty0 = (v64 >>> 10) & 63;
+        ty1 = (ty0 + 1) & 63;
+        wx = (u64 >>> 6) & 15;
+        wy = (v64 >>> 6) & 15;
+    } else {
+        const spanU = texW << 16;
+        const spanV = texH << 16;
+        const uScaled = (((fu & 0xffff) * texW) - 32768 + spanU) % spanU;
+        const vScaled = (((fv & 0xffff) * texH) - 32768 + spanV) % spanV;
+        tx0 = uScaled >>> 16;
+        tx1 = tx0 + 1 < texW ? tx0 + 1 : 0;
+        ty0 = vScaled >>> 16;
+        ty1 = ty0 + 1 < texH ? ty0 + 1 : 0;
+        wx = (uScaled >>> 12) & 15;
+        wy = (vScaled >>> 12) & 15;
+    }
+    const r0 = tex64 ? (ty0 << 6) : (ty0 * texW);
+    const r1 = tex64 ? (ty1 << 6) : (ty1 * texW);
+    const c00 = texData[r0 + tx0];
+    const c10 = texData[r0 + tx1];
+    const c01 = texData[r1 + tx0];
+    const c11 = texData[r1 + tx1];
+    if (c00 === c10 && c00 === c01 && c00 === c11) return c00;
+    const ix = 16 - wx;
+    const iy = 16 - wy;
+    const w00 = ix * iy;
+    const w10 = wx * iy;
+    const w01 = ix * wy;
+    const w11 = wx * wy;
+    const rb = ((((c00 & 0x00ff00ff) * w00) +
+        ((c10 & 0x00ff00ff) * w10) +
+        ((c01 & 0x00ff00ff) * w01) +
+        ((c11 & 0x00ff00ff) * w11)) >>> 8) & 0x00ff00ff;
+    const g = ((((c00 & 0x0000ff00) * w00) +
+        ((c10 & 0x0000ff00) * w10) +
+        ((c01 & 0x0000ff00) * w01) +
+        ((c11 & 0x0000ff00) * w11)) >>> 8) & 0x0000ff00;
+    return (OPAQUE | rb | g) >>> 0;
+};
+
 const eyeOf = scene => clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100;
 
 const isTexOpaque = tex => {
@@ -817,6 +874,7 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const h = frame.height || HEIGHT;
     const half = horizonOf(frame, scene);
     const allowTex = scene.floorTextures !== false;
+    const bilinear = isBilinear(scene);
     const map = scene.map || null;
     const cols = map && map.cols ? (map.cols | 0) : 0;
     const rows = map && map.rows ? (map.rows | 0) : 0;
@@ -992,6 +1050,26 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         let prevOut = 0;
 
         if (!surfGrid && !hasLightBuf && cellTexData) {
+            if (bilinear) {
+                if (baseKeep >= 255 && f <= 0) {
+                    for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                        const c = sampleBilinearSurfaceTexel(cellTexData, cellTexW, cellTexH, cellTex64, fu, fv);
+                        pixels[rowStart + x] = (c | OPAQUE) >>> 0;
+                    }
+                } else {
+                    for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                        const c = sampleBilinearSurfaceTexel(cellTexData, cellTexW, cellTexH, cellTex64, fu, fv);
+                        if (c !== prevC) {
+                            prevC = c;
+                            const rb = (((((c & 0x00ff00ff) * baseKeep) >>> 8) + fogRB) & 0x00ff00ff);
+                            const g = (((((c & 0x0000ff00) * baseKeep) >>> 8) + fogG8) & 0x0000ff00);
+                            prevOut = (OPAQUE | rb | g) >>> 0;
+                        }
+                        pixels[rowStart + x] = prevOut;
+                    }
+                }
+                continue;
+            }
             if (baseKeep >= 255 && f <= 0) {
                 if (cellTex64) {
                     for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
@@ -1087,7 +1165,43 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             const noClamp = (cellKeep + cellAddR) <= 256 &&
                 (cellKeep + cellAddG) <= 256 &&
                 (cellKeep + cellAddB) <= 256;
-            if (cellTex64 && noClamp) {
+            if (bilinear) {
+                if (noClamp) {
+                    const cellAddRB = (cellAddB << 16) | cellAddR;
+                    const cellAddG8 = cellAddG << 8;
+                    while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
+                        const c = sampleBilinearSurfaceTexel(cellTexData, cellTexW, cellTexH, cellTex64, fu, fv);
+                        if (c !== prevC) {
+                            prevC = c;
+                            const rb = (((((c & 0x00ff00ff) * cellKeep) >>> 8) + cellAddRB) & 0x00ff00ff);
+                            const g = (((((c & 0x0000ff00) * cellKeep) >>> 8) + cellAddG8) & 0x0000ff00);
+                            prevOut = (OPAQUE | rb | g) >>> 0;
+                        }
+                        pixels[rowStart + x] = prevOut;
+                        x++;
+                        fu = (fu + dfu) | 0;
+                        fv = (fv + dfv) | 0;
+                    }
+                } else {
+                    while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
+                        const c = sampleBilinearSurfaceTexel(cellTexData, cellTexW, cellTexH, cellTex64, fu, fv);
+                        if (c !== prevC) {
+                            prevC = c;
+                            let r = (((c & 255) * cellKeep) >> 8) + cellAddR;
+                            let g = ((((c >>> 8) & 255) * cellKeep) >> 8) + cellAddG;
+                            let b = ((((c >>> 16) & 255) * cellKeep) >> 8) + cellAddB;
+                            if (r > 255) r = 255;
+                            if (g > 255) g = 255;
+                            if (b > 255) b = 255;
+                            prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                        }
+                        pixels[rowStart + x] = prevOut;
+                        x++;
+                        fu = (fu + dfu) | 0;
+                        fv = (fv + dfv) | 0;
+                    }
+                }
+            } else if (cellTex64 && noClamp) {
                 const cellAddRB = (cellAddB << 16) | cellAddR;
                 const cellAddG8 = cellAddG << 8;
                 while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
@@ -1291,6 +1405,100 @@ const doorTexFor = (scene, map, val) => {
     return DEFAULT_DOOR_TEXTURE;
 };
 
+const sampleBilinearColumn = (
+    pixels, w, x, y0, y1, top, wallH, wallX, side, rx, ry, tex, k, f, fogColor, addR, addG, addB
+) => {
+    const texW = tex.width | 0;
+    const texH = tex.height | 0;
+    const texWMax = texW - 1;
+    const texHMax = texH - 1;
+    const flip = (side === 0 && rx < 0) || (side === 1 && ry > 0);
+    const rawU = ((flip ? (1 - wallX) : wallX) * texW) - 0.5;
+    const u = rawU <= 0 ? 0 : (rawU >= texWMax ? texWMax : rawU);
+    const tx0 = u | 0;
+    const tx1 = tx0 < texWMax ? tx0 + 1 : texWMax;
+    const wx = ((u - tx0) * 16) | 0;
+    const ix = 16 - wx;
+    const step = texH / wallH;
+    let ty = (((y0 + 0.5) - top) * step) - 0.5;
+    const plain = k === 1 && f === 0 && addR === 0 && addG === 0 && addB === 0;
+    const keep = k * (1 - f);
+    const fogR = ((fogColor & 255) * f) + addR;
+    const fogG = (((fogColor >>> 8) & 255) * f) + addG;
+    const fogB = (((fogColor >>> 16) & 255) * f) + addB;
+    const texData = tex.data;
+    let prevTi0 = -1;
+    let skipSpan = false;
+    let sameTexel = false;
+    let c00 = 0;
+    let topRB = 0;
+    let topG = 0;
+    let botRB = 0;
+    let botG = 0;
+    let prevC = -1;
+    let prevOut = 0;
+    for (let y = y0, pixIdx = (y0 * w) + x; y < y1; y++, pixIdx += w) {
+        const v = ty <= 0 ? 0 : (ty >= texHMax ? texHMax : ty);
+        ty += step;
+        const ti0 = v | 0;
+        const wy = ((v - ti0) * 16) | 0;
+        if (ti0 !== prevTi0) {
+            prevTi0 = ti0;
+            const ti1 = ti0 < texHMax ? ti0 + 1 : texHMax;
+            const row0 = ti0 * texW;
+            const row1 = ti1 * texW;
+            c00 = texData[row0 + tx0];
+            let c10 = texData[row0 + tx1];
+            let c01 = texData[row1 + tx0];
+            let c11 = texData[row1 + tx1];
+            const a00 = (c00 >>> 24) >= ALPHA_MIN;
+            const a10 = (c10 >>> 24) >= ALPHA_MIN;
+            if (!a00 && !a10) {
+                skipSpan = true;
+                continue;
+            }
+            skipSpan = false;
+            if (!a00) c00 = c10;
+            else if (!a10) c10 = c00;
+            if ((c01 >>> 24) < ALPHA_MIN) c01 = c00;
+            if ((c11 >>> 24) < ALPHA_MIN) c11 = c10;
+            sameTexel = c00 === c10 && c00 === c01 && c00 === c11;
+            if (!sameTexel) {
+                topRB = ((c00 & 0x00ff00ff) * ix) + ((c10 & 0x00ff00ff) * wx);
+                topG = ((c00 & 0x0000ff00) * ix) + ((c10 & 0x0000ff00) * wx);
+                botRB = ((c01 & 0x00ff00ff) * ix) + ((c11 & 0x00ff00ff) * wx);
+                botG = ((c01 & 0x0000ff00) * ix) + ((c11 & 0x0000ff00) * wx);
+            }
+        } else if (skipSpan) {
+            continue;
+        }
+        let c = c00;
+        if (sameTexel) {
+            c = (c00 | OPAQUE) >>> 0;
+        } else {
+            const iy = 16 - wy;
+            const rb = (((topRB * iy) + (botRB * wy)) >>> 8) & 0x00ff00ff;
+            const g = (((topG * iy) + (botG * wy)) >>> 8) & 0x0000ff00;
+            c = (OPAQUE | rb | g) >>> 0;
+        }
+        if (plain) {
+            pixels[pixIdx] = c;
+        } else {
+            if (c !== prevC) {
+                prevC = c;
+                let r = (((c & 255) * keep) + fogR) | 0;
+                let g = ((((c >>> 8) & 255) * keep) + fogG) | 0;
+                let b = ((((c >>> 16) & 255) * keep) + fogB) | 0;
+                if (r > 255) r = 255;
+                if (g > 255) g = 255;
+                if (b > 255) b = 255;
+                prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+            }
+            pixels[pixIdx] = prevOut;
+        }
+    }
+};
+
 const sampleColumnSlice = (
     pixels, w, x, y0, y1, top, wallH, dist, val, col, row, side, wallX, rx, ry, isDoor, isSee,
     scene, map, getTex, getWallColor, fog, fogColor, falloff, lightBuf
@@ -1334,6 +1542,12 @@ const sampleColumnSlice = (
             if (barCol !== 1 && barCol !== 5) return;
         }
         for (let y = y0, pixIdx = (y0 * w) + x; y < y1; y++, pixIdx += w) pixels[pixIdx] = flat;
+        return;
+    }
+    if (isBilinear(scene)) {
+        sampleBilinearColumn(
+            pixels, w, x, y0, y1, top, wallH, wallX, side, rx, ry, tex, k, f, fogColor, addR, addG, addB
+        );
         return;
     }
     const texW = tex.width | 0;
@@ -1412,6 +1626,7 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const glowR = hasGlow ? lightBuf.glowR : null;
     const glowG = hasGlow ? lightBuf.glowG : null;
     const glowB = hasGlow ? lightBuf.glowB : null;
+    const bilinear = isBilinear(scene);
 
     for (let x = 0; x < w; x++) {
         const count = colHitCount[x];
@@ -1466,6 +1681,13 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                 const b = Math.min(255, (((base >>> 16) & 255) * keep) + (((fogColor >>> 16) & 255) * f) + addB);
                 const flat = pixel(r, g, b);
                 for (let y = y0, pixIdx = (y0 * w) + x; y < y1; y++, pixIdx += w) pixels[pixIdx] = flat;
+                continue;
+            }
+            if (bilinear) {
+                sampleBilinearColumn(
+                    pixels, w, x, y0, y1, top, lineH, colWallX[x], side, colRx[x], colRy[x],
+                    tex, k, f, fogColor, addR, addG, addB
+                );
                 continue;
             }
             const texW = tex.width | 0;
@@ -1873,6 +2095,7 @@ const render = (frame, scene) => {
     const floorTex = scene.floorTex || null;
     const ceilTex = scene.ceilingTex || null;
     const floorTextures = scene.floorTextures !== false;
+    const bilinear = isBilinear(scene);
     const map = scene.map || null;
     const cols = map && map.cols ? (map.cols | 0) : 0;
     const rows = map && map.rows ? (map.rows | 0) : 0;
@@ -1904,7 +2127,8 @@ const render = (frame, scene) => {
         frame._bgFloorMode === floorMode && frame._bgCeilingMode === ceilingMode &&
         frame._bgFloorTex === floorTex && frame._bgCeilTex === ceilTex &&
         frame._bgFloorTextures === floorTextures && frame._bgFloorVer === floorVer &&
-        frame._bgCeilVer === ceilVer && frame._bgLightVersion === lightVersion) {
+        frame._bgCeilVer === ceilVer && frame._bgBilinear === bilinear &&
+        frame._bgLightVersion === lightVersion) {
         const t0 = timings ? now() : 0;
         frame.pixels.set(frame.bgPixels);
         frame.zbuffer.set(frame.bgZbuffer);
@@ -1945,6 +2169,7 @@ const render = (frame, scene) => {
         frame._bgFloorTextures = floorTextures;
         frame._bgFloorVer = floorVer;
         frame._bgCeilVer = ceilVer;
+        frame._bgBilinear = bilinear;
         frame._bgLightVersion = lightVersion;
     }
     const tSpr0 = timings ? now() : 0;
