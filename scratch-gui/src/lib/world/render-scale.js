@@ -5,6 +5,9 @@ const WINDOW = 45;
 const OVER_BUDGET = 0.6;
 const HEADROOM = 0.35;
 const CRISP_DPR = 1.5;
+const LATE_SHARE_DOWN = 0.05;
+const LATE_SHARE_UP = 0.02;
+const MIN_PACED_FRAMES = 30;
 
 const rungFor = scale => {
     for (let i = 0; i < LADDER.length; i++) {
@@ -31,7 +34,7 @@ const createScalePolicy = (options = {}) => {
     const ticks = new Float64Array(WINDOW);
     const renders = new Float64Array(WINDOW);
     const scratch = new Float64Array(WINDOW);
-    const state = {mode: 'auto', rung: 1, ceiling: 1, count: 0, steps: 0};
+    const state = {mode: 'auto', rung: 1, ceiling: 1, count: 0, steps: 0, frames: 0, late: 0};
 
     const fixedRung = mode => (mode === 'crisp' ? 0 : LADDER.length - 1);
 
@@ -48,6 +51,8 @@ const createScalePolicy = (options = {}) => {
         configure ({mode, dpr, width, height}) {
             state.mode = MODES.indexOf(mode) === -1 ? 'auto' : mode;
             state.count = 0;
+            state.frames = 0;
+            state.late = 0;
             if (state.mode === 'auto') {
                 state.ceiling = rungFor(startScale({dpr, width, height}));
                 state.rung = state.ceiling;
@@ -57,6 +62,11 @@ const createScalePolicy = (options = {}) => {
             }
             return LADDER[state.rung];
         },
+        paced (late) {
+            if (state.mode !== 'auto') return;
+            state.frames++;
+            if (late) state.late++;
+        },
         sample (tickMs, renderMs, frameMs) {
             if (state.mode !== 'auto') return null;
             ticks[state.count] = Math.max(0, Number(tickMs) || 0);
@@ -64,11 +74,16 @@ const createScalePolicy = (options = {}) => {
             state.count++;
             if (state.count < WINDOW) return null;
             const count = state.count;
+            const paced = state.frames >= MIN_PACED_FRAMES;
+            const lateShare = paced ? state.late / state.frames : 0;
             state.count = 0;
+            state.frames = 0;
+            state.late = 0;
             const budget = Math.max(1, Number(frameMs) || (1000 / 30));
             const tick = median(ticks, count, scratch);
             const render = median(renders, count, scratch);
-            if (tick > OVER_BUDGET * budget && state.rung < LADDER.length - 1) {
+            const over = tick > OVER_BUDGET * budget || lateShare > LATE_SHARE_DOWN;
+            if (over && state.rung < LADDER.length - 1) {
                 state.rung++;
                 state.steps++;
                 return LADDER[state.rung];
@@ -76,7 +91,7 @@ const createScalePolicy = (options = {}) => {
             if (state.rung > state.ceiling) {
                 const up = LADDER[state.rung - 1] / LADDER[state.rung];
                 const projected = tick + (render * ((up * up) - 1));
-                if (projected < HEADROOM * budget) {
+                if (projected < HEADROOM * budget && lateShare < LATE_SHARE_UP) {
                     state.rung--;
                     state.steps++;
                     return LADDER[state.rung];
@@ -91,6 +106,9 @@ const createScalePolicy = (options = {}) => {
 
 export {
     HEADROOM,
+    LATE_SHARE_DOWN,
+    LATE_SHARE_UP,
+    MIN_PACED_FRAMES,
     LADDER,
     MODES,
     OVER_BUDGET,

@@ -396,6 +396,7 @@ view.dispose();
 ok('dispose turns it off', !view.isOn());
 
 section('auto quality steps with tick time');
+const plainDraw = runtime.renderer && runtime.renderer.draw;
 let clock = 0;
 let costPerCall = 12;
 const adaptive = createView3d(runtime, world, {canvas, document: doc, toBitmap: bitmap, devicePixelRatio: 1,
@@ -414,19 +415,54 @@ const walk = ticks => {
         runtime._step();
     }
 };
-walk(44);
-const beforeWindow = adaptive.scale();
-walk(1);
-ok('a full window of slow ticks steps Auto down from 0.75 to 0.5',
-    beforeWindow === 0.75 && adaptive.scale() === RESOLUTION && adaptive.stats().steps === 1, adaptive.stats());
-walk(45);
+const ticksUntil = (done, cap) => {
+    let ticks = 0;
+    while (!done() && ticks < cap) {
+        walk(1);
+        ticks++;
+    }
+    return ticks;
+};
+const downAfter = ticksUntil(() => adaptive.scale() === RESOLUTION, 200);
+ok('one window of slow ticks steps Auto down from 0.75 to 0.5',
+    adaptive.scale() === RESOLUTION && downAfter >= 45 && downAfter <= 47 && adaptive.stats().steps === 1,
+    {downAfter, stats: adaptive.stats()});
+walk(90);
 ok('it never goes below half resolution', adaptive.scale() === RESOLUTION);
 costPerCall = 0.01;
-walk(45);
-ok('a window with headroom steps back up to the starting scale', adaptive.scale() === 0.75, adaptive.stats());
-walk(90);
+const upAfter = ticksUntil(() => adaptive.scale() === 0.75, 200);
+ok('headroom steps back up to the starting scale within two windows',
+    adaptive.scale() === 0.75 && upAfter <= 90, {upAfter, stats: adaptive.stats()});
+walk(135);
 ok('Auto never climbs above the scale this screen started at', adaptive.scale() === 0.75);
 ok('the frame follows the scale', adaptive.frame.width === 360 && adaptive.frame.height === 270);
+ok('an attached view times the stage draw', !runtime.renderer || runtime.renderer.draw !== plainDraw);
 adaptive.dispose();
+ok('detaching gives the stage draw back untouched', !runtime.renderer || runtime.renderer.draw === plainDraw);
+
+section('auto quality watches display frames');
+let paceClock = 0;
+const frameQueue = [];
+const paced = createView3d(runtime, world, {canvas, document: doc, toBitmap: bitmap, devicePixelRatio: 1,
+    now: () => paceClock, requestFrame: cb => frameQueue.push(cb)});
+paced.attach(seam);
+paced.show(hero);
+walk(1);
+ok('a shown auto view starts watching display frames', frameQueue.length === 1);
+const runFrames = (count, lateEvery) => {
+    for (let i = 1; i <= count; i++) {
+        paceClock += lateEvery && i % lateEvery === 0 ? 50 : 16.7;
+        const next = frameQueue.shift();
+        if (next) next();
+    }
+};
+runFrames(91, 10);
+const pacedDown = ticksUntil(() => paced.scale() === RESOLUTION, 60);
+ok('ten percent late display frames step a cheap view down', paced.scale() === RESOLUTION && pacedDown <= 46,
+    {pacedDown, stats: paced.stats()});
+paced.setScale(0.75);
+runFrames(1);
+ok('a manual scale stops watching display frames', frameQueue.length === 0);
+paced.dispose();
 
 done();

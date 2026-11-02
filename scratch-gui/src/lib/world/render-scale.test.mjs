@@ -1,6 +1,7 @@
 import {ok, section, done} from './harness.mjs';
 
-const {HEADROOM, OVER_BUDGET, WINDOW, createScalePolicy, startScale} = await import('./render-scale.js');
+const {HEADROOM, LATE_SHARE_DOWN, MIN_PACED_FRAMES, OVER_BUDGET, WINDOW, createScalePolicy, startScale} =
+    await import('./render-scale.js');
 
 const FRAME = 1000 / 30;
 
@@ -56,6 +57,24 @@ for (let i = 0; i < WINDOW; i++) {
     if (next !== null) spikes = next;
 }
 ok('a few long ticks in a window do not step down, the median rules', spikes === null && outlier.scale === 1);
+
+section('display pacing');
+const pace = (policy, frames, late) => {
+    for (let i = 0; i < frames; i++) policy.paced(i < late);
+};
+const janky = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
+pace(janky, 90, Math.ceil(90 * LATE_SHARE_DOWN) + 2);
+ok('late display frames step Auto down even when the tick is cheap', feed(janky, 2, 1) === 0.75);
+pace(janky, 90, 3);
+ok('three percent late frames block stepping back up', feed(janky, 2, 1) === null && janky.scale === 0.75);
+pace(janky, 90, 0);
+ok('a smooth window steps back up', feed(janky, 2, 1) === 1);
+const fewFrames = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
+pace(fewFrames, MIN_PACED_FRAMES - 1, MIN_PACED_FRAMES - 1);
+ok('too few display frames to judge are ignored', feed(fewFrames, 2, 1) === null && fewFrames.scale === 1);
+const fixedPace = createScalePolicy({mode: 'crisp'});
+pace(fixedPace, 90, 90);
+ok('Crisp ignores late frames', feed(fixedPace, 2, 1) === null && fixedPace.scale === 1);
 
 const reconfigured = createScalePolicy({mode: 'auto', dpr: 1, width: 480, height: 360});
 reconfigured.configure({mode: 'auto', dpr: 2, width: 480, height: 360});

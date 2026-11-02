@@ -15,6 +15,8 @@ const RESOLUTION = 0.5;
 const TEXTURE_SIZE = 64;
 const SPRITE_MAX = 64;
 const SAMPLES = 240;
+const MIN_REFRESH_MS = 6.9;
+const LATE_FRAME_MS = 25;
 const VIEW_NAME = /^(.*)-([1-8])$/;
 const LOOKS = Object.freeze({picture: 1, views: 2, nothing: 0});
 const TURN_PER_PIXEL = 0.25;
@@ -177,6 +179,9 @@ const createView3d = (runtime, world, options) => {
         samples: [],
         tickStart: 0,
         drawMs: 0,
+        drew: false,
+        pendingWork: -1,
+        pendingDraw: 0,
         manual: fixedScale !== null,
         scale: defaultScale
     });
@@ -277,6 +282,65 @@ const createView3d = (runtime, world, options) => {
         ensureFrame();
     };
 
+    const frameBudget = () => Math.min(frameMs(), 1000 / 60);
+
+    const sampleTick = (tickMs, renderMs) => {
+        const next = policy.sample(tickMs, renderMs, frameBudget());
+        if (next !== null) applyScale(next);
+    };
+
+    const flushPending = () => {
+        if (state.pendingWork < 0) return;
+        const work = state.pendingWork;
+        state.pendingWork = -1;
+        sampleTick(work, state.pendingDraw);
+    };
+
+    const requestFrame = opts.requestFrame ||
+        (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+    const pacing = {running: false, last: 0, shortest: Infinity};
+
+    const paceFrame = () => {
+        if (!pacing.running) return;
+        if (!state.on || state.manual || !link.seam) {
+            pacing.running = false;
+            return;
+        }
+        const at = now();
+        if (pacing.last > 0) {
+            const gap = at - pacing.last;
+            pacing.shortest = Math.max(MIN_REFRESH_MS, Math.min(pacing.shortest, gap));
+            policy.paced(gap > Math.max(LATE_FRAME_MS, pacing.shortest * 1.75));
+        }
+        pacing.last = at;
+        requestFrame(paceFrame);
+    };
+
+    const startPacing = () => {
+        if (pacing.running || !requestFrame || state.manual || opts.adaptive === false) return;
+        pacing.running = true;
+        pacing.last = 0;
+        requestFrame(paceFrame);
+    };
+
+    const timeDraws = () => {
+        const renderer = runtime.renderer;
+        if (!renderer || typeof renderer.draw !== 'function') return () => {};
+        const original = renderer.draw;
+        const timed = (...args) => {
+            if (state.pendingWork < 0) return original.apply(renderer, args);
+            const started = now();
+            const result = original.apply(renderer, args);
+            state.pendingWork += now() - started;
+            flushPending();
+            return result;
+        };
+        renderer.draw = timed;
+        return () => {
+            if (renderer.draw === timed) renderer.draw = original;
+        };
+    };
+
     const setQuality = mode => {
         state.manual = false;
         applyScale(configure(mode));
@@ -368,6 +432,7 @@ const createView3d = (runtime, world, options) => {
         state.samples.push(elapsed);
         if (state.samples.length > SAMPLES) state.samples.shift();
         state.drawMs += elapsed;
+        state.drew = true;
     };
 
     const present = () => {
@@ -511,9 +576,12 @@ const createView3d = (runtime, world, options) => {
     };
 
     const onBefore = () => {
+        flushPending();
         if (!state.on) return;
+        if (!pacing.running) startPacing();
         state.tickStart = now();
         state.drawMs = 0;
+        state.drew = false;
         if (!state.turn) return;
         const turn = state.turn;
         state.turn = 0;
@@ -528,11 +596,12 @@ const createView3d = (runtime, world, options) => {
         }
         syncGhosts();
         refresh();
-        if (state.drawMs > 0 && state.tickStart > 0 && !state.manual && opts.adaptive !== false) {
-            const next = policy.sample(now() - state.tickStart, state.drawMs, frameMs());
-            if (next !== null) applyScale(next);
+        if (state.drew && state.tickStart > 0 && !state.manual && opts.adaptive !== false) {
+            state.pendingWork = now() - state.tickStart;
+            state.pendingDraw = state.drawMs;
         }
         state.drawMs = 0;
+        state.drew = false;
     };
 
     const destroy = () => {
@@ -581,6 +650,7 @@ const createView3d = (runtime, world, options) => {
             link.disposers.push(
                 seam.onBeforeExecute(onBefore),
                 seam.onAfterExecute(onAfter),
+                timeDraws(),
                 chainHook(seam, 'drawableProperties', hookProperties),
                 chainHook(seam, 'drawableEffect', hookEffect),
                 world.addDrawables(() => gpu.drawable)
