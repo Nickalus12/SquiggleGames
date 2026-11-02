@@ -26,17 +26,17 @@ const mainMessages = {
 
 const messages = defineMessages({
     projectData: {
-        defaultMessage: 'Getting your game ready …',
+        defaultMessage: 'Getting your game ready',
         description: 'Appears when loading project data, but not assets yet',
         id: 'sq.loader.projectData'
     },
     downloadingAssets: {
-        defaultMessage: 'Downloading pictures and sounds ({complete} of {total}) …',
+        defaultMessage: 'Downloading pictures and sounds ({complete} of {total})',
         description: 'Appears when loading project assets from a project on a remote website',
         id: 'sq.loader.downloadingAssets'
     },
     loadingAssets: {
-        defaultMessage: 'Loading pictures and sounds ({complete} of {total}) …',
+        defaultMessage: 'Loading pictures and sounds ({complete} of {total})',
         description: 'Appears when loading project assets from a project file on the user\'s computer',
         id: 'sq.loader.loadingAssets'
     }
@@ -129,7 +129,6 @@ class LoaderComponent extends React.Component {
         }
 
         if (total === 0) {
-            // Started loading a new project.
             this.barInnerEl.style.width = '0';
             this.messageEl.textContent = this.props.intl.formatMessage(messages.projectData);
         } else {

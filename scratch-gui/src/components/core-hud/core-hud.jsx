@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import classNames from 'classnames';
 import {defineMessages, FormattedMessage, injectIntl, intlShape} from 'react-intl';
-import {extractHudState} from '../../lib/core-hud-state.js';
+import {extractHudState, humanLabel} from '../../lib/core-hud-state.js';
 import HudFace from './hud-face.jsx';
 import styles from './core-hud.css';
 
@@ -577,6 +577,28 @@ StatusBandComponent.propTypes = {
 };
 const StatusBand = injectIntl(StatusBandComponent);
 
+const endToastText = (msg, net) => {
+    if (msg && msg.reason === 'stopped') return '';
+    const peers = net && Array.isArray(net.peers) ? net.peers : [];
+    const winner = msg && typeof msg.winner !== 'undefined' && msg.winner !== null ? msg.winner : '';
+    if (peers.length > 0 && winner !== '' && winner !== 0 && winner !== '0') {
+        const slotNum = Number(winner);
+        if (Number.isFinite(slotNum) && slotNum > 0) {
+            if (net && net.slot !== null && typeof net.slot !== 'undefined' && Number(net.slot) === slotNum) {
+                return 'You won! Press the green flag to play again.';
+            }
+            const names = net && net.game && net.game.names;
+            const knownName = names && typeof names[slotNum] === 'string' ? names[slotNum].trim() : '';
+            if (knownName) return `${knownName} won! Press the green flag to play again.`;
+            return `Player ${slotNum} won! Press the green flag to play again.`;
+        }
+        if (typeof winner === 'string' && winner.trim()) {
+            return `${humanLabel(winner, 'Winner')} won! Press the green flag to play again.`;
+        }
+    }
+    return 'Game over! Press the green flag to play again.';
+};
+
 class CoreHud extends React.Component {
     constructor (props) {
         super(props);
@@ -586,17 +608,22 @@ class CoreHud extends React.Component {
             collapsed: false,
             hurt: false,
             ammoFlash: false,
-            fragsFlash: false
+            fragsFlash: false,
+            endToast: ''
         };
         this.sig = JSON.stringify(hud);
         this.lastPoll = 0;
         this.hurtTimer = null;
         this.ammoTimer = null;
         this.fragsTimer = null;
+        this.offGameEnded = null;
         this.hiddenLegacy = new Set();
         this.handleAfterStep = this.handleAfterStep.bind(this);
         this.handleForceRefresh = this.handleForceRefresh.bind(this);
+        this.handleProjectStart = this.handleProjectStart.bind(this);
         this.handleProjectLoaded = this.handleProjectLoaded.bind(this);
+        this.handleGameEnded = this.handleGameEnded.bind(this);
+        this.bindNet = this.bindNet.bind(this);
         this.handleToggleBoard = this.handleToggleBoard.bind(this);
         this.clearHurt = this.clearHurt.bind(this);
         this.clearAmmoFlash = this.clearAmmoFlash.bind(this);
@@ -605,6 +632,10 @@ class CoreHud extends React.Component {
 
     componentDidMount () {
         this.bindRuntime(this.props.vm);
+        this.bindNet();
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('SquiggleNetReady', this.bindNet);
+        }
         this.handleForceRefresh();
     }
 
@@ -621,8 +652,26 @@ class CoreHud extends React.Component {
         clearTimeout(this.hurtTimer);
         clearTimeout(this.ammoTimer);
         clearTimeout(this.fragsTimer);
+        if (this.offGameEnded) {
+            this.offGameEnded();
+            this.offGameEnded = null;
+        }
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('SquiggleNetReady', this.bindNet);
+        }
         this.restoreLegacy(this.props.vm);
         this.unbindRuntime(this.props.vm);
+    }
+
+    bindNet () {
+        if (this.offGameEnded) {
+            this.offGameEnded();
+            this.offGameEnded = null;
+        }
+        const net = typeof window !== 'undefined' && window.SquiggleNet ? window.SquiggleNet : null;
+        if (net && typeof net.on === 'function') {
+            this.offGameEnded = net.on('game-ended', this.handleGameEnded);
+        }
     }
 
     bindRuntime (vm) {
@@ -630,7 +679,7 @@ class CoreHud extends React.Component {
         if (!runtime || typeof runtime.on !== 'function') return;
         runtime.on('AFTER_EXECUTE', this.handleAfterStep);
         runtime.on('PROJECT_LOADED', this.handleProjectLoaded);
-        runtime.on('PROJECT_START', this.handleForceRefresh);
+        runtime.on('PROJECT_START', this.handleProjectStart);
         runtime.on('SQUIGGLE_SETTINGS_CHANGED', this.handleForceRefresh);
     }
 
@@ -639,7 +688,7 @@ class CoreHud extends React.Component {
         if (!runtime || typeof runtime.removeListener !== 'function') return;
         runtime.removeListener('AFTER_EXECUTE', this.handleAfterStep);
         runtime.removeListener('PROJECT_LOADED', this.handleProjectLoaded);
-        runtime.removeListener('PROJECT_START', this.handleForceRefresh);
+        runtime.removeListener('PROJECT_START', this.handleProjectStart);
         runtime.removeListener('SQUIGGLE_SETTINGS_CHANGED', this.handleForceRefresh);
     }
 
@@ -655,9 +704,21 @@ class CoreHud extends React.Component {
         this.syncHud();
     }
 
+    handleProjectStart () {
+        if (this.state.endToast) this.setState({endToast: ''});
+        this.handleForceRefresh();
+    }
+
     handleProjectLoaded () {
         this.hiddenLegacy.clear();
+        if (this.state.endToast) this.setState({endToast: ''});
         this.handleForceRefresh();
+    }
+
+    handleGameEnded (msg) {
+        const net = typeof window !== 'undefined' && window.SquiggleNet ? window.SquiggleNet : null;
+        const text = endToastText(msg, net);
+        if (text) this.setState({endToast: text});
     }
 
     legacyRole (target) {
@@ -750,8 +811,9 @@ class CoreHud extends React.Component {
     }
 
     render () {
-        const {hud, collapsed, hurt, ammoFlash, fragsFlash} = this.state;
-        if (!hud || !hud.enabled || !hud.hasHudContent) return null;
+        const {hud, collapsed, hurt, ammoFlash, fragsFlash, endToast} = this.state;
+        const activeStatusPill = (hud && hud.statusPill) || endToast;
+        if (!hud || !hud.enabled || (!hud.hasHudContent && !activeStatusPill)) return null;
         const foldsBoard = !!(hud.bar && hud.bar.foldsBoard);
         return (
             <div
@@ -763,7 +825,7 @@ class CoreHud extends React.Component {
                     <TopCenter
                         timer={hud.timer}
                         teams={hud.teams}
-                        statusPill={hud.statusPill}
+                        statusPill={activeStatusPill}
                     />
                     {foldsBoard ? null : (
                         <Leaderboard
@@ -788,6 +850,7 @@ class CoreHud extends React.Component {
 CoreHud.TopCenter = TopCenter;
 CoreHud.Leaderboard = Leaderboard;
 CoreHud.StatusBand = StatusBand;
+CoreHud.endToastText = endToastText;
 
 CoreHud.propTypes = {
     vm: PropTypes.shape({

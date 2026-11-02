@@ -4,29 +4,14 @@
 @import "../../css/z-index.css";
 
 .stage {
-    /*
-        Fixes a few extra pixels of margin/padding, that adds on to the bottom
-        of the element, which messes up the chrome padding consistency
-    */
     display: block;
-
     border-radius: $space;
     border: $stage-standard-border-width solid $ui-black-transparent;
     overflow: hidden;
-
-    /* @todo: This is for overriding the value being set somewhere. Where is it being set? */
     background-color: transparent;
-
-    /* Allow custom touch handling to prevent scrolling on Edge */
     touch-action: none;
-
-    /* Make sure border is not included in size calculation */
     box-sizing: content-box !important;
-
-    /* enforce overflow + reset position of absolutely-positioned children */
     position: relative;
-
-    /* reset dark styles inherited from dark mode */
     color-scheme: light;
     color: $text-primary-default;
 }
@@ -55,15 +40,10 @@
     position: relative;
 }
 
-/* we want stage overlays to all be positioned in the same spot as the stage, but can't put them inside the border
-because we want their overflow to be visible, and the bordered element must have overflow: hidden set so that the
-stage doesn't "spill" out from under its rounded corners. instead, shift these over by the border width. */
 .stage-overlays {
     position: absolute;
     top: $stage-standard-border-width;
     left: $stage-standard-border-width;
-
-    /* the overlay itself should not capture pointer events; only its child elements can do that */
     pointer-events: none;
 }
 
@@ -118,7 +98,7 @@ stage doesn't "spill" out from under its rounded corners. instead, shift these o
     border-radius: 0.5rem;
     animation-name: flash;
     animation-duration: 0.75s;
-    animation-fill-mode: forwards; /* Leave at 0 opacity after animation */
+    animation-fill-mode: forwards;
 }
 
 .green-flag-overlay-wrapper {
@@ -127,31 +107,48 @@ stage doesn't "spill" out from under its rounded corners. instead, shift these o
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(0,0,0,0.25);
+    background: rgba(13, 16, 32, 0.45);
     border-radius: 0.5rem;
     pointer-events: all;
     cursor: pointer;
 }
 
 .green-flag-overlay {
-    padding: 1rem;
-    border-radius: 100%;
-    background: rgba(255,255,255,0.75);
-    border: 3px solid $ui-white-default;
-    display: flex;
+    padding: 0.75rem 1.35rem 0.75rem 1rem;
+    border-radius: 999px;
+    background: rgba(18, 18, 31, 0.92);
+    border: 2px solid rgba(124, 92, 255, 0.85);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    color: #f2f4fb;
+    font-family: var(--sq-font, "Nunito", "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    display: inline-flex;
+    gap: 0.65rem;
     justify-content: center;
     align-items: center;
     box-sizing: border-box;
-    width: 5rem;
-    height: 5rem;
+    min-height: 3.25rem;
+    cursor: pointer;
+}
+
+.green-flag-overlay:hover {
+    background: rgba(27, 31, 54, 0.96);
+    border-color: #7c5cff;
+}
+
+.green-flag-overlay:focus-visible {
+    outline: 2px solid #22d3ee;
+    outline-offset: 2px;
 }
 
 .green-flag-overlay > img {
-    width: 100%;
+    width: 1.75rem;
+    height: 1.75rem;
     object-fit: contain;
+    flex-shrink: 0;
 }
-
-
 
 @keyframes flash {
     0% { opacity: 1; }

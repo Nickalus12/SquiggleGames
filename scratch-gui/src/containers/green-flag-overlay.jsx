@@ -1,6 +1,7 @@
 import bindAll from 'lodash.bindall';
 import React from 'react';
 import PropTypes from 'prop-types';
+import {FormattedMessage} from 'react-intl';
 
 import {connect} from 'react-redux';
 import VM from 'scratch-vm';
@@ -19,10 +20,6 @@ class GreenFlagOverlay extends React.Component {
     handleClick () {
         this.props.vm.start();
         this.props.vm.greenFlag();
-
-        // FIXME: some unknown edge cases are causing start() to be called but for the
-        // RUNTIME_STARTED listener to not update redux, causing this to always be
-        // shown and never go away. this is a temporary hack to avoid that...
         this.props.onStarted();
     }
 
@@ -32,14 +29,24 @@ class GreenFlagOverlay extends React.Component {
                 className={this.props.wrapperClass}
                 onClick={this.handleClick}
             >
-                <div className={this.props.className}>
+                <button
+                    className={this.props.className}
+                    type="button"
+                >
                     <img
+                        alt=""
                         draggable={false}
                         src={greenFlag}
                     />
-                </div>
+                    <span>
+                        <FormattedMessage
+                            defaultMessage="Click to play"
+                            description="Overlay button on the stage to start the game"
+                            id="sq.stage.clickToPlay"
+                        />
+                    </span>
+                </button>
             </Box>
-
         );
     }
 }

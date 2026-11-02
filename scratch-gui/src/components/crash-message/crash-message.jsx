@@ -10,53 +10,64 @@ const CrashMessage = props => (
     <div className={styles.crashWrapper}>
         <Box className={styles.body}>
             <img
+                alt=""
                 className={styles.reloadIcon}
                 src={reloadIcon}
                 draggable={false}
             />
             <p className={styles.header}>
                 <FormattedMessage
-                    defaultMessage="Oops! Something went wrong."
-                    description="Crash Message title"
-                    id="gui.crashMessage.label"
+                    defaultMessage="Oops! Something went wrong"
+                    description="Crash message title"
+                    id="sq.crashMessage.label"
                 />
             </p>
-            <p>
+            <p className={styles.description}>
                 <FormattedMessage
-                    defaultMessage={'We are so sorry, but it looks like the page has crashed.' +
-                        ' Please refresh your page to try' +
-                        ' again.'}
-                    description="Message to inform the user that page has crashed."
-                    id="tw.gui.crashMessage.description"
+                    defaultMessage="This game hit a bump and had to stop. Reload the page to try again."
+                    description="Message to inform the player that the page has crashed"
+                    id="sq.crashMessage.description"
                 />
             </p>
-            {props.errorMessage && (
-                <p className={styles.errorMessage}>
-                    {props.errorMessage}
-                </p>
-            )}
-            {props.eventId && (
-                <p>
-                    <FormattedMessage
-                        defaultMessage="Your error was logged with id {errorId}"
-                        description="Message to inform the user that page has crashed."
-                        id="gui.crashMessage.errorNumber"
-                        values={{
-                            errorId: props.eventId
-                        }}
-                    />
-                </p>
-            )}
             <button
                 className={styles.reloadButton}
+                type="button"
                 onClick={props.onReload}
             >
                 <FormattedMessage
                     defaultMessage="Reload"
                     description="Button to reload the page when page crashes"
-                    id="gui.crashMessage.reload"
+                    id="sq.crashMessage.reload"
                 />
             </button>
+            {(props.errorMessage || props.eventId) && (
+                <details className={styles.details}>
+                    <summary className={styles.detailsSummary}>
+                        <FormattedMessage
+                            defaultMessage="Details"
+                            description="Toggle technical crash details"
+                            id="sq.crashMessage.details"
+                        />
+                    </summary>
+                    {props.errorMessage && (
+                        <pre className={styles.errorMessage}>
+                            {props.errorMessage}
+                        </pre>
+                    )}
+                    {props.eventId && (
+                        <p className={styles.eventId}>
+                            <FormattedMessage
+                                defaultMessage="Report number: {errorId}"
+                                description="Technical error reference hidden inside Details"
+                                id="sq.crashMessage.errorNumber"
+                                values={{
+                                    errorId: props.eventId
+                                }}
+                            />
+                        </p>
+                    )}
+                </details>
+            )}
         </Box>
     </div>
 );

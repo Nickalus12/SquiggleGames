@@ -53,7 +53,7 @@ const messages = defineMessages({
     you: {id: 'sq.room.you', defaultMessage: 'you', description: 'Marks your own row in the people list'},
     alone: {
         id: 'sq.room.alone',
-        defaultMessage: 'Just you so far. Send the room link and build together.',
+        defaultMessage: 'Just you so far. Share the room link to build and play together.',
         description: 'Shown when nobody else is in the room'
     },
     follow: {id: 'sq.room.follow', defaultMessage: 'Follow', description: 'Button to follow a peer'},

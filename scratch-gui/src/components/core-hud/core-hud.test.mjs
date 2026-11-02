@@ -48,7 +48,8 @@ const state = {
     extractHudState: () => {
         extracts++;
         return JSON.parse(JSON.stringify(fixture));
-    }
+    },
+    humanLabel: (s, fallback = '') => String(s || fallback).replace(/_/g, ' ')
 };
 const {default: CoreHud} = load('./core-hud.jsx', {
     '../../lib/core-hud-state.js': state,
@@ -233,6 +234,48 @@ ok('band feedback keyframes use transform and opacity only',
     keyframeProps.length > 0 && badAnimProps.length === 0, badAnimProps);
 ok('prefers-reduced-motion disables band animations',
     /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.slotFlash[\s\S]*?animation:\s*none/.test(cssSource));
+
+ok('solo end-of-game toast says Game over even when slot 1 is marked winner',
+    CoreHud.endToastText({type: 'game-ended', reason: 'over', winner: 1}, {slot: 1, peers: []}) ===
+    'Game over! Press the green flag to play again.');
+ok('multiplayer end-of-game toast says You won when my slot wins with peers present',
+    CoreHud.endToastText({type: 'game-ended', reason: 'over', winner: 1}, {slot: 1, peers: ['Pal']}) ===
+    'You won! Press the green flag to play again.');
+ok('multiplayer end-of-game toast names the winning player',
+    CoreHud.endToastText(
+        {type: 'game-ended', reason: 'over', winner: 2},
+        {slot: 1, peers: ['Pal'], game: {names: {2: 'Pal'}}}
+    ) === 'Pal won! Press the green flag to play again.');
+ok('stopped games produce no end toast',
+    CoreHud.endToastText({type: 'game-ended', reason: 'stopped'}, {slot: 1, peers: []}) === '');
+
+const hud3 = new CoreHud({vm});
+hud3.setState = patch => Object.assign(hud3.state, patch);
+hud3.componentDidMount();
+hud3.handleGameEnded({type: 'game-ended', reason: 'over', winner: 1});
+ok('game-ended sets endToast on CoreHud and PROJECT_START clears it',
+    hud3.state.endToast === 'Game over! Press the green flag to play again.');
+runtime.emit('PROJECT_START');
+ok('PROJECT_START clears the end-of-game toast', hud3.state.endToast === '');
+hud3.componentWillUnmount();
+
+const crashSource = readFileSync(
+    fileURLToPath(new URL('../crash-message/crash-message.jsx', import.meta.url)),
+    'utf8'
+);
+const crashFoldRe = new RegExp(
+    '<details[^>]*>[\\s\\S]*?<summary[^>]*>[\\s\\S]*?Details[\\s\\S]*?<\\/summary>' +
+    '[\\s\\S]*?props\\.errorMessage[\\s\\S]*?<\\/details>'
+);
+ok('crash screen hides error details behind a <details> Details fold with a Reload button',
+    crashFoldRe.test(crashSource) && /id="sq\.crashMessage\.reload"/.test(crashSource));
+
+const greenFlagSource = readFileSync(
+    fileURLToPath(new URL('../../containers/green-flag-overlay.jsx', import.meta.url)),
+    'utf8'
+);
+ok('green flag stage cover renders Click to play copy',
+    /defaultMessage="Click to play"/.test(greenFlagSource) && /id="sq\.stage\.clickToPlay"/.test(greenFlagSource));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
