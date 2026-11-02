@@ -28,7 +28,8 @@ const createEmitter = () => {
         },
         emit (name, payload) {
             const set = listeners.get(name);
-            if (set) Array.from(set).forEach(fn => fn(payload));
+            if (!set) return;
+            for (const fn of set) fn(payload);
         }
     };
 };
@@ -209,7 +210,7 @@ const createWorldState = (runtime, options) => {
         if (!renderer || !moved) return;
         state.applied = view;
         state.view = view;
-        for (const target of Array.from(state.pinned)) {
+        for (const target of state.pinned) {
             if (runtime.targets.indexOf(target) === -1 || typeof target.drawableID !== 'number') {
                 state.pinned.delete(target);
                 continue;

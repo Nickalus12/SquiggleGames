@@ -17,6 +17,7 @@ const createTileRenderer = options => {
     const now = options.now || (() => Date.now());
     const chunks = new Map();
     const dirty = new Set();
+    const keep = new Set();
     let grid = null;
     let range = '';
     let hidden = false;
@@ -121,9 +122,10 @@ const createTileRenderer = options => {
         renderer.updateDrawableVisible(chunk.drawable, visible);
     };
 
-    const evict = keep => {
-        const spare = Array.from(chunks.values()).filter(chunk => !keep.has(chunk.key));
-        const limit = Math.max(0, POOL - keep.size);
+    const evict = kept => {
+        if (chunks.size <= POOL) return;
+        const spare = Array.from(chunks.values()).filter(chunk => !kept.has(chunk.key));
+        const limit = Math.max(0, POOL - kept.size);
         if (spare.length <= limit) return;
         spare.sort((a, b) => a.used - b.used);
         spare.slice(0, spare.length - limit).forEach(destroyChunk);
@@ -141,7 +143,7 @@ const createTileRenderer = options => {
         const next = `${x0},${x1},${y0},${y1}`;
         if (next === range && dirty.size === 0) return 0;
         range = next;
-        const keep = new Set();
+        keep.clear();
         const stamp = now();
         let painted = 0;
         for (const group of GROUPS) {

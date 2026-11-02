@@ -5,7 +5,7 @@ import {chainHook} from './world.js';
 import {createScalePolicy} from './render-scale.js';
 import {readGameSettings} from '../game-settings.js';
 import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, WIDTH, clampEye, clampFog, clampFov, createFrame, facingIndex, gridMap,
-    parseColor, pixel, render} from './raycast.js';
+    parseColor, pickCrosshair, pixel, render} from './raycast.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_STOP_ALL = 'PROJECT_STOP_ALL';
@@ -114,7 +114,7 @@ const facingCostume = (target, viewer, cache) => {
         if (cache) cache.set(current, set);
     }
     if (!set.views) return current;
-    return set.views[facingIndex(target.direction, {x: viewer.x - target.x, y: viewer.y - target.y})];
+    return set.views[facingIndex(target.direction, viewer.x - target.x, viewer.y - target.y)];
 };
 
 const percentile = (sorted, p) => (
@@ -171,6 +171,7 @@ const createView3d = (runtime, world, options) => {
         mouseTurn: false,
         turn: 0,
         rendered: -1,
+        sightsHash: -1,
         uploaded: -1,
         uploads: 0,
         release: null,
@@ -188,13 +189,24 @@ const createView3d = (runtime, world, options) => {
     let state = fresh();
     const gpu = {drawable: null, skin: null, image: null, scale: defaultScale};
     const link = {seam: null, disposers: [], effect: null, input: null};
-    const cache = {grid: false, revision: -1, loads: -1, tileset: '', count: -1, textures: [], serial: 0};
+    const cache = {
+        grid: false,
+        revision: -1,
+        loads: -1,
+        tileset: '',
+        count: -1,
+        textures: [],
+        serial: 0,
+        wallKey: 0,
+        holder: null
+    };
 
     const pixels = createPixelCache({
         loadImage: opts.loadImage || browserImageLoader,
         createCanvas: opts.createCanvas || browserCanvas,
         onLoad: () => {
             state.rendered = -1;
+            state.sightsHash = -1;
         }
     });
 
@@ -208,6 +220,7 @@ const createView3d = (runtime, world, options) => {
         ceiling: DEFAULT_CEILING,
         wallColor: () => WALL_COLOR,
         texture: value => cache.textures[value] || null,
+        wallKey: 0,
         sprites: [],
         spriteCount: 0
     };
@@ -223,8 +236,13 @@ const createView3d = (runtime, world, options) => {
     };
 
     const tilesetCount = level => {
-        const owner = level && level.tileset ? runtime.getSpriteTargetByName(level.tileset) : null;
+        const tileset = level ? level.tileset : '';
+        if (level === cache.grid && tileset === cache.tileset && cache.holder) {
+            return cache.holder.getCostumes().length;
+        }
+        const owner = tileset ? runtime.getSpriteTargetByName(tileset) : null;
         const holder = owner || runtime.getTargetForStage();
+        cache.holder = holder || null;
         return holder ? holder.getCostumes().length : 0;
     };
 
@@ -240,6 +258,7 @@ const createView3d = (runtime, world, options) => {
         cache.tileset = tileset;
         cache.count = count;
         cache.textures.length = 0;
+        scene.wallKey = ++cache.wallKey;
         if (!level) return;
         for (let value = 1; value <= level.tiles.length; value++) {
             cache.textures[value] = pixels.get(costumeFor(runtime, level, value), 'wall');
@@ -409,8 +428,7 @@ const createView3d = (runtime, world, options) => {
         scene.spriteCount = n;
     };
 
-    const draw = hash => {
-        const started = now();
+    const prepareScene = () => {
         const level = grid();
         const space = level || FREE_GRID;
         const viewer = state.viewer;
@@ -424,15 +442,30 @@ const createView3d = (runtime, world, options) => {
         scene.floor = state.floor;
         scene.ceiling = state.ceiling;
         collect(space);
+    };
+
+    const draw = hash => {
+        const started = now();
+        prepareScene();
         const result = render(frame, scene);
         state.crosshair = result.crosshair;
         state.target = result.target;
         state.rendered = hash;
+        state.sightsHash = hash;
         const elapsed = now() - started;
         state.samples.push(elapsed);
         if (state.samples.length > SAMPLES) state.samples.shift();
         state.drawMs += elapsed;
         state.drew = true;
+    };
+
+    const sights = hash => {
+        prepareScene();
+        const hit = pickCrosshair(frame, scene);
+        state.crosshair = hit.crosshair;
+        state.target = hit.target;
+        state.sightsHash = hash;
+        return state.crosshair;
     };
 
     const present = () => {
@@ -700,8 +733,8 @@ const createView3d = (runtime, world, options) => {
         crosshair () {
             if (!state.on || !viewerAlive()) return '';
             const hash = frameHash();
-            if (hash !== state.rendered) draw(hash);
-            return state.crosshair;
+            if (hash === state.rendered || hash === state.sightsHash) return state.crosshair;
+            return sights(hash);
         },
         step: onAfter,
         stats () {

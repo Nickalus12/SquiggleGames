@@ -4,8 +4,8 @@ const {FLAGS, addTexture, createGrid, flagsAt, setCell} = await import('./tilema
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
-const {WIDTH, HEIGHT, basis, castRay, createFrame, facingIndex, gridMap, parseColor, pixel, mixColors, fogEnd,
-    render, toCell, fromCell, clampFov, clampEye, clampFog, wrapDegrees} = ray;
+const {WIDTH, HEIGHT, basis, castRay, createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
+    fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, wrapDegrees} = ray;
 
 const room = (cols, rows, options) => {
     const opts = options || {};
@@ -411,6 +411,65 @@ section('no allocation per frame');
     const filled = basis(90, 66, out);
     ok('basis fills the object it is given', filled === out && near(out.dir.x, 1) &&
         near(out.focal, b90.focal) && near(out.plane.y, b90.plane.y));
+}
+
+section('golden frame hash and column caching');
+{
+    const hashPixels = pixels => {
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < pixels.length; i++) {
+            h = Math.imul(h ^ pixels[i], 16777619) >>> 0;
+        }
+        return h >>> 0;
+    };
+    const grid = createGrid({id: 'golden', name: 'Golden', cols: 16, rows: 16, tileSize: 32, origin: [-256, 256]});
+    addTexture(grid, 'brick', FLAGS.solid);
+    for (let i = 0; i < 16; i++) {
+        setCell(grid, 'main', i, 0, 1);
+        setCell(grid, 'main', i, 15, 1);
+        setCell(grid, 'main', 0, i, 1);
+        setCell(grid, 'main', 15, i, 1);
+    }
+    setCell(grid, 'main', 6, 5, 1);
+    setCell(grid, 'main', 10, 6, 1);
+    const wallTex = {width: 16, height: 16, data: new Uint32Array(256)};
+    for (let i = 0; i < 256; i++) {
+        wallTex.data[i] = pixel(80 + ((i * 13) & 127), 50 + ((i * 7) & 127), 40 + ((i * 19) & 127));
+    }
+    const sprTex = {width: 12, height: 16, data: new Uint32Array(192)};
+    for (let i = 0; i < 192; i++) {
+        sprTex.data[i] = (i % 12 === 0 || i % 12 === 11) ? 0 : pixel(200, 40 + (i & 63), 30);
+    }
+    const scout = {name: 'Scout', u: 8.9, v: 7.5, image: sprTex, height: 0.9, elevation: 0};
+    const orb = {name: 'Orb', u: 7.4, v: 6.2, image: sprTex, height: 0.6, elevation: 0.15};
+    const offscreen = {name: 'Offscreen', u: 2.0, v: 11.0, image: sprTex, height: 1.0, elevation: 0};
+    const scene = {
+        map: mapOf(grid),
+        player: {u: 8.25, v: 11.5, direction: 15},
+        fov: 68,
+        fog: 55,
+        eye: 48,
+        floor: pixel(0x3b, 0x32, 0x28),
+        ceiling: pixel(0x17, 0x15, 0x13),
+        texture: v => (v === 1 ? wallTex : null),
+        sprites: [scout, orb, offscreen]
+    };
+    const frame = createFrame(320, 180);
+    render(frame, scene);
+    const golden = hashPixels(frame.pixels);
+    ok('fixed camera frame matches golden pixel hash', golden === 0x640bae70, golden.toString(16));
+    scout.u = 9.4;
+    render(frame, scene);
+    const movedHash = hashPixels(frame.pixels);
+    ok('moving a billboard while camera stays still changes the frame', movedHash !== golden);
+    scout.u = 8.9;
+    render(frame, scene);
+    ok('cached wall columns restore the exact golden pixel hash', hashPixels(frame.pixels) === golden);
+    const aimed = Object.assign({}, scene, {player: {u: 8.9, v: 11.5, direction: 0}});
+    const full = render(frame, aimed);
+    const picked = pickCrosshair(frame, aimed);
+    ok('pickCrosshair matches full render crosshair at centre column',
+        full.crosshair === 'Scout' && picked.crosshair === full.crosshair, [full.crosshair, picked.crosshair]);
 }
 
 done();

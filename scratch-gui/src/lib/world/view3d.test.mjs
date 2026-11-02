@@ -265,6 +265,18 @@ runtime._step();
 ok('a setting change uploads once', view.stats().uploads === still + 4);
 runtime._step();
 ok('then it is still again', view.stats().uploads === still + 4);
+const framesBeforeSights = view.stats().frames;
+const guardHomeX = guard.x;
+guard.setXY(cellX(2), guard.y);
+const midTickAway = view.crosshair();
+guard.setXY(hero.x, guard.y);
+const midTickAimed = view.crosshair();
+const framesAfterSights = view.stats().frames;
+runtime._step();
+guard.setXY(guardHomeX, guard.y);
+runtime._step();
+ok('mid-tick crosshair queries pick the centre column without extra full-frame renders',
+    midTickAway === '' && midTickAimed === 'Guard' && framesAfterSights === framesBeforeSights);
 
 section('settings');
 view.setSetting('fov', 500);
