@@ -1,5 +1,5 @@
 import {MAX_OP_NAME, MAX_OP_VALUE, RECONNECT_MIN_MS, createGameSession, gameSocketUrl, wireValue} from './net.js';
-import {TICK_MS, createInterpolationBuffer} from './buffer.js';
+import {TICK_MS, createConnectionHealth, createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
 import {RULES_KEY} from '../collab/project-seam.js';
@@ -168,6 +168,7 @@ const createGameLink = ({
     const live = new Set();
     let tickMs = TICK_MS;
     let buffer = createInterpolationBuffer({tickMs});
+    let health = createConnectionHealth({buffer, prediction});
     let game = createGameState(tickMs / 1000);
     let session = null;
     let unsubs = [];
@@ -196,12 +197,15 @@ const createGameLink = ({
     };
 
     const onWelcome = msg => {
+        health.setConnected(true, now());
         const hz = msg && Number.isFinite(msg.tickHz) && msg.tickHz > 0 ? msg.tickHz : 0;
         if (!hz) return;
         game.tickSeconds = 1 / hz;
         if (1000 / hz === tickMs) return;
         tickMs = 1000 / hz;
         buffer = createInterpolationBuffer({tickMs});
+        health = createConnectionHealth({buffer, prediction});
+        health.setConnected(true, now());
     };
 
     const deliverTick = (tick, result) => {
@@ -215,18 +219,26 @@ const createGameLink = ({
     };
 
     const onTick = tick => {
+        const at = now();
         const result = applyTick(game, tick);
-        if (result.applied && tick.a && typeof tick.a === 'object') {
-            buffer.clock.observe(tick.t, now());
-            Object.keys(tick.a).forEach(slot => {
-                if (tick.a[slot] === null) buffer.drop(slot);
-                else buffer.push(slot, tick.t, tick.a[slot]);
-            });
-        }
-        if (result.keyframe) {
-            buffer.slots(bufferSlots).forEach(slot => {
-                if (!game.avatars[slot]) buffer.drop(slot);
-            });
+        if (result.applied) {
+            buffer.clock.observe(tick.t, at);
+            if (session && session.rtt !== null) health.observeRtt(session.rtt, at);
+            if (tick.a && typeof tick.a === 'object') {
+                Object.keys(tick.a).forEach(slot => {
+                    if (tick.a[slot] === null) buffer.drop(slot);
+                    else buffer.push(slot, tick.t, tick.a[slot]);
+                });
+            }
+            buffer.slots(bufferSlots);
+            for (let i = 0; i < bufferSlots.length; i++) {
+                const slot = bufferSlots[i];
+                if (!game.avatars[slot]) {
+                    if (result.keyframe) buffer.drop(slot);
+                } else if (!tick.a || !(slot in tick.a)) {
+                    buffer.push(slot, tick.t, game.avatars[slot]);
+                }
+            }
         }
         deliverTick(tick, result);
         if (!result.applied) return;
@@ -332,7 +344,10 @@ const createGameLink = ({
                 onWelcome(msg);
                 if (onOpen) onOpen(msg);
             }));
-            unsubs.push(session.on('dropped', msg => onDropped && onDropped(msg)));
+            unsubs.push(session.on('dropped', msg => {
+                health.setConnected(false, now());
+                if (onDropped) onDropped(msg);
+            }));
             unsubs.push(session.on('game', msg => {
                 if (onSharedVar && msg && msg.action === 'var') onSharedVar(msg);
             }));
@@ -409,6 +424,15 @@ const createGameLink = ({
         },
         get avatars () {
             return avatars;
+        },
+        get buffer () {
+            return buffer;
+        },
+        get prediction () {
+            return prediction;
+        },
+        get health () {
+            return health;
         },
         get latched () {
             return latched;
