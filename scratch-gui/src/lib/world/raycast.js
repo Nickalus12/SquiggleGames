@@ -204,13 +204,16 @@ const updateLightBuffer = (buf, map, lights) => {
         const r0 = Math.max(0, Math.floor(lv - lightRad) | 0);
         const r1 = Math.min(rows - 1, Math.floor(lv + lightRad) | 0);
         const invRad = 1 / lightRad;
+        const radSq = lightRad * lightRad;
         for (let row = r0; row <= r1; row++) {
             const dv = (row + 0.5) - lv;
+            const dvSq = dv * dv;
             const rowOff = row * cols;
             for (let c = c0; c <= c1; c++) {
                 const du = (c + 0.5) - lu;
-                const dist = Math.hypot(du, dv);
-                if (dist >= lightRad) continue;
+                const distSq = (du * du) + dvSq;
+                if (distSq >= radSq) continue;
+                const dist = Math.sqrt(distSq);
                 const atten = 1 - (dist * invRad);
                 const idx = rowOff + c;
                 const nextLvl = level[idx] + ((atten * lum) | 0);
@@ -390,6 +393,20 @@ const createFrame = (width, height) => {
 
 const eyeOf = scene => clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100;
 
+const isTexOpaque = tex => {
+    if (!tex || !tex.data) return true;
+    if (typeof tex._opaque === 'boolean') return tex._opaque;
+    const data = tex.data;
+    for (let i = 0; i < data.length; i++) {
+        if ((data[i] >>> 24) < ALPHA_MIN) {
+            tex._opaque = false;
+            return false;
+        }
+    }
+    tex._opaque = true;
+    return true;
+};
+
 const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const {pixels, rowColors, skyTx} = frame;
     const w = frame.width || WIDTH;
@@ -473,7 +490,35 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         }
     }
 
-    const skyEnd = Math.max(0, Math.min(h, Math.floor(half)));
+    let coverY0 = h;
+    let coverY1 = -1;
+    if (frame._rayMap && frame._rayMap === map) {
+        const {colOk, colDist, colVal} = frame;
+        let allOpaque = true;
+        let maxDist = 0;
+        for (let x = 0; x < w; x++) {
+            if (!colOk[x]) {
+                allOpaque = false;
+                break;
+            }
+            const d = colDist[x];
+            if (d > maxDist) maxDist = d;
+            if (getTex) {
+                const wTex = getTex(colVal[x]);
+                if (wTex && !isTexOpaque(wTex)) {
+                    allOpaque = false;
+                    break;
+                }
+            }
+        }
+        if (allOpaque && maxDist > 1e-4) {
+            const minLineH = view.focal / maxDist;
+            coverY0 = Math.max(0, Math.ceil(half - ((1 - eye) * minLineH)));
+            coverY1 = Math.min(h, Math.floor(half + (eye * minLineH)));
+        }
+    }
+
+    const skyEnd = Math.max(0, Math.min(h, Math.min(coverY0, Math.floor(half))));
     if (isSky && skyData) {
         const denomH = Math.max(1, half);
         for (let y = 0; y < skyEnd; y++) {
@@ -488,8 +533,12 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         }
     }
 
-    const startY = isSky ? skyEnd : 0;
+    const startY = isSky ? Math.max(skyEnd, Math.min(h, Math.floor(half))) : 0;
     for (let y = startY; y < h; y++) {
+        if (y >= coverY0 && y < coverY1) {
+            y = coverY1 - 1;
+            continue;
+        }
         const isCeil = y < half;
         const denom = isCeil ? ((half - y) - 0.5) : ((y + 0.5) - half);
         const rowStart = y * w;
@@ -526,23 +575,18 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         const fogR = ((fogColor & 255) * f) | 0;
         const fogG = (((fogColor >>> 8) & 255) * f) | 0;
         const fogB = (((fogColor >>> 16) & 255) * f) | 0;
+        const fogRB = (fogB << 16) | fogR;
+        const fogG8 = fogG << 8;
 
-        let prevCol = -999999;
-        let prevRow = -999999;
         let cellTexData = surfGlobalTex ? surfGlobalTex.data : null;
         let cellTexW = surfGlobalTex ? (surfGlobalTex.width | 0) : 0;
         let cellTexH = surfGlobalTex ? (surfGlobalTex.height | 0) : 0;
         let cellTex64 = cellTexW === 64 && cellTexH === 64;
-        let cellKeep = baseKeep;
-        let cellAddR = fogR;
-        let cellAddG = fogG;
-        let cellAddB = fogB;
-        let cellFlatColor = 0;
         let prevC = -1;
         let prevOut = 0;
 
         if (!surfGrid && !hasLightBuf && cellTexData) {
-            if (cellKeep >= 255 && f <= 0) {
+            if (baseKeep >= 255 && f <= 0) {
                 if (cellTex64) {
                     for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
                         const tIdx = ((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63);
@@ -557,14 +601,12 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                 }
             } else if (cellTex64) {
                 for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
-                    const tIdx = ((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63);
-                    const c = cellTexData[tIdx];
+                    const c = cellTexData[((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63)];
                     if (c !== prevC) {
                         prevC = c;
-                        const r = ((((c & 255) * cellKeep) >> 8) + fogR) & 255;
-                        const g = (((((c >>> 8) & 255) * cellKeep) >> 8) + fogG) & 255;
-                        const b = (((((c >>> 16) & 255) * cellKeep) >> 8) + fogB) & 255;
-                        prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                        const rb = (((((c & 0x00ff00ff) * baseKeep) >>> 8) + fogRB) & 0x00ff00ff);
+                        const g = (((((c & 0x0000ff00) * baseKeep) >>> 8) + fogG8) & 0x0000ff00);
+                        prevOut = (OPAQUE | rb | g) >>> 0;
                     }
                     pixels[rowStart + x] = prevOut;
                 }
@@ -575,10 +617,9 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                     const c = cellTexData[(ty * cellTexW) + tx];
                     if (c !== prevC) {
                         prevC = c;
-                        const r = ((((c & 255) * cellKeep) >> 8) + fogR) & 255;
-                        const g = (((((c >>> 8) & 255) * cellKeep) >> 8) + fogG) & 255;
-                        const b = (((((c >>> 16) & 255) * cellKeep) >> 8) + fogB) & 255;
-                        prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                        const rb = (((((c & 0x00ff00ff) * baseKeep) >>> 8) + fogRB) & 0x00ff00ff);
+                        const g = (((((c & 0x0000ff00) * baseKeep) >>> 8) + fogG8) & 0x0000ff00);
+                        prevOut = (OPAQUE | rb | g) >>> 0;
                     }
                     pixels[rowStart + x] = prevOut;
                 }
@@ -590,68 +631,92 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         const baseG = (baseColor >>> 8) & 255;
         const baseB = (baseColor >>> 16) & 255;
 
-        for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+        for (let x = 0; x < w;) {
             const col = fu >> 16;
             const row = fv >> 16;
-            if (col !== prevCol || row !== prevRow) {
-                prevCol = col;
-                prevRow = row;
-                prevC = -1;
-                const inBounds = col >= 0 && row >= 0 && col < cols && row < rows;
-                const cellIdx = inBounds ? ((row * cols) + col) : -1;
-                let tex = surfGlobalTex;
-                if (surfGrid && cellIdx >= 0) {
-                    const val = surfGrid[cellIdx];
-                    if (val > 0 && getTex) tex = getTex(val) || surfGlobalTex;
-                }
-                if (tex) {
-                    cellTexData = tex.data;
-                    cellTexW = tex.width | 0;
-                    cellTexH = tex.height | 0;
-                    cellTex64 = cellTexW === 64 && cellTexH === 64;
-                } else {
-                    cellTexData = null;
-                }
-                if (hasLightBuf && cellIdx >= 0) {
-                    cellKeep = (baseKeep * lightLevel[cellIdx]) >> 8;
-                    cellAddR = fogR + ((glowR[cellIdx] * oneMinusF256) >> 8);
-                    cellAddG = fogG + ((glowG[cellIdx] * oneMinusF256) >> 8);
-                    cellAddB = fogB + ((glowB[cellIdx] * oneMinusF256) >> 8);
-                } else {
-                    cellKeep = baseKeep;
-                    cellAddR = fogR;
-                    cellAddG = fogG;
-                    cellAddB = fogB;
-                }
-                if (!cellTexData) {
-                    let r = ((baseR * cellKeep) >> 8) + cellAddR;
-                    let g = ((baseG * cellKeep) >> 8) + cellAddG;
-                    let b = ((baseB * cellKeep) >> 8) + cellAddB;
-                    if (r > 255) r = 255;
-                    if (g > 255) g = 255;
-                    if (b > 255) b = 255;
-                    cellFlatColor = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
-                }
+            prevC = -1;
+            const inBounds = col >= 0 && row >= 0 && col < cols && row < rows;
+            const cellIdx = inBounds ? ((row * cols) + col) : -1;
+            let tex = surfGlobalTex;
+            if (surfGrid && cellIdx >= 0) {
+                const val = surfGrid[cellIdx];
+                if (val > 0 && getTex) tex = getTex(val) || surfGlobalTex;
+            }
+            if (tex) {
+                cellTexData = tex.data;
+                cellTexW = tex.width | 0;
+                cellTexH = tex.height | 0;
+                cellTex64 = cellTexW === 64 && cellTexH === 64;
+            } else {
+                cellTexData = null;
+            }
+            let cellKeep = baseKeep;
+            let cellAddR = fogR;
+            let cellAddG = fogG;
+            let cellAddB = fogB;
+            if (hasLightBuf && cellIdx >= 0) {
+                cellKeep = (baseKeep * lightLevel[cellIdx]) >> 8;
+                cellAddR = fogR + ((glowR[cellIdx] * oneMinusF256) >> 8);
+                cellAddG = fogG + ((glowG[cellIdx] * oneMinusF256) >> 8);
+                cellAddB = fogB + ((glowB[cellIdx] * oneMinusF256) >> 8);
             }
             if (!cellTexData) {
-                pixels[rowStart + x] = cellFlatColor;
-                continue;
-            }
-            const tIdx = cellTex64 ?
-                (((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63)) :
-                (((((fv & 0xffff) * cellTexH) >>> 16) * cellTexW) + ((((fu & 0xffff) * cellTexW) >>> 16)));
-            const c = cellTexData[tIdx];
-            if (c !== prevC) {
-                prevC = c;
-                let r = (((c & 255) * cellKeep) >> 8) + cellAddR;
-                let g = ((((c >>> 8) & 255) * cellKeep) >> 8) + cellAddG;
-                let b = ((((c >>> 16) & 255) * cellKeep) >> 8) + cellAddB;
+                let r = ((baseR * cellKeep) >> 8) + cellAddR;
+                let g = ((baseG * cellKeep) >> 8) + cellAddG;
+                let b = ((baseB * cellKeep) >> 8) + cellAddB;
                 if (r > 255) r = 255;
                 if (g > 255) g = 255;
                 if (b > 255) b = 255;
-                prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                const cellFlatColor = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
+                    pixels[rowStart + x] = cellFlatColor;
+                    x++;
+                    fu = (fu + dfu) | 0;
+                    fv = (fv + dfv) | 0;
+                }
+                continue;
             }
-            pixels[rowStart + x] = prevOut;
+            const noClamp = (cellKeep + cellAddR) <= 256 &&
+                (cellKeep + cellAddG) <= 256 &&
+                (cellKeep + cellAddB) <= 256;
+            if (cellTex64 && noClamp) {
+                const cellAddRB = (cellAddB << 16) | cellAddR;
+                const cellAddG8 = cellAddG << 8;
+                while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
+                    const c = cellTexData[((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63)];
+                    if (c !== prevC) {
+                        prevC = c;
+                        const rb = (((((c & 0x00ff00ff) * cellKeep) >>> 8) + cellAddRB) & 0x00ff00ff);
+                        const g = (((((c & 0x0000ff00) * cellKeep) >>> 8) + cellAddG8) & 0x0000ff00);
+                        prevOut = (OPAQUE | rb | g) >>> 0;
+                    }
+                    pixels[rowStart + x] = prevOut;
+                    x++;
+                    fu = (fu + dfu) | 0;
+                    fv = (fv + dfv) | 0;
+                }
+            } else {
+                while (x < w && (fu >> 16) === col && (fv >> 16) === row) {
+                    const tIdx = cellTex64 ?
+                        (((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63)) :
+                        (((((fv & 0xffff) * cellTexH) >>> 16) * cellTexW) + ((((fu & 0xffff) * cellTexW) >>> 16)));
+                    const c = cellTexData[tIdx];
+                    if (c !== prevC) {
+                        prevC = c;
+                        let r = (((c & 255) * cellKeep) >> 8) + cellAddR;
+                        let g = ((((c >>> 8) & 255) * cellKeep) >> 8) + cellAddG;
+                        let b = ((((c >>> 16) & 255) * cellKeep) >> 8) + cellAddB;
+                        if (r > 255) r = 255;
+                        if (g > 255) g = 255;
+                        if (b > 255) b = 255;
+                        prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                    }
+                    pixels[rowStart + x] = prevOut;
+                    x++;
+                    fu = (fu + dfu) | 0;
+                    fv = (fv + dfv) | 0;
+                }
+            }
         }
     }
 };

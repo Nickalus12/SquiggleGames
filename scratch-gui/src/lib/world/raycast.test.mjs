@@ -477,8 +477,26 @@ section('golden frame hash and column caching');
     for (let i = 0; i < floorTex.data.length; i++) {
         floorTex.data[i] = pixel(40 + (i & 31), 60 + ((i >> 6) & 31), 90 + ((i * 3) & 31));
     }
+    const skyScene = Object.assign({}, scene, {ceilingMode: 'sky'});
+    render(frame, skyScene);
+    const skyGolden = hashPixels(frame.pixels);
+    const falloffScene = Object.assign({}, scene, {fog: 0, lightFalloff: 50});
+    render(frame, falloffScene);
+    const falloffGolden = hashPixels(frame.pixels);
+    const floorOnlyScene = Object.assign({}, scene, {floorMode: 'brick', floorTex, floorTextures: true});
+    render(frame, floorOnlyScene);
+    const floorGolden = hashPixels(frame.pixels);
+    const floorOffScene = Object.assign({}, floorOnlyScene, {floorTextures: false});
+    render(frame, floorOffScene);
+    const floorOffGolden = hashPixels(frame.pixels);
+    ok('floorTextures false matches flat-colour golden hash 0x640bae70',
+        floorOffGolden === 0x640bae70, floorOffGolden.toString(16));
+
     setCell(grid, 'floor', 8, 10, 1);
     setCell(grid, 'light', 8, 9, 50);
+    const sectorScene = Object.assign({}, scene, {map: mapOf(grid), floorTextures: false});
+    render(frame, sectorScene);
+    const sectorGolden = hashPixels(frame.pixels);
     const litScene = Object.assign({}, scene, {
         map: mapOf(grid),
         floorMode: 'brick',
@@ -490,11 +508,34 @@ section('golden frame hash and column caching');
     const litFrame = createFrame(320, 180);
     render(litFrame, litScene);
     const litGolden = hashPixels(litFrame.pixels);
-    ok('textured floor + sky + lighting scene matches golden pixel hash',
-        litGolden !== golden && litGolden > 0, litGolden.toString(16));
+    ok('sky look feature matches golden hash 0xc4f083b8', skyGolden === 0xc4f083b8, skyGolden.toString(16));
+    ok('fog-0 distance shade matches golden hash 0xb51b2c2f', falloffGolden === 0xb51b2c2f, falloffGolden.toString(16));
+    ok('floor texture matches golden hash 0x91962b31', floorGolden === 0x91962b31, floorGolden.toString(16));
+    ok('sector light matches golden hash 0x466f52dd', sectorGolden === 0x466f52dd, sectorGolden.toString(16));
+    ok('full textured + sky + lighting scene matches golden hash 0x1543af47',
+        litGolden === 0x1543af47, litGolden.toString(16));
     render(litFrame, litScene);
     ok('cached background preserves textured + sky + lighting golden pixel hash',
         hashPixels(litFrame.pixels) === litGolden);
+
+    const shadeGrid = room(24, 24);
+    setCell(shadeGrid, 'flags', 12, 9, FLAGS.solid);
+    const shadeScene = {
+        map: mapOf(shadeGrid),
+        player: {u: 12.5, v: 11.5, direction: 0},
+        fov: 66,
+        fog: 0,
+        lightFalloff: 50,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => pixel(200, 200, 200)
+    };
+    const shadeFrame = createFrame(240, 180);
+    render(shadeFrame, shadeScene);
+    const oneTileBlue = (shadeFrame.pixels[(90 * 240) + 120] >>> 16) & 255;
+    const farWallBlue = (shadeFrame.pixels[(90 * 240) + 20] >>> 16) & 255;
+    ok('with fog 0 and distance shade on, a far wall channel is lower than a one-tile wall channel',
+        farWallBlue > 0 && oneTileBlue - farWallBlue >= 40, [oneTileBlue, farWallBlue]);
 }
 
 section('floor caster, sky, lighting, and horizon pure functions');
