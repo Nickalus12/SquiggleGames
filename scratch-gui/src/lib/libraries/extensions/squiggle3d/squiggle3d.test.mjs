@@ -78,7 +78,7 @@ const opcodes = blocks.map(block => block.opcode);
 ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
     'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
-    'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch',
+    'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch', 'jumpIn3d',
     'setToolSway', 'whenStep', 'setFootsteps', 'setSoundRange',
     'spriteInSights',
     'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor',
@@ -98,6 +98,7 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
     byOp.usePlayerSettings.text === 'use the player\'s 3D settings [ONOFF]' &&
     byOp.setPitch.text === 'set 3D pitch to [N]' &&
     byOp.pitch.text === '3D pitch' &&
+    byOp.jumpIn3d.text === 'jump in 3D' &&
     byOp.setToolSway.text === 'set 3D tool sway to [ONOFF]' &&
     byOp.whenStep.text === 'when I take a 3D step' &&
     byOp.setFootsteps.text === 'set 3D footsteps to [ONOFF]' &&
@@ -116,6 +117,7 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
 ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blockType === 'reporter' &&
     byOp.showView.blockType === 'command' && byOp.setSurfaceTexture.blockType === 'command' &&
     byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command' &&
+    byOp.jumpIn3d.blockType === 'command' &&
     byOp.setToolSway.blockType === 'command' && byOp.whenStep.blockType === 'hat' &&
     byOp.setFootsteps.blockType === 'command' && byOp.setSoundRange.blockType === 'command' &&
     byOp.openDoor.blockType === 'command' &&
@@ -206,6 +208,10 @@ ok('use player settings on', view.usePlayerSettings() === true);
 ext.setPitch({N: 20});
 ok('set 3D pitch and report 3D pitch', ext.pitch() === 20);
 ext.setPitch({N: 0});
+ext.jumpIn3d();
+ok('jump in 3D starts a 3D jump on the active viewer', view.isJumping() === true);
+for (let i = 0; i < 30; i++) runtime._step();
+ok('jump in 3D lands back on the ground after stepping', view.isJumping() === false && view.playerZ() === 0);
 ext.hideView();
 ok('hide 3D view', ext.viewOn() === false && ext.spriteInSights() === '');
 

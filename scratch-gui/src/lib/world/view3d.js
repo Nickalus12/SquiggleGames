@@ -1,5 +1,5 @@
 import log from '../log.js';
-import {FLAGS, flagsAt} from './tilemap.js';
+import {FLAGS, flagsAt, floorHeightAt} from './tilemap.js';
 import {browserCanvas, browserImageLoader, costumeByName, costumeFor, defaultSkyTexture} from './textures.js';
 import {chainHook} from './world.js';
 import {createScalePolicy, textureFilterFor} from './render-scale.js';
@@ -60,6 +60,8 @@ const MAX_ELEVATION = 1000;
 const DEFAULT_SOUND_RANGE = 640;
 const MIN_SOUND_RANGE = 1;
 const MAX_SOUND_RANGE = 8192;
+const JUMP_VELOCITY = 2.8;
+const JUMP_GRAVITY = 6.5;
 const DEFAULT_FLOOR = pixel(0x5b, 0x4b, 0x3d);
 const DEFAULT_CEILING = pixel(0x8f, 0xb4, 0xd6);
 const WALL_COLOR = pixel(0x9a, 0x9d, 0xa8);
@@ -334,7 +336,11 @@ const createView3d = (runtime, world, options) => {
         soundRange: DEFAULT_SOUND_RANGE,
         sounds: new WeakMap(),
         soundManaged: new WeakSet(),
-        gamepadMove: {x: 0, y: 0, forward: 0, back: 0, strafe: 0, magnitude: 0, active: false}
+        gamepadMove: {x: 0, y: 0, forward: 0, back: 0, strafe: 0, magnitude: 0, active: false},
+        playerZ: 0,
+        velZ: 0,
+        jumping: false,
+        groundedInit: false
     });
     let state = fresh();
     const effectiveFov = () => (
@@ -936,6 +942,7 @@ const createView3d = (runtime, world, options) => {
         if (textureFilterOn()) h = mix(h, 1);
         h = mix(h, spriteStepOn());
         h = mix(h, rayCapOn());
+        if (state.playerZ !== 0) h = mix(h, state.playerZ);
         h = mix(h, serialOf(grid()));
         h = mix(h, revision());
         h = mix(h, pixels.loaded());
@@ -1003,7 +1010,10 @@ const createView3d = (runtime, world, options) => {
             entry.v = v;
             entry.image = image;
             entry.height = Math.max(0.05, Math.min(8, (tall * (num(target.size, 100) / 100)) / space.tileSize));
-            entry.elevation = elevationOf(target) / 100;
+            const cellFloorZ = space && space.floorHeights ?
+                floorHeightAt(space, Math.floor(u), Math.floor(v)) :
+                0;
+            entry.elevation = (elevationOf(target) / 100) + cellFloorZ;
             entry.glow = Boolean(glow && glow.radius > 0);
             n++;
         }
@@ -1016,14 +1026,102 @@ const createView3d = (runtime, world, options) => {
         lights.length = lightCount;
     };
 
+    const groundZAt = (level, x, y) => {
+        if (!level || !level.floorHeights) return 0;
+        const col = Math.floor((x - level.origin[0]) / level.tileSize);
+        const row = Math.floor((level.origin[1] - y) / level.tileSize);
+        return floorHeightAt(level, col, row);
+    };
+
+    const onViewerMoved = () => {
+        if (!viewerAlive()) return;
+        const level = grid();
+        const gz = groundZAt(level, state.viewer.x, state.viewer.y);
+        if (!state.groundedInit) {
+            state.playerZ = gz;
+            state.groundedInit = true;
+            return;
+        }
+        if (!state.jumping && gz >= state.playerZ && (gz - state.playerZ) <= 0.25 + 1e-6) {
+            state.playerZ = gz;
+        }
+    };
+
+    const jump = () => {
+        if (!viewerAlive()) return false;
+        const level = grid();
+        const gz = groundZAt(level, state.viewer.x, state.viewer.y);
+        if (!state.groundedInit) {
+            state.playerZ = gz;
+            state.groundedInit = true;
+        }
+        if (state.jumping || state.playerZ > gz + 1e-4) return false;
+        state.playerZ = gz;
+        state.velZ = JUMP_VELOCITY;
+        state.jumping = true;
+        return true;
+    };
+
+    const stepVertical = (dt, headBob) => {
+        if (!viewerAlive()) return;
+        const level = grid();
+        const gz = groundZAt(level, state.viewer.x, state.viewer.y);
+        if (!state.groundedInit) {
+            state.playerZ = gz;
+            state.groundedInit = true;
+            return;
+        }
+        const stepDt = Math.max(1 / 240, Math.min(0.1, Number(dt) || (1 / 30)));
+        if (state.jumping || state.playerZ > gz + 1e-4 || state.velZ !== 0) {
+            const prevVel = state.velZ;
+            const nextZ = state.playerZ + (state.velZ * stepDt) - (0.5 * JUMP_GRAVITY * stepDt * stepDt);
+            const nextVel = state.velZ - (JUMP_GRAVITY * stepDt);
+            if (nextZ <= gz && nextVel <= 0) {
+                const impact = Math.max(2.5, Math.abs(prevVel) * 2.2);
+                state.playerZ = gz;
+                state.velZ = 0;
+                state.jumping = false;
+                triggerLandingBob(state.bob, impact, headBob);
+            } else {
+                state.playerZ = nextZ;
+                state.velZ = nextVel;
+            }
+        } else if (gz !== state.playerZ) {
+            if (gz > state.playerZ && (gz - state.playerZ) <= 0.25 + 1e-6) {
+                state.playerZ = gz;
+            } else if (gz < state.playerZ) {
+                const nextZ = state.playerZ - (0.5 * JUMP_GRAVITY * stepDt * stepDt);
+                const nextVel = -(JUMP_GRAVITY * stepDt);
+                if (nextZ <= gz) {
+                    const drop = state.playerZ - gz;
+                    state.playerZ = gz;
+                    state.velZ = 0;
+                    if (drop >= 0.25) {
+                        triggerLandingBob(state.bob, Math.max(2, drop * 6), headBob);
+                    }
+                } else {
+                    state.playerZ = nextZ;
+                    state.velZ = nextVel;
+                }
+            } else {
+                state.playerZ = gz;
+            }
+        }
+    };
+
     const prepareScene = () => {
         const level = grid();
         const space = level || FREE_GRID;
         const viewer = poseOf();
         prepareLevel(level);
+        if (!state.groundedInit && viewerAlive()) {
+            state.playerZ = groundZAt(level, viewer.x, viewer.y);
+            state.groundedInit = true;
+        }
         scene.player.u = (viewer.x - space.origin[0]) / space.tileSize;
         scene.player.v = (space.origin[1] - viewer.y) / space.tileSize;
         scene.player.direction = viewer.direction;
+        scene.player.z = state.playerZ + (elevationOf(state.viewer) / 100);
         scene.fov = effectiveFov();
         scene.fog = effectiveFog();
         scene.eye = state.eye;
@@ -1426,6 +1524,10 @@ const createView3d = (runtime, world, options) => {
     const showView = viewer => {
         if (!viewer || viewer.isStage) return;
         state.viewer = viewer;
+        state.playerZ = groundZAt(grid(), viewer.x, viewer.y);
+        state.velZ = 0;
+        state.jumping = false;
+        state.groundedInit = true;
         const snap = poseSnapshot(viewer);
         state.fromPose = snap;
         state.toPose = Object.assign({}, snap);
@@ -1487,6 +1589,8 @@ const createView3d = (runtime, world, options) => {
             advanceBob(vmDt, stepDx, stepDy, next.direction, strafe);
         }
         state.bobFramed = false;
+        const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
+        stepVertical(vmDt, headBob);
         state.fromPose = {x: prev.x, y: prev.y, direction: prev.direction};
         state.toPose = next;
         state.stepAt = at;
@@ -1676,6 +1780,10 @@ const createView3d = (runtime, world, options) => {
             return computeSoundFor(target);
         },
         gamepadMove: () => Object.assign({}, state.gamepadMove),
+        jump,
+        playerZ: () => state.playerZ,
+        isJumping: () => state.jumping,
+        onViewerMoved,
         usePlayerSettings: () => state.usePlayerSettings,
         setUsePlayerSettings (on) {
             state.usePlayerSettings = !!on;

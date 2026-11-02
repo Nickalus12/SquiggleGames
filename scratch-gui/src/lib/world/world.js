@@ -565,9 +565,20 @@ const createWorldState = (runtime, options) => {
                 else target.setXY(target.x, target.y + delta);
                 return null;
             }
-            const result = moveBy(grid, world.box(target), axis, delta);
+            const view3d = runtime && runtime._squiggle3d;
+            const isViewer = Boolean(
+                view3d &&
+                typeof view3d.isOn === 'function' && view3d.isOn() &&
+                typeof view3d.viewer === 'function' && view3d.viewer() === target
+            );
+            const moveOpts = isViewer ? {
+                z: typeof view3d.playerZ === 'function' ? view3d.playerZ() : 0,
+                jumping: typeof view3d.isJumping === 'function' ? view3d.isJumping() : false
+            } : null;
+            const result = moveBy(grid, world.box(target), axis, delta, moveOpts);
             if (result.hit) hits[result.hit] = true;
             target.setXY(result.x, result.y);
+            if (isViewer && typeof view3d.onViewerMoved === 'function') view3d.onViewerMoved();
             return result.hit;
         },
         hit (target, side) {

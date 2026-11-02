@@ -1,5 +1,5 @@
 import {ok, near, section, done} from './harness.mjs';
-import {FLAGS, createGrid, setCell, addTexture} from './tilemap.js';
+import {FLAGS, createGrid, setCell, setFloorHeight, addTexture} from './tilemap.js';
 import {moveBy, overlapFlags, onGround, castRay} from './collision.js';
 import {openDoorAt, closeDoorAt, stepDoors, doorOpenAt} from './doors.js';
 
@@ -120,6 +120,69 @@ section('doors and seethrough collision');
     stepDoors(dGrid, 400);
     ok('closing the door makes it block again', near(doorOpenAt(dGrid, 4, 2), 0) &&
         moveBy(dGrid, runner, 'x', 64).hit === 'right');
+}
+
+section('walkable floor elevation, stairs, jump step, and pits');
+{
+    const eGrid = createGrid({cols: 12, rows: 6, tileSize: 32, origin: [0, 0]});
+    const riserTex = addTexture(eGrid, 'riser', FLAGS.solid);
+    setCell(eGrid, 'main', 3, 2, riserTex);
+    setFloorHeight(eGrid, 3, 2, 0.25);
+    setCell(eGrid, 'main', 4, 2, riserTex);
+    setFloorHeight(eGrid, 4, 2, 0.5);
+    setCell(eGrid, 'main', 5, 2, riserTex);
+    setFloorHeight(eGrid, 5, 2, 0.75);
+    setCell(eGrid, 'main', 6, 2, riserTex);
+    setFloorHeight(eGrid, 6, 2, 1);
+
+    const walker = cellBox(eGrid, 2, 2, 20, 20);
+    const stepUp025 = moveBy(eGrid, walker, 'x', 32);
+    ok('a 0.25 step up is free even when the cell has a solid riser tile in main',
+        stepUp025.hit === null && near(stepUp025.x, walker.x + 32), stepUp025);
+
+    const climbStairs = moveBy(eGrid, walker, 'x', 4 * 32);
+    ok('consecutive 0.25 stairs climb freely from 0 to 1.0',
+        climbStairs.hit === null && near(climbStairs.x, walker.x + (4 * 32)), climbStairs);
+
+    const ledgeGrid = createGrid({cols: 10, rows: 6, tileSize: 32, origin: [0, 0]});
+    const tBrick = addTexture(ledgeGrid, 'brick', FLAGS.solid);
+    setCell(ledgeGrid, 'main', 3, 2, tBrick);
+    setFloorHeight(ledgeGrid, 3, 2, 0.5);
+    setCell(ledgeGrid, 'main', 3, 3, tBrick);
+    setFloorHeight(ledgeGrid, 3, 3, 0.75);
+    setCell(ledgeGrid, 'main', 3, 4, tBrick);
+    setFloorHeight(ledgeGrid, 3, 4, 1);
+
+    const atLedge = cellBox(ledgeGrid, 2, 2, 20, 20);
+    const walkInto05 = moveBy(ledgeGrid, atLedge, 'x', 32);
+    ok('walking into a 0.5 ledge without jumping is blocked as a wall',
+        walkInto05.hit === 'right' && near(walkInto05.x + 10, 3 * 32), walkInto05);
+
+    const jumpInto05 = moveBy(ledgeGrid, atLedge, 'x', 32, {jumping: true});
+    ok('a 0.5 step up succeeds when jumping in 3D',
+        jumpInto05.hit === null && near(jumpInto05.x, atLedge.x + 32), jumpInto05);
+
+    const at075 = cellBox(ledgeGrid, 2, 3, 20, 20);
+    const jumpInto075 = moveBy(ledgeGrid, at075, 'x', 32, {jumping: true});
+    ok('a 0.75 step up is blocked as a wall even when jumping',
+        jumpInto075.hit === 'right' && near(jumpInto075.x + 10, 3 * 32), jumpInto075);
+
+    const at100 = cellBox(ledgeGrid, 2, 4, 20, 20);
+    const jumpInto100 = moveBy(ledgeGrid, at100, 'x', 32, {jumping: true});
+    ok('a 1.0 step up is blocked as a wall even when jumping',
+        jumpInto100.hit === 'right' && near(jumpInto100.x + 10, 3 * 32), jumpInto100);
+
+    const pitGrid = createGrid({cols: 10, rows: 6, tileSize: 32, origin: [0, 0]});
+    setFloorHeight(pitGrid, 3, 2, -0.5);
+    setFloorHeight(pitGrid, 3, 3, -1);
+    const intoPit = moveBy(pitGrid, cellBox(pitGrid, 2, 2, 20, 20), 'x', 32);
+    ok('stepping down into a -0.5 pit is free', intoPit.hit === null && near(intoPit.x, (2.5 * 32) + 32));
+    const walkOutOfPit = moveBy(pitGrid, cellBox(pitGrid, 3, 2, 20, 20), 'x', 32);
+    ok('walking out of a -0.5 pit without jumping is blocked', walkOutOfPit.hit === 'right');
+    const jumpOutOfPit = moveBy(pitGrid, cellBox(pitGrid, 3, 2, 20, 20), 'x', 32, {jumping: true});
+    ok('jumping out of a -0.5 pit succeeds', jumpOutOfPit.hit === null);
+    const jumpOutOfDeepPit = moveBy(pitGrid, cellBox(pitGrid, 3, 3, 20, 20), 'x', 32, {jumping: true});
+    ok('a -1.0 deep pit blocks jumping directly to 0 without stairs', jumpOutOfDeepPit.hit === 'right');
 }
 
 done();

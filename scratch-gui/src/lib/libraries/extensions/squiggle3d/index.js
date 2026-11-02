@@ -191,6 +191,14 @@ class Squiggle3dBlocks {
                     })
                 },
                 {
+                    opcode: 'jumpIn3d',
+                    blockType: 'command',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.jumpIn3d',
+                        default: 'jump in 3D'
+                    })
+                },
+                {
                     opcode: 'setToolSway',
                     blockType: 'command',
                     text: formatMessage({
@@ -561,6 +569,14 @@ class Squiggle3dBlocks {
 
     setSoundRange (args) {
         this.view.setSoundRange(num(args.N));
+    }
+
+    jumpIn3d () {
+        this.view.jump();
+    }
+
+    jump () {
+        this.view.jump();
     }
 
     spriteInSights () {

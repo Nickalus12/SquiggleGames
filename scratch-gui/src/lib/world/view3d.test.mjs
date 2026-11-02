@@ -810,4 +810,90 @@ section('2.0x rung and bilinear texture filter');
     runtime.stageHeight = prevStageH;
 }
 
+section('3D floor elevation, jump arc, gravity, and landing horizon dip');
+{
+    let jClock = 1000;
+    const jView = createView3d(runtime, world, {
+        canvas,
+        document: doc,
+        toBitmap: bitmap,
+        devicePixelRatio: 1,
+        now: () => {
+            jClock += 1000 / 30;
+            return jClock;
+        }
+    });
+    jView.attach(seam);
+    const live = world.current();
+    world.paintCells(live.id, 'floorHeights', [
+        {col: 8, row: 11, value: 135},
+        {col: 8, row: 10, value: 150},
+        {col: 9, row: 12, value: 90}
+    ]);
+    world.setHitbox(hero, 16, 16);
+    hero.setXY(cellX(8), cellY(12));
+    hero.setDirection(0);
+    jView.show(hero);
+    jView.setPitch(0);
+    runtime._step();
+    const baseHorizon = jView.frame.height / 2;
+    ok('viewer starts grounded at playerZ 0 with horizon at half height',
+        near(jView.playerZ(), 0) && jView.isJumping() === false && near(jView.frame.horizon, baseHorizon));
+
+    const hitStep025 = world.move(hero, 'y', 32);
+    runtime._step();
+    ok('walking onto a 0.25 floor height cell is free and raises playerZ to 0.25',
+        hitStep025 === null && near(hero.y, cellY(11)) && near(jView.playerZ(), 0.25));
+
+    hero.setXY(cellX(8), cellY(12));
+    world.paintCells(live.id, 'floorHeights', [{col: 8, row: 11, value: 150}]);
+    jView.show(hero);
+    runtime._step();
+    const blocked05 = world.move(hero, 'y', 32);
+    ok('walking into a 0.5 floor height cell without jumping is blocked',
+        blocked05 === 'top' && hero.y < cellY(11));
+
+    hero.setXY(cellX(8), cellY(12));
+    const jumped = jView.jump();
+    ok('jump() starts a 3D jump when grounded and ignores double-jump in air',
+        jumped === true && jView.isJumping() === true && jView.jump() === false);
+
+    const climb05 = world.move(hero, 'y', 32);
+    ok('moving into a 0.5 floor height cell while jumping succeeds',
+        climb05 === null && near(hero.y, cellY(11)));
+
+    let peakZ = jView.playerZ();
+    let landedHorizon = baseHorizon;
+    for (let i = 0; i < 30; i++) {
+        runtime._step();
+        if (jView.playerZ() > peakZ) peakZ = jView.playerZ();
+        if (!jView.isJumping()) {
+            landedHorizon = jView.frame.horizon;
+            break;
+        }
+    }
+    ok('jump arc peaks above 0.5 under gravity and lands on the 0.5 platform',
+        peakZ > 0.5 && jView.isJumping() === false && near(jView.playerZ(), 0.5),
+        {peakZ, playerZ: jView.playerZ()});
+    ok('landing triggers a dip into frame.horizon below half height',
+        landedHorizon < baseHorizon && jView.headBob().landingY > 0,
+        {landedHorizon, baseHorizon, landingY: jView.headBob().landingY});
+
+    for (let i = 0; i < 20; i++) runtime._step();
+    ok('landing dip in frame.horizon recovers back to half height',
+        near(jView.frame.horizon, baseHorizon, 0.5));
+
+    hero.setXY(cellX(9), cellY(12));
+    for (let i = 0; i < 25; i++) runtime._step();
+    ok('stepping into a -0.5 pit drops playerZ to -0.5 under gravity',
+        near(jView.playerZ(), -0.5));
+
+    world.paintCells(live.id, 'floorHeights', [
+        {col: 8, row: 11, value: 0},
+        {col: 8, row: 10, value: 0},
+        {col: 9, row: 12, value: 0}
+    ]);
+    jView.dispose();
+}
+
 done();
