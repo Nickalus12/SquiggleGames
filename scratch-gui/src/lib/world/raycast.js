@@ -10,7 +10,10 @@ const MAX_FOV = 140;
 const DEFAULT_EYE = 50;
 const MIN_EYE = 5;
 const MAX_EYE = 95;
-const MAX_STEPS = 512;
+const MAX_STEPS = 40;
+const FAST_RAY_CAP = 16;
+const DEFAULT_SPRITE_STEP = 1;
+const FAST_SPRITE_STEP = 2;
 const MAX_LIGHTS = 16;
 const MAX_SEETHROUGH = 4;
 const MAX_COL_HITS = 12;
@@ -331,7 +334,8 @@ const basis = (direction, fov, out, width) => {
     return view;
 };
 
-const castRay = (map, u, v, rx, ry, out) => {
+const castRay = (map, u, v, rx, ry, out, maxSteps) => {
+    const stepCap = maxSteps > 0 ? (maxSteps | 0) : MAX_STEPS;
     let col = Math.floor(u) | 0;
     let row = Math.floor(v) | 0;
     const dx = rx === 0 ? Infinity : Math.abs(1 / rx);
@@ -350,7 +354,7 @@ const castRay = (map, u, v, rx, ry, out) => {
         const bit = map._bit | 0;
         const grid = map._grid;
         const heightAnims = grid && grid._heightAnims && grid._heightAnims.size > 0 ? grid._heightAnims : null;
-        for (let i = 0; i < MAX_STEPS; i++) {
+        for (let i = 0; i < stepCap; i++) {
             if (sideX < sideY) {
                 sideX += dx;
                 col += stepX;
@@ -422,7 +426,7 @@ const castRay = (map, u, v, rx, ry, out) => {
         }
         return null;
     }
-    for (let i = 0; i < MAX_STEPS; i++) {
+    for (let i = 0; i < stepCap; i++) {
         if (sideX < sideY) {
             sideX += dx;
             col += stepX;
@@ -475,7 +479,8 @@ const castRay = (map, u, v, rx, ry, out) => {
     return null;
 };
 
-const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough) => {
+const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough, maxSteps) => {
+    const stepCap = maxSteps > 0 ? (maxSteps | 0) : MAX_STEPS;
     const hits = Array.isArray(outHits) ? outHits : [];
     hits.length = 0;
     if (!map) return hits;
@@ -500,7 +505,7 @@ const castRayMulti = (map, u, v, rx, ry, outHits, maxSeethrough) => {
     const bit = map._bit | 0;
     const grid = map._grid;
     const heightAnims = grid && grid._heightAnims && grid._heightAnims.size > 0 ? grid._heightAnims : null;
-    for (let i = 0; i < MAX_STEPS && hits.length < MAX_COL_HITS; i++) {
+    for (let i = 0; i < stepCap && hits.length < MAX_COL_HITS; i++) {
         if (sideX < sideY) {
             sideX += dx;
             col += stepX;
@@ -696,6 +701,7 @@ const createFrame = (width, height) => {
         _rayV: NaN,
         _rayDir: NaN,
         _rayFov: NaN,
+        _rayCap: -1,
         _bgValid: false,
         _bgEye: NaN,
         _bgFog: NaN,
@@ -1243,13 +1249,13 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     }
 };
 
-const castColumnAt = (frame, map, u, v, x, rx, ry) => {
+const castColumnAt = (frame, map, u, v, x, rx, ry, rayCap = MAX_STEPS) => {
     const {
         colOk, colSide, colDoor, colVal, colCol, colRow, colDist, colWallX, colHeight,
         colHitCount, hitDist, hitWallX, hitHeight, hitVal, hitCol, hitRow,
         hitSide, hitFlags, hit, _multiPool
     } = frame;
-    const h = castRay(map, u, v, rx, ry, hit);
+    const h = castRay(map, u, v, rx, ry, hit, rayCap);
     if (!h) {
         colOk[x] = 0;
         colDoor[x] = 0;
@@ -1269,7 +1275,7 @@ const castColumnAt = (frame, map, u, v, x, rx, ry) => {
         colHitCount[x] = 0;
         return false;
     }
-    const hits = castRayMulti(map, u, v, rx, ry, _multiPool, MAX_SEETHROUGH);
+    const hits = castRayMulti(map, u, v, rx, ry, _multiPool, MAX_SEETHROUGH, rayCap);
     const count = hits.length;
     colHitCount[x] = count;
     if (!count) {
@@ -1314,9 +1320,11 @@ const castColumns = (frame, scene, view) => {
     const v = scene.player.v;
     const dir = scene.player.direction;
     const fov = clampFov(scene.fov);
+    const rayCap = scene.rayCap > 0 ? (scene.rayCap | 0) : MAX_STEPS;
     const sameMap = grid ? frame._rayGrid === grid : (frame._rayMap === map && frame._rayWallKey === wallKey);
     const samePose = sameMap && frame._rayDoorRev === doorRev &&
-        frame._rayU === u && frame._rayV === v && frame._rayDir === dir && frame._rayFov === fov;
+        frame._rayU === u && frame._rayV === v && frame._rayDir === dir && frame._rayFov === fov &&
+        frame._rayCap === rayCap;
     if (samePose) {
         if (frame._rayWallRev === wallRev && !frame._hasDirtyCols) {
             frame._rayMap = map;
@@ -1343,7 +1351,7 @@ const castColumns = (frame, scene, view) => {
             for (let x = 0; x < w; x++) {
                 if (!colDirty[x]) continue;
                 colDirty[x] = 0;
-                castColumnAt(frame, map, u, v, x, colRx[x], colRy[x]);
+                castColumnAt(frame, map, u, v, x, colRx[x], colRy[x], rayCap);
                 recast++;
             }
             let anyMulti = false;
@@ -1374,7 +1382,7 @@ const castColumns = (frame, scene, view) => {
         const ry = vDir.y + (plane.y * camX);
         colRx[x] = rx;
         colRy[x] = ry;
-        if (castColumnAt(frame, map, u, v, x, rx, ry)) anyMulti = true;
+        if (castColumnAt(frame, map, u, v, x, rx, ry, rayCap)) anyMulti = true;
     }
     frame._multiHit = anyMulti;
     frame._hasDirtyCols = false;
@@ -1387,6 +1395,7 @@ const castColumns = (frame, scene, view) => {
     frame._rayV = v;
     frame._rayDir = dir;
     frame._rayFov = fov;
+    frame._rayCap = rayCap;
     frame._lastRecastCols = w;
     frame._bgValid = false;
     return false;
@@ -1881,6 +1890,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     } = frame;
     const getTex = scene.texture;
     const getWallColor = scene.wallColor;
+    const spriteStep = scene.spriteStep > 1 ? (scene.spriteStep | 0) : DEFAULT_SPRITE_STEP;
     for (let i = 0; i < count; i++) {
         const {sprite, depth, left, top, w, h, x0, x1, y0, y1} = placed[i];
         const img = sprite.image;
@@ -1921,7 +1931,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         const fogR = ((fogColor & 255) * f) + addR;
         const fogG = (((fogColor >>> 8) & 255) * f) + addG;
         const fogB = (((fogColor >>> 16) & 255) * f) + addB;
-        for (let x = x0; x < x1; x++) {
+        for (let x = x0; x < x1; x += spriteStep) {
             if (depth >= zbuffer[x]) continue;
             let colY1 = y1;
             const hc = colHitCount[x];
@@ -1988,7 +1998,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                     );
                 }
             }
-            if (drew && x === centre && depth < crosshairDepth) {
+            if (drew && centre >= x && centre < x + spriteStep && depth < crosshairDepth) {
                 result.crosshair = sprite.name;
                 result.target = sprite.target || null;
                 crosshairDepth = depth;
@@ -2009,14 +2019,15 @@ const pickCrosshair = (frame, scene) => {
     const rx0 = view.dir.x + (view.plane.x * camX);
     const ry0 = view.dir.y + (view.plane.y * camX);
     const {dir, plane, focal} = view;
+    const rayCap = scene.rayCap > 0 ? (scene.rayCap | 0) : MAX_STEPS;
     let crosshairDepth = Infinity;
     let centerHits = null;
-    const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit);
+    const hit = castRay(scene.map, scene.player.u, scene.player.v, rx0, ry0, frame.hit, rayCap);
     if (!hit || (!hit.seethrough && hit.height >= 1)) {
         crosshairDepth = hit ? Math.max(1e-4, hit.dist) : Infinity;
     } else {
         centerHits = castRayMulti(
-            scene.map, scene.player.u, scene.player.v, rx0, ry0, frame._multiPool, MAX_SEETHROUGH
+            scene.map, scene.player.u, scene.player.v, rx0, ry0, frame._multiPool, MAX_SEETHROUGH, rayCap
         );
         for (let i = 0; i < centerHits.length; i++) {
             const hi = centerHits[i];
@@ -2249,6 +2260,10 @@ export {
     DEFAULT_EYE,
     MIN_EYE,
     MAX_EYE,
+    MAX_STEPS,
+    FAST_RAY_CAP,
+    DEFAULT_SPRITE_STEP,
+    FAST_SPRITE_STEP,
     MAX_LIGHTS,
     MAX_SEETHROUGH,
     FACINGS,

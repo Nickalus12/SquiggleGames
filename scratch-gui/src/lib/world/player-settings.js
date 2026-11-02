@@ -4,19 +4,21 @@ import {DEFAULT_FOV, clampFog, clampFov} from './raycast.js';
 const PLAYER_SETTINGS_KEY = 'squiggle.player3d.v1';
 const PLAYER_SETTINGS_CHANGED = 'SQUIGGLE_PLAYER_3D_SETTINGS_CHANGED';
 
-const DEFAULT_MOUSE_SPEED = 12;
-const MIN_MOUSE_SPEED = 2;
-const MAX_MOUSE_SPEED = 40;
+const DEFAULT_MOUSE_SPEED = 10;
+const MIN_MOUSE_SPEED = 4;
+const MAX_MOUSE_SPEED = 30;
 
-const MIN_PLAYER_FOV = 70;
-const MAX_PLAYER_FOV = 110;
+const MIN_PLAYER_FOV = 75;
+const MAX_PLAYER_FOV = 106;
 
 const DEFAULT_HEAD_BOB = 100;
 const MIN_HEAD_BOB = 0;
 const MAX_HEAD_BOB = 100;
 
-const MIN_PITCH = -45;
-const MAX_PITCH = 45;
+const MIN_PITCH = -89;
+const MAX_PITCH = 89;
+const MIN_PANEL_PITCH = -35;
+const MAX_PANEL_PITCH = 35;
 
 const MIN_BOB_SPEED = 8;
 const BOB_AMP_PER_SPEED = 0.04;
@@ -25,6 +27,11 @@ const STEP_DISTANCE = 24;
 const MIN_STEP_PERIOD = 0.28;
 const MAX_STEP_PERIOD = 0.60;
 const LANDING_MAX_OFFSET = 4;
+const TOOL_SWAY_X = 6;
+const TOOL_SWAY_Y = 3;
+const TOOL_YAW_LAG_MAX = 2.5;
+const TOOL_YAW_LAG_TAU = 0.08;
+const STRAFE_ROLL_MAX = 1.5;
 
 const QUALITY_MODES = MODES;
 const DRAW_DISTANCES = Object.freeze(['near', 'normal', 'far']);
@@ -73,6 +80,12 @@ const clampPitch = value => {
     return clamp(n, MIN_PITCH, MAX_PITCH);
 };
 
+const clampPanelPitch = value => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return clamp(n, MIN_PANEL_PITCH, MAX_PANEL_PITCH);
+};
+
 const horizonForPitch = (pitch, height, focal, bobOffsetPx = 0) => {
     const h = Math.max(1, Number(height) || 180);
     const half = h / 2;
@@ -89,10 +102,16 @@ const createHeadBob = () => ({
     amplitude: 0,
     offsetY: 0,
     swayX: 0,
+    toolX: 0,
+    toolY: 0,
+    roll: 0,
     landingY: 0,
     totalY: 0,
     lastElevation: 0,
-    movingTicks: 0
+    movingTicks: 0,
+    stepProgress: 0,
+    steps: 0,
+    stepped: false
 });
 
 const triggerLandingBob = (bobState, impact = LANDING_MAX_OFFSET, headBob = DEFAULT_HEAD_BOB) => {
@@ -107,6 +126,7 @@ const triggerLandingBob = (bobState, impact = LANDING_MAX_OFFSET, headBob = DEFA
 
 const stepHeadBob = (bobState, opts = {}) => {
     const state = bobState || createHeadBob();
+    state.stepped = false;
     const visible = opts.visible !== false;
     const scale = clampHeadBob(typeof opts.headBob === 'undefined' ? DEFAULT_HEAD_BOB : opts.headBob) / 100;
     if (!visible || scale <= 0) {
@@ -114,52 +134,77 @@ const stepHeadBob = (bobState, opts = {}) => {
         state.amplitude = 0;
         state.offsetY = 0;
         state.swayX = 0;
+        state.toolX = 0;
+        state.toolY = 0;
+        state.roll = 0;
         state.landingY = 0;
         state.totalY = 0;
         state.movingTicks = 0;
+        state.stepProgress = 0;
         state.lastElevation = Math.max(0, Number(opts.elevation) || 0);
         return state;
     }
-    const dt = clamp(Number(opts.dt) || (1 / 30), 1 / 240, 0.25);
+    const dt = clamp(Number(opts.dt) || (1 / 60), 1 / 240, 0.25);
     const dx = Number(opts.dx) || 0;
     const dy = Number(opts.dy) || 0;
     const dist = Math.hypot(dx, dy);
-    const speed = dist / dt;
+    const speed = typeof opts.speed === 'number' && Number.isFinite(opts.speed) ?
+        Math.max(0, opts.speed) :
+        (dist / dt);
     const elevation = Math.max(0, Number(opts.elevation) || 0);
+    let landedNow = false;
     if (state.lastElevation > 0 && elevation <= 0) {
         const drop = Math.min(LANDING_MAX_OFFSET, Math.max(1.5, state.lastElevation * 0.08));
         state.landingY = Math.max(state.landingY || 0, drop * scale);
+        landedNow = true;
     }
     state.lastElevation = elevation;
-    if (state.landingY > 0) {
-        state.landingY *= Math.exp(-dt / 0.06);
-        if (state.landingY < 0.02) state.landingY = 0;
-    }
     if (speed >= MIN_BOB_SPEED) {
-        state.movingTicks = (state.movingTicks || 0) + 1;
-        if (opts.sustainedOnly && state.movingTicks < 2) {
-            state.totalY = state.offsetY - state.landingY;
-            return state;
+        if (state.landingY > 0 && !landedNow) {
+            state.landingY *= Math.exp(-dt / 0.06);
+            if (state.landingY < 0.02) state.landingY = 0;
         }
-        const rawAmp = Math.min(MAX_BOB_AMP, speed * BOB_AMP_PER_SPEED) * scale;
-        const blend = Math.min(1, dt / 0.08);
-        state.amplitude += (rawAmp - state.amplitude) * blend;
+        state.movingTicks = (state.movingTicks || 0) + 1;
+        state.amplitude = Math.min(MAX_BOB_AMP, speed * BOB_AMP_PER_SPEED) * scale;
         const stepPeriod = clamp(STEP_DISTANCE / speed, MIN_STEP_PERIOD, MAX_STEP_PERIOD);
         const cyclePeriod = stepPeriod * 2;
+        const nextProgress = (state.stepProgress || 0) + (dt / stepPeriod);
+        if (nextProgress + 1e-9 >= 1) {
+            const count = Math.max(1, Math.floor(nextProgress + 1e-9));
+            state.steps = (state.steps || 0) + count;
+            state.stepProgress = Math.max(0, nextProgress - count);
+            state.stepped = true;
+        } else {
+            state.stepProgress = nextProgress;
+        }
         state.phase = (state.phase + ((dt / cyclePeriod) * Math.PI * 2)) % (Math.PI * 4);
         state.offsetY = Math.sin(state.phase) * state.amplitude;
-        state.swayX = Math.cos(state.phase * 0.5) * state.amplitude * 0.5;
+        state.swayX = Math.cos(state.phase) * state.amplitude * 0.5;
+        const ampRatio = MAX_BOB_AMP > 0 ? (state.amplitude / MAX_BOB_AMP) : 0;
+        state.toolX = Math.cos(state.phase) * TOOL_SWAY_X * ampRatio;
+        state.toolY = Math.sin(state.phase) * TOOL_SWAY_Y * ampRatio;
+        let strafe = 0;
+        if (typeof opts.strafe === 'number' && Number.isFinite(opts.strafe)) {
+            strafe = clamp(opts.strafe, -1, 1);
+        } else if (dist > 1e-5 && typeof opts.direction === 'number' && Number.isFinite(opts.direction)) {
+            const rad = opts.direction * Math.PI / 180;
+            const rightX = Math.cos(rad);
+            const rightY = -Math.sin(rad);
+            strafe = clamp(((dx * rightX) + (dy * rightY)) / dist, -1, 1);
+        }
+        state.roll = strafe * STRAFE_ROLL_MAX * scale;
     } else {
         state.movingTicks = 0;
-        state.amplitude *= Math.exp(-dt / 0.05);
-        if (state.amplitude < 0.02) {
-            state.amplitude = 0;
-            state.phase = 0;
-            state.offsetY = 0;
-            state.swayX = 0;
-        } else {
-            state.offsetY = Math.sin(state.phase) * state.amplitude;
-            state.swayX = Math.cos(state.phase * 0.5) * state.amplitude * 0.5;
+        state.amplitude = 0;
+        state.phase = 0;
+        state.offsetY = 0;
+        state.swayX = 0;
+        state.toolX = 0;
+        state.toolY = 0;
+        state.roll = 0;
+        state.stepProgress = 0;
+        if (!landedNow) {
+            state.landingY = 0;
         }
     }
     state.totalY = state.offsetY - state.landingY;
@@ -317,12 +362,14 @@ export {
     MAX_BOB_AMP,
     MAX_HEAD_BOB,
     MAX_MOUSE_SPEED,
+    MAX_PANEL_PITCH,
     MAX_PITCH,
     MAX_PLAYER_FOV,
     MAX_STEP_PERIOD,
     MIN_BOB_SPEED,
     MIN_HEAD_BOB,
     MIN_MOUSE_SPEED,
+    MIN_PANEL_PITCH,
     MIN_PITCH,
     MIN_PLAYER_FOV,
     MIN_STEP_PERIOD,
@@ -330,8 +377,14 @@ export {
     PLAYER_SETTINGS_KEY,
     QUALITY_MODES,
     STEP_DISTANCE,
+    STRAFE_ROLL_MAX,
+    TOOL_SWAY_X,
+    TOOL_SWAY_Y,
+    TOOL_YAW_LAG_MAX,
+    TOOL_YAW_LAG_TAU,
     clampHeadBob,
     clampMouseSpeed,
+    clampPanelPitch,
     clampPitch,
     clampPlayerFov,
     createHeadBob,

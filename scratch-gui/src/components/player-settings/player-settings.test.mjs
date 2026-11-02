@@ -5,10 +5,19 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {EventEmitter} from 'node:events';
 import {
+    DEFAULT_MOUSE_SPEED,
     MAX_BOB_AMP,
+    MAX_MOUSE_SPEED,
+    MAX_PANEL_PITCH,
     MAX_PITCH,
+    MAX_PLAYER_FOV,
+    MIN_MOUSE_SPEED,
+    MIN_PANEL_PITCH,
     MIN_PITCH,
+    MIN_PLAYER_FOV,
     PLAYER_SETTINGS_KEY,
+    QUALITY_MODES,
+    clampPanelPitch,
     clampPitch,
     createHeadBob,
     fogForDrawDistance,
@@ -30,6 +39,7 @@ import {
     endTouchLook,
     gamepadLookDelta,
     gamepadMoveKeys,
+    gamepadMoveVector,
     gamepadRadialStick,
     isRightHalfTouch,
     moveTouchLook,
@@ -93,13 +103,13 @@ const {default: PlayerSettings} = load('./player-settings.jsx', {
     '../../lib/world/player-settings.js': {
         DRAW_DISTANCES: ['near', 'normal', 'far'],
         MAX_HEAD_BOB: 100,
-        MAX_MOUSE_SPEED: 40,
-        MAX_PLAYER_FOV: 110,
+        MAX_MOUSE_SPEED,
+        MAX_PLAYER_FOV,
         MIN_HEAD_BOB: 0,
-        MIN_MOUSE_SPEED: 2,
-        MIN_PLAYER_FOV: 70,
+        MIN_MOUSE_SPEED,
+        MIN_PLAYER_FOV,
         PLAYER_SETTINGS_CHANGED: 'SQUIGGLE_PLAYER_3D_SETTINGS_CHANGED',
-        QUALITY_MODES: ['auto', 'crisp', 'fast', 'fastest', 'sharpest'],
+        QUALITY_MODES,
         readPlayerSettings,
         resetPlayerSettings,
         updatePlayerSettings
@@ -111,8 +121,9 @@ const render = el => renderToStaticMarkup(React.createElement(IntlProvider, {loc
 
 const storage = makeStorage();
 const defaults = readPlayerSettings(storage);
-ok('defaults have mouse speed 12, invert off, look up and down on, head bob 100, project fov/quality, normal distance',
-    defaults.mouseSpeed === 12 &&
+ok('defaults have mouse speed 10, invert off, look up and down on, head bob 100, project fov/quality, normal distance',
+    defaults.mouseSpeed === DEFAULT_MOUSE_SPEED &&
+    defaults.mouseSpeed === 10 &&
     defaults.invertLook === false &&
     defaults.lookUpDown === true &&
     defaults.headBob === 100 &&
@@ -127,31 +138,35 @@ const clamped = normalizePlayerSettings({
     lookUpDown: false,
     headBob: -20,
     fov: 180,
-    quality: 'sharpest',
+    quality: 'fast',
     drawDistance: 'near'
 });
-ok('normalizePlayerSettings clamps mouse speed 2..40, headBob 0..100, fov 70..110',
-    clamped.mouseSpeed === 40 &&
+ok('normalizePlayerSettings clamps mouse speed 4..30, headBob 0..100, fov 75..106, quality modes',
+    clamped.mouseSpeed === 30 &&
+    normalizePlayerSettings({mouseSpeed: 1}).mouseSpeed === 4 &&
+    normalizePlayerSettings({fov: 60}).fov === 75 &&
     clamped.invertLook === true &&
     clamped.lookUpDown === false &&
     clamped.headBob === 0 &&
-    clamped.fov === 110 &&
-    clamped.quality === 'sharpest' &&
+    clamped.fov === 106 &&
+    clamped.quality === 'fast' &&
+    normalizePlayerSettings({quality: '2x'}).quality === '2x' &&
+    normalizePlayerSettings({quality: 'invalid'}).quality === null &&
     clamped.drawDistance === 'near',
     clamped);
 
 const runtime = new EventEmitter();
-writePlayerSettings({mouseSpeed: 18, fov: 90, quality: 'fastest', drawDistance: 'far'}, runtime, storage);
+writePlayerSettings({mouseSpeed: 18, fov: 90, quality: 'fast', drawDistance: 'far'}, runtime, storage);
 ok('settings persist under one localStorage key',
     storage.keys().length === 1 && storage.keys()[0] === PLAYER_SETTINGS_KEY);
 const reloaded = readPlayerSettings(storage);
 ok('saved settings reload from localStorage',
     reloaded.mouseSpeed === 18 && reloaded.fov === 90 &&
-    reloaded.quality === 'fastest' && reloaded.drawDistance === 'far');
+    reloaded.quality === 'fast' && reloaded.drawDistance === 'far');
 
 const resolvedOpen = resolvePlayerSettings(reloaded, {fov: 66, fog: 40, quality: 'crisp'}, true);
 ok('unlocked player settings override project fov, quality, and fog',
-    resolvedOpen.fov === 90 && resolvedOpen.quality === 'fastest' && resolvedOpen.fog === 0);
+    resolvedOpen.fov === 90 && resolvedOpen.quality === 'fast' && resolvedOpen.fog === 0);
 const resolvedLocked = resolvePlayerSettings(reloaded, {fov: 66, fog: 40, quality: 'crisp'}, false);
 ok('maker lock restores project fov, fog, quality and disables player pitch/bob overrides',
     resolvedLocked.fov === 66 && resolvedLocked.fog === 40 && resolvedLocked.quality === 'crisp' &&
@@ -184,7 +199,7 @@ liveView = {
     }
 };
 const openMarkup = render(React.createElement(PlayerSettings, {vm: {runtime}, storage, defaultOpen: true}));
-ok('opening the gear renders all 7 player controls with sentence case labels',
+ok('opening the gear renders all 7 player controls with sentence case labels and only Auto/Crisp/Fast rungs',
     openMarkup.includes('>Mouse speed<') &&
     openMarkup.includes('>Invert look<') &&
     openMarkup.includes('>Look up and down<') &&
@@ -192,18 +207,27 @@ ok('opening the gear renders all 7 player controls with sentence case labels',
     openMarkup.includes('>Field of view<') &&
     openMarkup.includes('>Picture quality<') &&
     openMarkup.includes('>Draw distance<') &&
-    openMarkup.includes('>Fastest<') &&
-    openMarkup.includes('>Sharpest<'));
+    openMarkup.includes('>Auto<') &&
+    openMarkup.includes('>Crisp<') &&
+    openMarkup.includes('>Fast<') &&
+    !openMarkup.includes('>Fastest<') &&
+    !openMarkup.includes('>Sharpest<'));
 
 liveView.usePlayerSettings = () => false;
 const lockedMarkup = render(React.createElement(PlayerSettings, {vm: {runtime}, storage, defaultOpen: true}));
 ok('when the maker locks 3D settings the panel shows the lock banner',
     lockedMarkup.includes('data-testid="player-settings-locked"'));
 
-ok('clampPitch clamps pitch to -45..+45 degrees',
+ok('clampPitch hard-clamps to -89..+89 and clampPanelPitch clamps to -35..+35 degrees',
     clampPitch(0) === 0 &&
-    clampPitch(90) === MAX_PITCH &&
-    clampPitch(-90) === MIN_PITCH &&
+    clampPitch(95) === MAX_PITCH &&
+    clampPitch(-95) === MIN_PITCH &&
+    MAX_PITCH === 89 &&
+    MIN_PITCH === -89 &&
+    clampPanelPitch(60) === MAX_PANEL_PITCH &&
+    clampPanelPitch(-60) === MIN_PANEL_PITCH &&
+    MAX_PANEL_PITCH === 35 &&
+    MIN_PANEL_PITCH === -35 &&
     clampPitch('bad') === 0);
 
 const centerHorizon = horizonForPitch(0, 180, 180);
@@ -221,10 +245,12 @@ stepHeadBob(bob, {dx: 0.1, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
 ok('head bob stays 0 below 8 units/s threshold', bob.amplitude === 0 && bob.totalY === 0);
 
 for (let i = 0; i < 15; i++) {
-    stepHeadBob(bob, {dx: 2, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+    stepHeadBob(bob, {dx: 2, dy: 0, dt: 1 / 30, direction: 0, headBob: 100, visible: true});
 }
-ok('head bob at 60 units/s reaches ~2.4 px amplitude and advances phase',
-    bob.amplitude > 2.0 && bob.amplitude <= 2.5 && bob.phase > 0,
+ok('head bob at 60 units/s reaches 2.4 px amplitude, swayX = cos(phase)*amp*0.5, and 1.5 deg strafe roll',
+    bob.amplitude > 2.0 && bob.amplitude <= 2.5 && bob.phase > 0 &&
+    Math.abs(bob.swayX - (Math.cos(bob.phase) * bob.amplitude * 0.5)) < 1e-6 &&
+    Math.abs(bob.roll - 1.5) < 1e-6,
     bob);
 
 const fastBob = createHeadBob();
@@ -243,10 +269,9 @@ ok('player headBob slider scales amplitude proportionally',
     Math.abs(halfBob.amplitude - (bob.amplitude * 0.5)) < 0.15,
     {half: halfBob.amplitude, full: bob.amplitude});
 
-for (let i = 0; i < 20; i++) {
-    stepHeadBob(bob, {dx: 0, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
-}
-ok('head bob eases out to 0 when stopped', bob.amplitude === 0 && bob.totalY === 0);
+stepHeadBob(bob, {dx: 0, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+ok('head bob sets amplitude, swayX, and landingY to 0 on the same call when speed < 8',
+    bob.amplitude === 0 && bob.swayX === 0 && bob.landingY === 0 && bob.totalY === 0);
 
 stepHeadBob(bob, {dx: 2, dy: 0, dt: 1 / 30, headBob: 100, visible: false});
 ok('no head bob while the 3D view is hidden', bob.amplitude === 0 && bob.totalY === 0);
@@ -271,23 +296,29 @@ ok('gamepad radial deadzone zeros inside inner radius and curves look response t
     smallStick.magnitude < 0.5 &&
     fullStick.magnitude === 1);
 
-const padLook = gamepadLookDelta(1, -1, 0.05, {mouseSpeed: 12, invertLook: false, lookUpDown: true});
-const padLookInverted = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 12, invertLook: true, lookUpDown: true});
-const padLookNoPitch = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 12, invertLook: false, lookUpDown: false});
-ok('gamepad right stick turns and pitches with invert and lookUpDown options',
+const padLook = gamepadLookDelta(1, -1, 0.05, {mouseSpeed: 10, invertLook: false, lookUpDown: true});
+const padLookFastMouse = gamepadLookDelta(1, -1, 0.05, {mouseSpeed: 30, invertLook: false, lookUpDown: true});
+const padLookInverted = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 10, invertLook: true, lookUpDown: true});
+const padLookNoPitch = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 10, invertLook: false, lookUpDown: false});
+ok('gamepad right stick uses 200 deg/s directly without scaling by mouseSpeed',
     padLook.yawDelta > 0 &&
+    padLook.yawDelta === padLookFastMouse.yawDelta &&
     padLook.pitchDelta > 0 &&
     padLookInverted.pitchDelta < 0 &&
     padLookNoPitch.pitchDelta === 0);
 
+const backVec = gamepadMoveVector(0, 1);
+const diagVec = gamepadMoveVector(1, -1);
 const moveKeys = gamepadMoveKeys(
-    {axes: [-0.8, -0.8], buttons: [{pressed: true}]},
+    {axes: [-0.30, -0.30], buttons: [{pressed: true}]},
     ['w', 'a', 's', 'd', 'space']
 );
-ok('gamepad left stick and south button map to the project WASD and action keys',
+ok('gamepad move stick drives rescaled vector (forward 1.0, strafe 1.0, back 0.8, diagonal <= 1.0)',
+    Math.abs(backVec.back - 0.8) < 1e-6 &&
+    Math.abs(diagVec.magnitude - 1) < 1e-6 &&
     moveKeys.includes('w') && moveKeys.includes('a') && moveKeys.includes('space') &&
     gamepadRadialStick(0.1, 0.1, GAMEPAD_MOVE_INNER).magnitude === 0,
-    moveKeys);
+    {backVec, diagVec, moveKeys});
 
 const events = [];
 const held = syncGamepadKeys((name, down) => events.push(`${name}:${down}`), new Set(), ['w', 'd']);
@@ -304,15 +335,15 @@ ok('right-half touch starts touch look',
     isRightHalfTouch(480, stageRect) === true &&
     startTouchLook(touchState, 1, 480, 180, stageRect) === true);
 const beforeSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP, 180);
-const atSeventhPx = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 1, 180, {mouseSpeed: 12});
-const afterSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 21, 160, {mouseSpeed: 12});
+const atSeventhPx = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 1, 180, {mouseSpeed: 30});
+const afterSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 21, 160, {mouseSpeed: 4});
 endTouchLook(touchState, 1);
-ok('touch look adds 0 yaw on first 6 CSS px and turns on the 7th px',
+ok('touch look adds 0 yaw on first 6 CSS px and uses 0.30 deg/CSS px directly on the 7th px',
     beforeSlop.active === false &&
     beforeSlop.yawDelta === 0 &&
     atSeventhPx.active === true &&
-    atSeventhPx.yawDelta > 0 &&
-    afterSlop.yawDelta > 0 &&
+    Math.abs(atSeventhPx.yawDelta - 0.30) < 1e-6 &&
+    Math.abs(afterSlop.yawDelta - (20 * 0.30)) < 1e-6 &&
     afterSlop.pitchDelta > 0 &&
     touchState.pointerId === null);
 

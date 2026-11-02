@@ -1,6 +1,10 @@
 import {ok, section, done} from './harness.mjs';
 
 const {
+    DEFAULT_RAY_CAP,
+    DEFAULT_SPRITE_STEP,
+    FAST_RAY_CAP,
+    FAST_SPRITE_STEP,
     HEADROOM,
     LATE_SHARE_DOWN,
     MIN_PACED_FRAMES,
@@ -36,11 +40,14 @@ ok('junk input still gives a rung', startScale({}) === 0.75);
 
 section('fixed modes');
 const crisp = createScalePolicy({mode: 'crisp', dpr: 1, width: 480, height: 360});
-ok('Crisp is full resolution on any screen', crisp.scale === 1 && crisp.floorTextures === true);
+ok('Crisp is full resolution on any screen with floorTextures on, spriteStep 1, rayCap 40',
+    crisp.scale === 1 && crisp.floorTextures === true &&
+    crisp.spriteStep === DEFAULT_SPRITE_STEP && crisp.rayCap === DEFAULT_RAY_CAP);
 ok('Crisp never steps', feed(crisp, 40, 30) === null && crisp.scale === 1);
 const fast = createScalePolicy({mode: 'fast', dpr: 2, width: 480, height: 360});
-ok('Fast is half resolution on any screen and turns floor textures off',
-    fast.scale === 0.5 && fast.floorTextures === false);
+ok('Fast is half resolution on any screen and sets floorTextures false, spriteStep 2, rayCap 16',
+    fast.scale === 0.5 && fast.floorTextures === false &&
+    fast.spriteStep === FAST_SPRITE_STEP && fast.rayCap === FAST_RAY_CAP);
 ok('Fast never steps up', feed(fast, 0.1, 0.1) === null && fast.scale === 0.5);
 const fastest = createScalePolicy({mode: 'fastest', dpr: 2, width: 480, height: 360});
 ok('Fastest is 0.375 resolution and turns floor textures off',

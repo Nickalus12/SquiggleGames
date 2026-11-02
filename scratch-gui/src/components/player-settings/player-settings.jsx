@@ -103,6 +103,11 @@ const messages = defineMessages({
         defaultMessage: 'Sharpest',
         description: '3D picture quality choice for extra sharp detail'
     },
+    quality2x: {
+        id: 'sq.playerSettings.quality.2x',
+        defaultMessage: '2.0x',
+        description: '3D picture quality choice for 2.0x 1280x720 resolution'
+    },
     drawDistance: {
         id: 'sq.playerSettings.drawDistance',
         defaultMessage: 'Draw distance',
@@ -136,11 +141,10 @@ const messages = defineMessages({
 });
 
 const QUALITY_LABELS = {
-    auto: messages.qualityAuto,
-    crisp: messages.qualityCrisp,
-    fast: messages.qualityFast,
-    fastest: messages.qualityFastest,
-    sharpest: messages.qualitySharpest
+    'auto': messages.qualityAuto,
+    'crisp': messages.qualityCrisp,
+    'fast': messages.qualityFast,
+    '2x': messages.quality2x
 };
 
 const DISTANCE_LABELS = {
@@ -582,7 +586,7 @@ class PlayerSettingsComponent extends React.Component {
                                 role="group"
                                 aria-label={intl.formatMessage(messages.quality)}
                             >
-                                {QUALITY_MODES.map(mode => (
+                                {QUALITY_MODES.filter(mode => Boolean(QUALITY_LABELS[mode])).map(mode => (
                                     <button
                                         key={mode}
                                         type="button"

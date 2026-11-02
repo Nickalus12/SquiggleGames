@@ -23,6 +23,8 @@ const num = value => {
     return Number.isFinite(n) ? n : 0;
 };
 
+const formatMessage = msg => (msg && typeof msg.default === 'string' ? msg.default : '');
+
 class Squiggle3dBlocks {
     constructor (runtime) {
         this.runtime = runtime;
@@ -36,7 +38,10 @@ class Squiggle3dBlocks {
     getInfo () {
         return {
             id: ID,
-            name: '3D',
+            name: formatMessage({
+                id: 'sq.squiggle3d.name',
+                default: '3D'
+            }),
             color1: COLORS.color1,
             color2: COLORS.color2,
             color3: COLORS.color3,
@@ -45,24 +50,36 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'showView',
                     blockType: 'command',
-                    text: 'show 3D view from [VIEWER]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.showView',
+                        default: 'show 3D view from [VIEWER]'
+                    }),
                     arguments: {VIEWER: {type: 'string', menu: 'viewers', defaultValue: MYSELF}}
                 },
                 {
                     opcode: 'hideView',
                     blockType: 'command',
-                    text: 'hide 3D view'
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.hideView',
+                        default: 'hide 3D view'
+                    })
                 },
                 {
                     opcode: 'viewOn',
                     blockType: 'Boolean',
-                    text: '3D view on?'
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.viewOn',
+                        default: '3D view on?'
+                    })
                 },
                 '---',
                 {
                     opcode: 'setViewSetting',
                     blockType: 'command',
-                    text: 'set 3D [SETTING] to [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setViewSetting',
+                        default: 'set 3D [SETTING] to [N]'
+                    }),
                     arguments: {
                         SETTING: {type: 'string', menu: 'settings', defaultValue: 'fov'},
                         N: {type: 'number', defaultValue: 66}
@@ -71,7 +88,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setSurfaceColor',
                     blockType: 'command',
-                    text: 'set 3D [SURFACE] color to [COLOR]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setSurfaceColor',
+                        default: 'set 3D [SURFACE] color to [COLOR]'
+                    }),
                     arguments: {
                         SURFACE: {type: 'string', menu: 'surfaces', defaultValue: 'floor'},
                         COLOR: {type: 'color', defaultValue: '#5b4b3d'}
@@ -80,7 +100,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setSurfaceTexture',
                     blockType: 'command',
-                    text: 'set 3D [SURFACE] texture to [TEXTURE]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setSurfaceTexture',
+                        default: 'set 3D [SURFACE] texture to [TEXTURE]'
+                    }),
                     arguments: {
                         SURFACE: {type: 'string', menu: 'surfaces', defaultValue: 'floor'},
                         TEXTURE: {type: 'string', menu: 'surfaceTextures', defaultValue: 'color'}
@@ -89,7 +112,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setLightFalloff',
                     blockType: 'command',
-                    text: 'set 3D light falloff to [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setLightFalloff',
+                        default: 'set 3D light falloff to [N]'
+                    }),
                     arguments: {
                         N: {type: 'number', defaultValue: 0}
                     }
@@ -98,21 +124,30 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'showMeAs',
                     blockType: 'command',
-                    text: 'show me in 3D as [LOOK]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.showMeAs',
+                        default: 'show me in 3D as [LOOK]'
+                    }),
                     filter: ['sprite'],
                     arguments: {LOOK: {type: 'string', menu: 'looks', defaultValue: 'picture'}}
                 },
                 {
                     opcode: 'setMyHeight',
                     blockType: 'command',
-                    text: 'set my 3D height to [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setMyHeight',
+                        default: 'set my 3D height to [N]'
+                    }),
                     filter: ['sprite'],
                     arguments: {N: {type: 'number', defaultValue: 0}}
                 },
                 {
                     opcode: 'glowIn3d',
                     blockType: 'command',
-                    text: 'glow in 3D with [COLOR] radius [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.glowIn3d',
+                        default: 'glow in 3D with [COLOR] radius [N]'
+                    }),
                     filter: ['sprite'],
                     arguments: {
                         COLOR: {type: 'color', defaultValue: '#22d3ee'},
@@ -123,28 +158,91 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'mouseTurn',
                     blockType: 'command',
-                    text: 'turn with the mouse in 3D [ONOFF]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.mouseTurn',
+                        default: 'turn with the mouse in 3D [ONOFF]'
+                    }),
                     arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
                 },
                 {
                     opcode: 'usePlayerSettings',
                     blockType: 'command',
-                    text: 'use the player\'s 3D settings [ONOFF]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.usePlayerSettings',
+                        default: 'use the player\'s 3D settings [ONOFF]'
+                    }),
                     arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
                 },
                 {
                     opcode: 'setPitch',
                     blockType: 'command',
-                    text: 'set 3D pitch to [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setPitch',
+                        default: 'set 3D pitch to [N]'
+                    }),
                     arguments: {N: {type: 'number', defaultValue: 0}}
                 },
-                {opcode: 'pitch', blockType: 'reporter', text: '3D pitch'},
-                {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'},
+                {
+                    opcode: 'pitch',
+                    blockType: 'reporter',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.pitch',
+                        default: '3D pitch'
+                    })
+                },
+                {
+                    opcode: 'setToolSway',
+                    blockType: 'command',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setToolSway',
+                        default: 'set 3D tool sway to [ONOFF]'
+                    }),
+                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                },
+                {
+                    opcode: 'whenStep',
+                    blockType: 'hat',
+                    isEdgeActivated: true,
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.whenStep',
+                        default: 'when I take a 3D step'
+                    }),
+                    filter: ['sprite']
+                },
+                {
+                    opcode: 'setFootsteps',
+                    blockType: 'command',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setFootsteps',
+                        default: 'set 3D footsteps to [ONOFF]'
+                    }),
+                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                },
+                {
+                    opcode: 'setSoundRange',
+                    blockType: 'command',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setSoundRange',
+                        default: 'set 3D sound range to [N]'
+                    }),
+                    arguments: {N: {type: 'number', defaultValue: 640}}
+                },
+                {
+                    opcode: 'spriteInSights',
+                    blockType: 'reporter',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.spriteInSights',
+                        default: 'sprite in my sights'
+                    })
+                },
                 '---',
                 {
                     opcode: 'openDoor',
                     blockType: 'command',
-                    text: 'open the 3D door at x [X] y [Y]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.openDoor',
+                        default: 'open the 3D door at x [X] y [Y]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0}
@@ -153,7 +251,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'closeDoor',
                     blockType: 'command',
-                    text: 'close the 3D door at x [X] y [Y]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.closeDoor',
+                        default: 'close the 3D door at x [X] y [Y]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0}
@@ -162,7 +263,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'doorOpen',
                     blockType: 'Boolean',
-                    text: '3D door at x [X] y [Y] open?',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.doorOpen',
+                        default: '3D door at x [X] y [Y] open?'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0}
@@ -172,14 +276,20 @@ class Squiggle3dBlocks {
                     opcode: 'whenTouchDoor',
                     blockType: 'hat',
                     isEdgeActivated: true,
-                    text: 'when I touch a 3D door',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.whenTouchDoor',
+                        default: 'when I touch a 3D door'
+                    }),
                     filter: ['sprite']
                 },
                 '---',
                 {
                     opcode: 'setFloorTextureAt',
                     blockType: 'command',
-                    text: 'set 3D floor texture at x [X] y [Y] to [T]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setFloorTextureAt',
+                        default: 'set 3D floor texture at x [X] y [Y] to [T]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0},
@@ -189,7 +299,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setCeilingTextureAt',
                     blockType: 'command',
-                    text: 'set 3D ceiling texture at x [X] y [Y] to [T]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setCeilingTextureAt',
+                        default: 'set 3D ceiling texture at x [X] y [Y] to [T]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0},
@@ -199,7 +312,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setLightAt',
                     blockType: 'command',
-                    text: 'set 3D light at x [X] y [Y] to [N]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setLightAt',
+                        default: 'set 3D light at x [X] y [Y] to [N]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0},
@@ -209,7 +325,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'setWallHeightAt',
                     blockType: 'command',
-                    text: 'set 3D wall height at x [X] y [Y] to [H]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.setWallHeightAt',
+                        default: 'set 3D wall height at x [X] y [Y] to [H]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0},
@@ -219,7 +338,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'lightAt',
                     blockType: 'reporter',
-                    text: '3D light at x [X] y [Y]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.lightAt',
+                        default: '3D light at x [X] y [Y]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0}
@@ -228,7 +350,10 @@ class Squiggle3dBlocks {
                 {
                     opcode: 'wallHeightAt',
                     blockType: 'reporter',
-                    text: '3D wall height at x [X] y [Y]',
+                    text: formatMessage({
+                        id: 'sq.squiggle3d.wallHeightAt',
+                        default: '3D wall height at x [X] y [Y]'
+                    }),
                     arguments: {
                         X: {type: 'number', defaultValue: 0},
                         Y: {type: 'number', defaultValue: 0}
@@ -240,14 +365,47 @@ class Squiggle3dBlocks {
                 settings: {
                     acceptReporters: false,
                     items: [
-                        {text: 'field of view', value: 'fov'},
-                        {text: 'fog', value: 'fog'},
-                        {text: 'eye height', value: 'eye'}
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.setting.fov',
+                                default: 'field of view'
+                            }),
+                            value: 'fov'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.setting.fog',
+                                default: 'fog'
+                            }),
+                            value: 'fog'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.setting.eye',
+                                default: 'eye height'
+                            }),
+                            value: 'eye'
+                        }
                     ]
                 },
                 surfaces: {
                     acceptReporters: false,
-                    items: [{text: 'floor', value: 'floor'}, {text: 'ceiling', value: 'ceiling'}]
+                    items: [
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.surface.floor',
+                                default: 'floor'
+                            }),
+                            value: 'floor'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.surface.ceiling',
+                                default: 'ceiling'
+                            }),
+                            value: 'ceiling'
+                        }
+                    ]
                 },
                 surfaceTextures: {
                     acceptReporters: true,
@@ -256,9 +414,27 @@ class Squiggle3dBlocks {
                 looks: {
                     acceptReporters: false,
                     items: [
-                        {text: 'a picture', value: 'picture'},
-                        {text: '8 views', value: 'views'},
-                        {text: 'nothing', value: 'nothing'}
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.look.picture',
+                                default: 'a picture'
+                            }),
+                            value: 'picture'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.look.views',
+                                default: '8 views'
+                            }),
+                            value: 'views'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'sq.squiggle3d.look.nothing',
+                                default: 'nothing'
+                            }),
+                            value: 'nothing'
+                        }
                     ]
                 },
                 onOff: {acceptReporters: false, items: ['on', 'off']}
@@ -270,13 +446,31 @@ class Squiggle3dBlocks {
         const names = this.runtime.targets
             .filter(target => target.isOriginal && !target.isStage)
             .map(target => target.getName());
-        return [{text: 'me', value: MYSELF}].concat(names);
+        return [{
+            text: formatMessage({
+                id: 'sq.squiggle3d.viewer.me',
+                default: 'me'
+            }),
+            value: MYSELF
+        }].concat(names);
     }
 
     surfaceTextureMenu () {
         const base = [
-            {text: 'color', value: 'color'},
-            {text: 'sky', value: 'sky'}
+            {
+                text: formatMessage({
+                    id: 'sq.squiggle3d.texture.color',
+                    default: 'color'
+                }),
+                value: 'color'
+            },
+            {
+                text: formatMessage({
+                    id: 'sq.squiggle3d.texture.sky',
+                    default: 'sky'
+                }),
+                value: 'sky'
+            }
         ];
         const level = this.world && typeof this.world.current === 'function' ? this.world.current() : null;
         if (!level || !Array.isArray(level.tiles)) return base;
@@ -347,6 +541,26 @@ class Squiggle3dBlocks {
 
     pitch () {
         return this.view.pitch();
+    }
+
+    setToolSway (args) {
+        this.view.setToolSway(str(args.ONOFF) !== 'off');
+    }
+
+    whenStep (args, util) {
+        const viewer = this.view.viewer();
+        const target = util && util.target ? util.target : viewer;
+        if (!target || target.isStage) return false;
+        if (viewer && target !== viewer) return false;
+        return this.view.stepFired(target);
+    }
+
+    setFootsteps (args) {
+        this.view.setFootsteps(str(args.ONOFF) !== 'off');
+    }
+
+    setSoundRange (args) {
+        this.view.setSoundRange(num(args.N));
     }
 
     spriteInSights () {

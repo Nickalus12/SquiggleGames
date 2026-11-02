@@ -359,11 +359,12 @@ ok('no second request while locked', canvas.requests === 1);
 const facing = hero.direction;
 listeners.doc.get('mousemove')({movementX: 40});
 runtime._step();
-ok('mouse movement turns the viewer', near(hero.direction, facing + (40 * TURN_PER_PIXEL)), hero.direction);
+ok('mouse movement turns the viewer at 0.10 deg default per physical px',
+    near(hero.direction, facing + 4), hero.direction);
 doc.pointerLockElement = null;
 listeners.doc.get('mousemove')({movementX: 40});
 runtime._step();
-ok('Esc (lock lost) stops turning', near(hero.direction, facing + 10));
+ok('Esc (lock lost) stops turning', near(hero.direction, facing + 4));
 doc.pointerLockElement = canvas;
 view.setMouseTurn(false);
 ok('turning it off releases the lock and the listeners', doc.exits === 1 && !listeners.canvas.has('click'));
@@ -525,7 +526,7 @@ section('per-frame pose interpolation and mouse turn');
         hero.setXY(hero.x + 4, hero.y);
         return origStepThreads.call(this);
     };
-    listeners.doc.get('mousemove')({movementX: 12});
+    listeners.doc.get('mousemove')({movementX: 30});
     runtime._step();
     runtime.sequencer.stepThreads = origStepThreads;
     ok('applying mouse turn in BEFORE_EXECUTE does not set redrawRequested or starve threads',
@@ -533,7 +534,7 @@ section('per-frame pose interpolation and mouse turn');
 
     const uploadsAtStep = smooth.stats().uploads;
     rafClock += (1000 / 30) * 0.5;
-    listeners.doc.get('mousemove')({movementX: 8});
+    listeners.doc.get('mousemove')({movementX: 20});
     const nextRaf = rafQueue.shift();
     if (nextRaf) nextRaf();
     const rafPose = smooth.pose();
@@ -547,7 +548,7 @@ section('per-frame pose interpolation and mouse turn');
     runtime.interpolationEnabled = true;
     const uploadsBeforeInterp = smooth.stats().uploads;
     rafClock += (1000 / 30) * 0.5;
-    listeners.doc.get('mousemove')({movementX: 4});
+    listeners.doc.get('mousemove')({movementX: 10});
     runtime.renderer.draw();
     const interpPose = smooth.pose();
     runtime.interpolationEnabled = false;
@@ -566,14 +567,16 @@ playerView.show(hero);
 playerView.setSetting('fov', 60);
 playerView.setSetting('fog', 20);
 ok('player settings are enabled by default', playerView.usePlayerSettings() === true);
-playerView.setPlayerSettings({fov: 95, quality: 'fastest', drawDistance: 'near', mouseSpeed: 24, invertLook: true});
+playerView.setPlayerSettings({fov: 95, quality: 'fast', drawDistance: 'near', mouseSpeed: 24, invertLook: true});
 ok('player fov overrides project fov', playerView.effectiveSettings().fov === 95);
-ok('fastest quality sets 0.375 scale and turns floor textures off',
-    playerView.scale() === 0.375 && playerView.floorTextures() === false);
+ok('fast quality sets 0.5 scale, turns floor textures off, spriteStep 2, and rayCap 16',
+    playerView.scale() === 0.5 && playerView.floorTextures() === false &&
+    playerView.effectiveSettings().spriteStep === 2 && playerView.effectiveSettings().rayCap === 16);
 ok('near draw distance overrides fog with heavier fog', playerView.effectiveSettings().fog > 20);
-playerView.setPlayerSettings({quality: 'sharpest', drawDistance: 'far'});
-ok('sharpest quality sets 1.5 scale and turns floor textures on',
-    playerView.scale() === 1.5 && playerView.floorTextures() === true);
+playerView.setPlayerSettings({quality: 'crisp', drawDistance: 'far'});
+ok('crisp quality sets 1.0 scale, turns floor textures on, spriteStep 1, and rayCap 40',
+    playerView.scale() === 1 && playerView.floorTextures() === true &&
+    playerView.effectiveSettings().spriteStep === 1 && playerView.effectiveSettings().rayCap === 40);
 ok('far draw distance overrides fog with lighter fog', playerView.effectiveSettings().fog < 20);
 playerView.setUsePlayerSettings(false);
 ok('locking player settings restores project fov and fog',
@@ -588,10 +591,10 @@ playerView.setPitch(30);
 ok('setPitch updates pitch and shifts frame.horizon above centre',
     playerView.pitch() === 30 && playerView.frame.horizon > playerView.frame.height / 2);
 playerView.setPitch(99);
-ok('setPitch clamps to +45 degrees', playerView.pitch() === 45);
+ok('setPitch clamps to +89 degrees', playerView.pitch() === 89);
 playerView.setPitch(-99);
-ok('setPitch clamps to -45 degrees and shifts frame.horizon below centre',
-    playerView.pitch() === -45 && playerView.frame.horizon < playerView.frame.height / 2);
+ok('setPitch clamps to -89 degrees and shifts frame.horizon below centre',
+    playerView.pitch() === -89 && playerView.frame.horizon < playerView.frame.height / 2);
 playerView.setPitch(0);
 playerView.setPlayerSettings({lookUpDown: false});
 playerView.addPitch(20);
@@ -599,6 +602,11 @@ ok('addPitch respects player lookUpDown toggle', playerView.pitch() === 0);
 playerView.setPlayerSettings({lookUpDown: true, headBob: 100});
 playerView.addPitch(15);
 ok('addPitch adjusts pitch when lookUpDown is on', playerView.pitch() === 15);
+playerView.addPitch(50);
+ok('addPitch clamps player pitch to +35 degrees', playerView.pitch() === 35);
+playerView.addPitch(-90);
+ok('addPitch clamps player pitch to -35 degrees', playerView.pitch() === -35);
+playerView.setPitch(0);
 playerView.stepBob(2, 0, 1 / 30, 0);
 ok('stepBob updates view headBob amplitude while view is on', playerView.headBob().amplitude > 0);
 playerView.hide();
@@ -611,13 +619,13 @@ const ext = new Squiggle3dBlocks(runtime);
 ext.setPitch({N: 25});
 ok('squiggle3d setPitch and pitch blocks read and write pitch', ext.pitch() === 25);
 ext.setPitch({N: -100});
-ok('squiggle3d setPitch block clamps to -45', ext.pitch() === -45);
+ok('squiggle3d setPitch block clamps to -89', ext.pitch() === -89);
 ext.setPitch({N: 0});
 ext.usePlayerSettings({ONOFF: 'off'});
 ok('squiggle3d usePlayerSettings block toggles maker lock', ext.view.usePlayerSettings() === false);
 ext.usePlayerSettings({ONOFF: 'on'});
 
-section('per-frame pose interpolation and mouse turn');
+section('per-frame pose interpolation and mouse turn with gamepad and touch');
 {
     const mid = stepPose({x: 10, y: 20, direction: 80}, {x: 14, y: 28, direction: 88}, 0.5, 8);
     ok('stepPose lerps x, y and committed yaw by progress and adds pending turn in full',
@@ -654,7 +662,7 @@ section('per-frame pose interpolation and mouse turn');
         hero.setXY(hero.x + 4, hero.y);
         return origStepThreads.call(this);
     };
-    listeners.doc.get('mousemove')({movementX: 12});
+    listeners.doc.get('mousemove')({movementX: 30});
     runtime._step();
     runtime.sequencer.stepThreads = origStepThreads;
     ok('applying mouse turn in BEFORE_EXECUTE does not set redrawRequested or starve threads',
@@ -662,7 +670,7 @@ section('per-frame pose interpolation and mouse turn');
 
     const uploadsAtStep = smooth.stats().uploads;
     rafClock += (1000 / 30) * 0.5;
-    listeners.doc.get('mousemove')({movementX: 8});
+    listeners.doc.get('mousemove')({movementX: 20});
     const nextRaf = rafQueue.shift();
     if (nextRaf) nextRaf();
     const rafPose = smooth.pose();
@@ -676,7 +684,7 @@ section('per-frame pose interpolation and mouse turn');
     runtime.interpolationEnabled = true;
     const uploadsBeforeInterp = smooth.stats().uploads;
     rafClock += (1000 / 30) * 0.5;
-    listeners.doc.get('mousemove')({movementX: 4});
+    listeners.doc.get('mousemove')({movementX: 10});
     runtime.renderer.draw();
     const interpPose = smooth.pose();
     runtime.interpolationEnabled = false;
@@ -684,7 +692,7 @@ section('per-frame pose interpolation and mouse turn');
         near(interpPose.x, 6) && near(interpPose.direction, 96) &&
         smooth.stats().uploads === uploadsBeforeInterp + 1, {interpPose, uploads: smooth.stats().uploads});
 
-    listeners.doc.get('mousemove')({movementX: 0, movementY: -40});
+    listeners.doc.get('mousemove')({movementX: 0, movementY: -100});
     runtime._step();
     ok('mouse movementY pitches the view and shifts frame.horizon',
         smooth.pitch() === 10 && smooth.frame.horizon > smooth.frame.height / 2);

@@ -119,6 +119,9 @@ const GAMEPAD_LOOK_EXPONENT = 2;
 const GAMEPAD_LOOK_SPEED = 200;
 const GAMEPAD_MIN_LOOK_SPEED = 90;
 const GAMEPAD_MAX_LOOK_SPEED = 360;
+const GAMEPAD_MOVE_FORWARD = 1;
+const GAMEPAD_MOVE_STRAFE = 1;
+const GAMEPAD_MOVE_BACK = 0.8;
 
 const TOUCH_LOOK_SENSITIVITY = 0.3;
 const TOUCH_LOOK_MIN_SENSITIVITY = 0.15;
@@ -177,17 +180,44 @@ const buttonValue = btn => {
     return btn.pressed ? 1 : 0;
 };
 
-const gamepadMoveKeys = (first, second, third) => {
+const gamepadMoveVector = (first, second) => {
     const isPadObject = first && typeof first === 'object';
     const axes = isPadObject && Array.isArray(first.axes) ? first.axes : [first, second];
     const buttons = isPadObject && Array.isArray(first.buttons) ? first.buttons : [];
-    const targetsOrKeys = isPadObject ? second : third;
     const stick = gamepadRadialStick(axes[0], axes[1], GAMEPAD_MOVE_INNER, GAMEPAD_OUTER, 1);
+    let vx = stick.x * GAMEPAD_MOVE_STRAFE;
+    let vy = stick.y < 0 ? (-stick.y * GAMEPAD_MOVE_FORWARD) : (-stick.y * GAMEPAD_MOVE_BACK);
+    if (buttonValue(buttons[12]) > 0.5) vy = Math.max(vy, GAMEPAD_MOVE_FORWARD);
+    if (buttonValue(buttons[13]) > 0.5) vy = Math.min(vy, -GAMEPAD_MOVE_BACK);
+    if (buttonValue(buttons[14]) > 0.5) vx = Math.min(vx, -GAMEPAD_MOVE_STRAFE);
+    if (buttonValue(buttons[15]) > 0.5) vx = Math.max(vx, GAMEPAD_MOVE_STRAFE);
+    const len = Math.hypot(vx, vy);
+    if (len > 1) {
+        vx /= len;
+        vy /= len;
+    }
+    const magnitude = Math.min(1, len);
+    return {
+        x: vx,
+        y: vy,
+        forward: vy > 0 ? vy : 0,
+        back: vy < 0 ? -vy : 0,
+        strafe: vx,
+        magnitude,
+        active: magnitude > 0
+    };
+};
+
+const gamepadMoveKeys = (first, second, third) => {
+    const isPadObject = first && typeof first === 'object';
+    const buttons = isPadObject && Array.isArray(first.buttons) ? first.buttons : [];
+    const targetsOrKeys = isPadObject ? second : third;
+    const move = gamepadMoveVector(first, second);
     const directions = [];
-    if (stick.y < -0.35 || buttonValue(buttons[12]) > 0.5) directions.push('up');
-    if (stick.x < -0.35 || buttonValue(buttons[14]) > 0.5) directions.push('left');
-    if (stick.x > 0.35 || buttonValue(buttons[15]) > 0.5) directions.push('right');
-    if (stick.y > 0.35 || buttonValue(buttons[13]) > 0.5) directions.push('down');
+    if (move.y > 0) directions.push('up');
+    if (move.x < 0) directions.push('left');
+    if (move.x > 0) directions.push('right');
+    if (move.y < 0) directions.push('down');
     const scratchKeys = resolveScratchKeys(targetsOrKeys);
     const layout = touchLayoutFor(scratchKeys);
     const names = [];
@@ -208,6 +238,7 @@ const gamepadMoveKeys = (first, second, third) => {
         const primaryAction = layout.actions[0] || 'space';
         pushName(primaryAction);
     }
+    names.vector = move;
     return names;
 };
 
@@ -241,9 +272,9 @@ const gamepadLookDelta = (rawX, rawY, dtSec = 1 / 60, opts = {}) => {
         return {yawDelta: 0, pitchDelta: 0, active: false};
     }
     const dt = clampNum(Number(dtSec) || (1 / 60), 0, 0.25);
-    const mouseSpeed = Number(opts.mouseSpeed) > 0 ? Number(opts.mouseSpeed) : 12;
+    const rawRate = Number(opts.lookSpeed) > 0 ? Number(opts.lookSpeed) : GAMEPAD_LOOK_SPEED;
     const rate = clampNum(
-        GAMEPAD_LOOK_SPEED * (mouseSpeed / 12),
+        rawRate,
         GAMEPAD_MIN_LOOK_SPEED,
         GAMEPAD_MAX_LOOK_SPEED
     );
@@ -302,9 +333,11 @@ const moveTouchLook = (state, pointerId, clientX, clientY, opts = {}) => {
     const dy = y - state.lastY;
     state.lastX = x;
     state.lastY = y;
-    const mouseSpeed = Number(opts.mouseSpeed) > 0 ? Number(opts.mouseSpeed) : 12;
+    const rawSensitivity = Number(opts.touchSensitivity) > 0 ?
+        Number(opts.touchSensitivity) :
+        TOUCH_LOOK_SENSITIVITY;
     const degPerPx = clampNum(
-        TOUCH_LOOK_SENSITIVITY * (mouseSpeed / 12),
+        rawSensitivity,
         TOUCH_LOOK_MIN_SENSITIVITY,
         TOUCH_LOOK_MAX_SENSITIVITY
     );
@@ -332,7 +365,10 @@ export {
     GAMEPAD_LOOK_SPEED,
     GAMEPAD_MAX_LOOK_SPEED,
     GAMEPAD_MIN_LOOK_SPEED,
+    GAMEPAD_MOVE_BACK,
+    GAMEPAD_MOVE_FORWARD,
     GAMEPAD_MOVE_INNER,
+    GAMEPAD_MOVE_STRAFE,
     GAMEPAD_OUTER,
     GAMEPAD_TRIGGER_INNER,
     MAX_ACTIONS,
@@ -346,6 +382,7 @@ export {
     endTouchLook,
     gamepadLookDelta,
     gamepadMoveKeys,
+    gamepadMoveVector,
     gamepadRadialStick,
     isRightHalfTouch,
     keyboardData,

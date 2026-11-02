@@ -78,7 +78,9 @@ const opcodes = blocks.map(block => block.opcode);
 ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
     'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
-    'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch', 'spriteInSights',
+    'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch',
+    'setToolSway', 'whenStep', 'setFootsteps', 'setSoundRange',
+    'spriteInSights',
     'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor',
     'setFloorTextureAt', 'setCeilingTextureAt', 'setLightAt', 'setWallHeightAt',
     'lightAt', 'wallHeightAt'].join(), opcodes);
@@ -96,6 +98,10 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
     byOp.usePlayerSettings.text === 'use the player\'s 3D settings [ONOFF]' &&
     byOp.setPitch.text === 'set 3D pitch to [N]' &&
     byOp.pitch.text === '3D pitch' &&
+    byOp.setToolSway.text === 'set 3D tool sway to [ONOFF]' &&
+    byOp.whenStep.text === 'when I take a 3D step' &&
+    byOp.setFootsteps.text === 'set 3D footsteps to [ONOFF]' &&
+    byOp.setSoundRange.text === 'set 3D sound range to [N]' &&
     byOp.spriteInSights.text === 'sprite in my sights' &&
     byOp.openDoor.text === 'open the 3D door at x [X] y [Y]' &&
     byOp.closeDoor.text === 'close the 3D door at x [X] y [Y]' &&
@@ -110,6 +116,8 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
 ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blockType === 'reporter' &&
     byOp.showView.blockType === 'command' && byOp.setSurfaceTexture.blockType === 'command' &&
     byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command' &&
+    byOp.setToolSway.blockType === 'command' && byOp.whenStep.blockType === 'hat' &&
+    byOp.setFootsteps.blockType === 'command' && byOp.setSoundRange.blockType === 'command' &&
     byOp.openDoor.blockType === 'command' &&
     byOp.closeDoor.blockType === 'command' && byOp.doorOpen.blockType === 'Boolean' &&
     byOp.whenTouchDoor.blockType === 'hat' &&
@@ -121,6 +129,7 @@ ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blo
     byOp.wallHeightAt.blockType === 'reporter');
 ok('sprite-only blocks are filtered', byOp.showMeAs.filter.join() === 'sprite' &&
     byOp.setMyHeight.filter.join() === 'sprite' && byOp.glowIn3d.filter.join() === 'sprite' &&
+    byOp.whenStep.filter.join() === 'sprite' &&
     byOp.whenTouchDoor.filter.join() === 'sprite');
 const items = name => info.menus[name].items.map(item => (typeof item === 'object' ? item.text : item)).join('/');
 ok('menus read as rev 3', items('settings') === 'field of view/fog/eye height' &&
@@ -283,6 +292,141 @@ section('3D runtime cell blocks');
         ext.wallHeightAt({X: pos.x, Y: pos.y}) === 0.25);
 
     world.deleteLevel(level.id);
+}
+
+section('tool sway, footsteps, 3D sound, and DPR mouse turn');
+{
+    const {createView3d} = await import('../../../world/view3d.js');
+    ext.showView({VIEWER: 'Hero'}, util(hero));
+    world.pin(coin, true);
+    ok('tool sway is off by default with all four offsets at 0',
+        view.toolSway() === false &&
+        JSON.stringify(view.toolSwayOffsets()) === '{"x":0,"y":0,"yawLag":0,"roll":0}');
+    ext.setToolSway({ONOFF: 'on'});
+    ok('setToolSway block enables held tool sway', view.toolSway() === true);
+    hero.setDirection(0);
+    hero.setXY(0, 0);
+    runtime._step();
+    hero.setXY(3, 3);
+    hero.setDirection(2);
+    runtime._step();
+    const swayOn = view.toolSwayOffsets();
+    ok('walking and turning with tool sway on offsets x within +/-6, y within +/-3, yawLag within +/-2.5, roll within +/-1.5 while crosshair yaw equals view yaw',
+        (swayOn.x !== 0 || swayOn.y !== 0) &&
+        Math.abs(swayOn.x) <= 6 &&
+        Math.abs(swayOn.y) <= 3 &&
+        swayOn.yawLag !== 0 &&
+        Math.abs(swayOn.yawLag) <= 2.5 &&
+        Math.abs(swayOn.roll) <= 1.5 &&
+        view.pose().direction === hero.direction,
+        swayOn);
+    ext.setToolSway({ONOFF: 'off'});
+    ok('setToolSway off zeros all four tool sway offsets',
+        view.toolSway() === false &&
+        JSON.stringify(view.toolSwayOffsets()) === '{"x":0,"y":0,"yawLag":0,"roll":0}');
+    world.pin(coin, false);
+
+    hero.setXY(0, 0);
+    hero.setDirection(0);
+    runtime._step();
+    const tapsBefore = view.footstepPlays();
+    let stepHatCount = 0;
+    for (let i = 1; i <= 10; i++) {
+        hero.setXY(0, i * 2.4);
+        runtime._step();
+        if (ext.whenStep({}, util(hero))) stepHatCount++;
+    }
+    ok('whenStep fires once per 24 stage units and plays built-in footstep tap when footsteps on',
+        stepHatCount === 1 && view.footstepPlays() === tapsBefore + 1,
+        {stepHatCount, taps: view.footstepPlays() - tapsBefore});
+
+    ext.setFootsteps({ONOFF: 'off'});
+    const tapsMuted = view.footstepPlays();
+    let mutedHatCount = 0;
+    for (let i = 11; i <= 20; i++) {
+        hero.setXY(0, i * 2.4);
+        runtime._step();
+        if (ext.whenStep({}, util(hero))) mutedHatCount++;
+    }
+    ok('setFootsteps off silences the built-in tap without stopping whenStep hat',
+        mutedHatCount === 1 && view.footstepPlays() === tapsMuted);
+    ext.setFootsteps({ONOFF: 'on'});
+
+    let idleSteps = 0;
+    for (let i = 0; i < 10; i++) {
+        runtime._step();
+        if (ext.whenStep({}, util(hero))) idleSteps++;
+    }
+    ok('whenStep never fires while speed < 8', idleSteps === 0);
+
+    ext.setSoundRange({N: 640});
+    ext.showMeAs({LOOK: 'picture'}, util(coin));
+    hero.setXY(0, 0);
+    hero.setDirection(0);
+    coin.setXY(96, 0);
+    runtime._step();
+    const rightSound = view.soundFor(coin);
+    coin.setXY(-96, 0);
+    runtime._step();
+    const leftSound = view.soundFor(coin);
+    coin.setXY(4, 4);
+    runtime._step();
+    const sameCellSound = view.soundFor(coin);
+    coin.setXY(700, 0);
+    runtime._step();
+    const farSound = view.soundFor(coin);
+    ok('3D sound pans right > 0, left < 0, centers with cos(pi/4) in viewer cell, and attenuates to 0 beyond range',
+        rightSound.pan > 0 &&
+        leftSound.pan < 0 &&
+        sameCellSound.pan === 0 &&
+        Math.abs(sameCellSound.leftGain - Math.cos(Math.PI / 4)) < 1e-6 &&
+        Math.abs(sameCellSound.rightGain - Math.cos(Math.PI / 4)) < 1e-6 &&
+        farSound.gain === 0 &&
+        farSound.volume === 0,
+        {rightSound, leftSound, sameCellSound, farSound});
+    ext.showMeAs({LOOK: 'nothing'}, util(coin));
+    ext.hideView();
+
+    const makeDprRig = dpr => {
+        const docListeners = new Map();
+        const canvasListeners = new Map();
+        const c = {
+            addEventListener: (k, fn) => canvasListeners.set(k, fn),
+            removeEventListener: k => canvasListeners.delete(k),
+            requestPointerLock: () => Promise.resolve()
+        };
+        const d = {
+            pointerLockElement: c,
+            addEventListener: (k, fn) => docListeners.set(k, fn),
+            removeEventListener: k => docListeners.delete(k),
+            exitPointerLock: () => {}
+        };
+        const v = createView3d(runtime, world, {
+            canvas: c,
+            document: d,
+            devicePixelRatio: dpr,
+            toBitmap: data => ({data})
+        });
+        v.attach(seam);
+        hero.setDirection(90);
+        v.show(hero);
+        v.setMouseTurn(true);
+        return {v, move: ev => docListeners.get('mousemove')(ev)};
+    };
+    const rig1x = makeDprRig(1);
+    rig1x.move({movementX: 20, movementY: 0});
+    runtime._step();
+    const yaw1x = hero.direction - 90;
+    rig1x.v.dispose();
+
+    const rig2x = makeDprRig(2);
+    rig2x.move({movementX: 10, movementY: 0});
+    runtime._step();
+    const yaw2x = hero.direction - 90;
+    rig2x.v.dispose();
+    ok('DPR mouse turn: movementX = 20 at dpr 1 and movementX = 10 at dpr 2 both add 2.0 deg at 0.10 default',
+        Math.abs(yaw1x - 2) < 1e-6 && Math.abs(yaw2x - 2) < 1e-6,
+        {yaw1x, yaw2x});
 }
 
 section('saved projects');

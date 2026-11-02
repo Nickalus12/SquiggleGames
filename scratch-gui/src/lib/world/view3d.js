@@ -4,8 +4,15 @@ import {browserCanvas, browserImageLoader, costumeByName, costumeFor, defaultSky
 import {chainHook} from './world.js';
 import {createScalePolicy, textureFilterFor} from './render-scale.js';
 import {
+    DEFAULT_MOUSE_SPEED,
+    MIN_BOB_SPEED,
     PLAYER_SETTINGS_CHANGED,
     PLAYER_SETTINGS_KEY,
+    TOOL_SWAY_X,
+    TOOL_SWAY_Y,
+    TOOL_YAW_LAG_MAX,
+    TOOL_YAW_LAG_TAU,
+    clampPanelPitch,
     clampPitch,
     createHeadBob,
     fogForDrawDistance,
@@ -22,12 +29,14 @@ import {
     endTouchLook,
     gamepadLookDelta,
     gamepadMoveKeys,
+    gamepadMoveVector,
     keyboardData,
     moveTouchLook,
     startTouchLook,
     syncGamepadKeys
 } from '../touch-keys.js';
-import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, MAX_LIGHTS, WIDTH, clampEye, clampFalloff, clampFog, clampFov,
+import {DEFAULT_EYE, DEFAULT_FOV, DEFAULT_SPRITE_STEP, HEIGHT, MAX_LIGHTS, MAX_STEPS, WIDTH,
+    clampEye, clampFalloff, clampFog, clampFov,
     createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, render} from './raycast.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
@@ -48,6 +57,9 @@ const MAX_TURN_SNAP = 45;
 const POSE_EPSILON = 1e-3;
 const MIN_ELEVATION = -100;
 const MAX_ELEVATION = 1000;
+const DEFAULT_SOUND_RANGE = 640;
+const MIN_SOUND_RANGE = 1;
+const MAX_SOUND_RANGE = 8192;
 const DEFAULT_FLOOR = pixel(0x5b, 0x4b, 0x3d);
 const DEFAULT_CEILING = pixel(0x8f, 0xb4, 0xd6);
 const WALL_COLOR = pixel(0x9a, 0x9d, 0xa8);
@@ -296,7 +308,6 @@ const createView3d = (runtime, world, options) => {
         crosshair: '',
         target: null,
         samples: [],
-        tickStart: 0,
         drawMs: 0,
         drew: false,
         pendingWork: -1,
@@ -307,7 +318,23 @@ const createView3d = (runtime, world, options) => {
         usePlayerSettings: true,
         playerSettings: readViewPlayerSettings(playerStore),
         hasPlayerOverride: hasStoredPlayerSettings(playerStore),
-        bob: createHeadBob()
+        bob: createHeadBob(),
+        bobAt: 0,
+        bobFramed: false,
+        stepDx: 0,
+        stepDy: 0,
+        stepDt: 1 / 30,
+        stepSpeed: 0,
+        toolSway: false,
+        yawLag: 0,
+        footsteps: true,
+        footstepPlays: 0,
+        stepTriggered: false,
+        lastHatStep: 0,
+        soundRange: DEFAULT_SOUND_RANGE,
+        sounds: new WeakMap(),
+        soundManaged: new WeakSet(),
+        gamepadMove: {x: 0, y: 0, forward: 0, back: 0, strafe: 0, magnitude: 0, active: false}
     });
     let state = fresh();
     const effectiveFov = () => (
@@ -343,6 +370,16 @@ const createView3d = (runtime, world, options) => {
         if (!state.on || !state.bob) return 0;
         if (state.usePlayerSettings && state.playerSettings && state.playerSettings.headBob === 0) return 0;
         return Number(state.bob.totalY) || 0;
+    };
+    const effectiveBobX = () => {
+        if (!state.on || !state.bob) return 0;
+        if (state.usePlayerSettings && state.playerSettings && state.playerSettings.headBob === 0) return 0;
+        return Number(state.bob.swayX) || 0;
+    };
+    const effectiveRoll = () => {
+        if (!state.on || !state.bob) return 0;
+        if (state.usePlayerSettings && state.playerSettings && state.playerSettings.headBob === 0) return 0;
+        return Number(state.bob.roll) || 0;
     };
     const gpu = {drawable: null, skin: null, image: null, scale: defaultScale};
     const link = {seam: null, disposers: [], effect: null, input: null};
@@ -385,6 +422,10 @@ const createView3d = (runtime, world, options) => {
         floorTextures: true,
         bilinear: false,
         textureFilter: false,
+        spriteStep: DEFAULT_SPRITE_STEP,
+        rayCap: MAX_STEPS,
+        swayX: 0,
+        roll: 0,
         wallColor: () => WALL_COLOR,
         texture: value => cache.textures[value] || null,
         wallKey: 0,
@@ -468,6 +509,8 @@ const createView3d = (runtime, world, options) => {
     };
 
     const floorTexturesOn = () => (state.floorTextures === null ? policy.floorTextures : Boolean(state.floorTextures));
+    const spriteStepOn = () => (state.manual && policy.mode !== 'fast' ? DEFAULT_SPRITE_STEP : policy.spriteStep);
+    const rayCapOn = () => (state.manual && policy.mode !== 'fast' ? MAX_STEPS : policy.rayCap);
 
     const shows = target => !target.isStage && target !== state.viewer && target.visible !== false &&
         lookOf(target) !== LOOKS.nothing;
@@ -520,20 +563,217 @@ const createView3d = (runtime, world, options) => {
     };
 
     const mouseTurnScale = () => (
-        state.usePlayerSettings && state.hasPlayerOverride && state.playerSettings ?
-            (num(state.playerSettings.mouseSpeed, 12) / 100) :
-            TURN_PER_PIXEL
+        num(state.playerSettings && state.playerSettings.mouseSpeed, DEFAULT_MOUSE_SPEED) / 100
     );
 
     const lookOpts = () => {
         if (!state.usePlayerSettings || !state.playerSettings) {
-            return {mouseSpeed: 12, invertLook: false, lookUpDown: true};
+            return {mouseSpeed: DEFAULT_MOUSE_SPEED, invertLook: false, lookUpDown: true};
         }
         return {
             mouseSpeed: state.playerSettings.mouseSpeed,
             invertLook: state.playerSettings.invertLook,
             lookUpDown: state.playerSettings.lookUpDown
         };
+    };
+
+    const playFootstepTap = () => {
+        if (!state.footsteps) return false;
+        state.footstepPlays++;
+        try {
+            const engine = runtime && runtime.audioEngine;
+            const ctx = engine && engine.audioContext;
+            if (!ctx || typeof ctx.createOscillator !== 'function' || typeof ctx.createGain !== 'function') {
+                return true;
+            }
+            const t0 = Number(ctx.currentTime) || 0;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(95, t0);
+            if (typeof osc.frequency.exponentialRampToValueAtTime === 'function') {
+                osc.frequency.exponentialRampToValueAtTime(42, t0 + 0.045);
+            }
+            gain.gain.setValueAtTime(0.05, t0);
+            if (typeof gain.gain.exponentialRampToValueAtTime === 'function') {
+                gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.045);
+            }
+            osc.connect(gain);
+            gain.connect(engine.inputNode || ctx.destination);
+            osc.start(t0);
+            osc.stop(t0 + 0.05);
+        } catch (e) {
+            void e;
+        }
+        return true;
+    };
+
+    const advanceBob = (dt, dx, dy, direction, strafeOverride) => {
+        const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
+        const prevSteps = state.bob.steps || 0;
+        stepHeadBob(state.bob, {
+            dx,
+            dy,
+            dt,
+            direction,
+            strafe: strafeOverride,
+            elevation: elevationOf(state.viewer),
+            visible: state.on,
+            headBob
+        });
+        if (state.toolSway && state.yawLag !== 0) {
+            state.yawLag *= Math.exp(-Math.max(1 / 240, Number(dt) || (1 / 60)) / TOOL_YAW_LAG_TAU);
+            if (Math.abs(state.yawLag) < 1e-3) state.yawLag = 0;
+        } else if (!state.toolSway) {
+            state.yawLag = 0;
+        }
+        if (state.bob.stepped || (state.bob.steps || 0) > prevSteps) {
+            state.stepTriggered = true;
+            playFootstepTap();
+        }
+        return state.bob;
+    };
+
+    const computeSoundFor = target => {
+        const baseVolume = Math.max(0, Math.min(100, num(target && target.volume, 100)));
+        const equalGain = Math.cos(Math.PI / 4);
+        if (!target || target.isStage || !state.on || !viewerAlive() || target === state.viewer ||
+            lookOf(target) === LOOKS.nothing) {
+            return {
+                pan: 0,
+                volume: baseVolume,
+                gain: 1,
+                leftGain: equalGain,
+                rightGain: equalGain,
+                distance: 0,
+                angle: 0,
+                inViewerCell: true
+            };
+        }
+        const viewer = poseOf() || state.viewer;
+        const space = grid() || FREE_GRID;
+        const tileSize = Math.max(1, num(space.tileSize, 32));
+        const originX = Array.isArray(space.origin) ? num(space.origin[0], 0) : 0;
+        const originY = Array.isArray(space.origin) ? num(space.origin[1], 0) : 0;
+        const vx = num(viewer.x, 0);
+        const vy = num(viewer.y, 0);
+        const tx = num(target.x, 0);
+        const ty = num(target.y, 0);
+        const dx = tx - vx;
+        const dy = ty - vy;
+        const dist = Math.hypot(dx, dy);
+        const vCol = Math.floor((vx - originX) / tileSize);
+        const vRow = Math.floor((originY - vy) / tileSize);
+        const tCol = Math.floor((tx - originX) / tileSize);
+        const tRow = Math.floor((originY - ty) / tileSize);
+        const sameCell = (vCol === tCol && vRow === tRow) || dist < (tileSize * 0.5);
+        if (sameCell) {
+            return {
+                pan: 0,
+                volume: baseVolume,
+                gain: 1,
+                leftGain: equalGain,
+                rightGain: equalGain,
+                distance: dist,
+                angle: 0,
+                inViewerCell: true
+            };
+        }
+        const range = Math.max(MIN_SOUND_RANGE, num(state.soundRange, DEFAULT_SOUND_RANGE));
+        const bearing = Math.atan2(dx, dy) * 180 / Math.PI;
+        const relDeg = wrapAngle(bearing - num(viewer.direction, 90));
+        const pan = Math.max(-100, Math.min(100, Math.round(Math.sin(relDeg * Math.PI / 180) * 100)));
+        if (dist >= range) {
+            return {
+                pan,
+                volume: 0,
+                gain: 0,
+                leftGain: 0,
+                rightGain: 0,
+                distance: dist,
+                angle: relDeg,
+                inViewerCell: false
+            };
+        }
+        const gain = Math.max(0, 1 - (dist / range));
+        const volume = Math.round(baseVolume * gain);
+        const p = (pan + 100) / 200;
+        const leftGain = Math.cos((p * Math.PI) / 2) * gain;
+        const rightGain = Math.sin((p * Math.PI) / 2) * gain;
+        return {
+            pan,
+            volume,
+            gain,
+            leftGain,
+            rightGain,
+            distance: dist,
+            angle: relDeg,
+            inViewerCell: false
+        };
+    };
+
+    const syncSpatialAudio = () => {
+        if (!runtime || !Array.isArray(runtime.targets)) return;
+        for (const target of runtime.targets) {
+            if (!target || target.isStage) continue;
+            if (state.on && viewerAlive() && target !== state.viewer && lookOf(target) !== LOOKS.nothing) {
+                const spatial = computeSoundFor(target);
+                state.sounds.set(target, spatial);
+                state.soundManaged.add(target);
+                target.soundEffects = Object.assign({}, target.soundEffects, {
+                    pan: spatial.pan,
+                    volume: spatial.volume
+                });
+                if (target.soundBank && typeof target.soundBank.setEffects === 'function') {
+                    target.soundBank.setEffects(target);
+                }
+            } else if (state.soundManaged.has(target)) {
+                state.soundManaged.delete(target);
+                state.sounds.delete(target);
+                if (target.soundEffects) {
+                    delete target.soundEffects.pan;
+                    delete target.soundEffects.volume;
+                }
+                if (target.soundBank && typeof target.soundBank.setEffects === 'function') {
+                    target.soundBank.setEffects(target);
+                }
+            }
+        }
+    };
+
+    const toolSwayOffsets = () => {
+        if (!state.on || !state.toolSway) {
+            return {x: 0, y: 0, yawLag: 0, roll: 0};
+        }
+        const x = Math.max(-TOOL_SWAY_X, Math.min(TOOL_SWAY_X, num(state.bob && state.bob.toolX, 0)));
+        const y = Math.max(-TOOL_SWAY_Y, Math.min(TOOL_SWAY_Y, num(state.bob && state.bob.toolY, 0)));
+        const yawLag = Math.max(-TOOL_YAW_LAG_MAX, Math.min(TOOL_YAW_LAG_MAX, num(state.yawLag, 0)));
+        const roll = effectiveRoll();
+        return {x, y, yawLag, roll};
+    };
+
+    const syncPinnedTools = () => {
+        const renderer = runtime && runtime.renderer;
+        if (!renderer || !world || typeof world.isPinned !== 'function' || !Array.isArray(runtime.targets)) return;
+        const offsets = toolSwayOffsets();
+        for (const target of runtime.targets) {
+            if (!target || target.isStage || !world.isPinned(target)) continue;
+            if (typeof target.drawableID !== 'number') continue;
+            if (typeof renderer.updateDrawablePosition === 'function') {
+                renderer.updateDrawablePosition(target.drawableID, [
+                    num(target.x, 0) + offsets.x,
+                    num(target.y, 0) + offsets.y
+                ]);
+            }
+            if (typeof renderer.updateDrawableDirectionScale === 'function') {
+                const s = num(target.size, 100);
+                renderer.updateDrawableDirectionScale(
+                    target.drawableID,
+                    num(target.direction, 90) + offsets.yawLag,
+                    [s, s]
+                );
+            }
+        }
     };
 
     const getGamepads = opts.getGamepads ||
@@ -583,12 +823,16 @@ const createView3d = (runtime, world, options) => {
             return false;
         }
         const nextKeys = gamepadMoveKeys(pad, runtime.targets);
+        state.gamepadMove = nextKeys.vector || gamepadMoveVector(pad);
         syncGamepadKeys(postScratchKey, state.gamepadKeys, nextKeys);
         if (!state.mouseTurn) return false;
         const axes = Array.isArray(pad.axes) ? pad.axes : [];
         const look = gamepadLookDelta(axes[2], axes[3], dtSec, lookOpts());
         if (!look.active) return false;
         state.turn += look.yawDelta / TURN_PER_PIXEL;
+        if (state.toolSway && look.yawDelta) {
+            state.yawLag = Math.max(-TOOL_YAW_LAG_MAX, Math.min(TOOL_YAW_LAG_MAX, state.yawLag - look.yawDelta));
+        }
         state.pitchDelta += look.pitchDelta;
         return true;
     };
@@ -600,7 +844,7 @@ const createView3d = (runtime, world, options) => {
             state.pitchDelta = 0;
             const currentLook = lookOpts();
             if (currentLook.lookUpDown !== false) {
-                const nextPitch = clampPitch(state.pitch + pDelta);
+                const nextPitch = clampPanelPitch(state.pitch + pDelta);
                 if (nextPitch !== state.pitch) {
                     state.pitch = nextPitch;
                     changed = true;
@@ -661,14 +905,25 @@ const createView3d = (runtime, world, options) => {
     const frameHash = () => {
         ensureFrame();
         const viewer = poseOf();
+        const fovVal = effectiveFov();
+        const halfFovRad = (fovVal * Math.PI / 180) * 0.5;
+        const focal = (frame.width / 2) / Math.max(1e-5, Math.tan(halfFovRad));
+        const bobY = effectiveBobY();
+        const swayX = effectiveBobX();
+        const roll = effectiveRoll();
+        frame.horizon = horizonForPitch(effectivePitch(), frame.height, focal, bobY);
+        frame.swayX = swayX;
+        frame.roll = roll;
         let h = 2166136261;
         h = mix(h, frame.width);
         h = mix(h, frame.height);
         h = mix(h, frame.horizon);
+        h = mix(h, swayX);
+        h = mix(h, roll);
         h = mix(h, viewer.x);
         h = mix(h, viewer.y);
         h = mix(h, viewer.direction);
-        h = mix(h, effectiveFov());
+        h = mix(h, fovVal);
         h = mix(h, effectiveFog());
         h = mix(h, state.eye);
         h = mix(h, state.lightFalloff);
@@ -679,6 +934,8 @@ const createView3d = (runtime, world, options) => {
         h = mixStr(h, state.ceilingTexture);
         h = mix(h, floorTexturesOn() ? 1 : 0);
         if (textureFilterOn()) h = mix(h, 1);
+        h = mix(h, spriteStepOn());
+        h = mix(h, rayCapOn());
         h = mix(h, serialOf(grid()));
         h = mix(h, revision());
         h = mix(h, pixels.loaded());
@@ -780,12 +1037,21 @@ const createView3d = (runtime, world, options) => {
         scene.floorTextures = floorTexturesOn();
         scene.bilinear = textureFilterOn();
         scene.textureFilter = scene.bilinear;
+        scene.spriteStep = spriteStepOn();
+        scene.rayCap = rayCapOn();
         const halfFovRad = (scene.fov * Math.PI / 180) * 0.5;
         const focal = (frame.width / 2) / Math.max(1e-5, Math.tan(halfFovRad));
         const horizon = horizonForPitch(effectivePitch(), frame.height, focal, effectiveBobY());
+        const swayX = effectiveBobX();
+        const roll = effectiveRoll();
         frame.horizon = horizon;
+        frame.swayX = swayX;
+        frame.roll = roll;
         scene.horizon = horizon;
+        scene.swayX = swayX;
+        scene.roll = roll;
         collect(space);
+        syncSpatialAudio();
     };
 
     const draw = hash => {
@@ -823,12 +1089,23 @@ const createView3d = (runtime, world, options) => {
             gpu.skin = renderer.createBitmapSkin(gpu.image, state.scale);
             gpu.drawable = renderer.createDrawable(LAYER);
             renderer.updateDrawableSkinId(gpu.drawable, gpu.skin);
-            renderer.updateDrawablePosition(gpu.drawable, [0, 0]);
-            renderer.updateDrawableDirectionScale(gpu.drawable, 90, [100, 100]);
+            renderer.updateDrawablePosition(gpu.drawable, [effectiveBobX(), 0]);
+            renderer.updateDrawableDirectionScale(
+                gpu.drawable,
+                90 + (state.toolSway ? effectiveRoll() : 0),
+                [100, 100]
+            );
         } else {
             renderer.updateBitmapSkin(gpu.skin, gpu.image, state.scale);
+            renderer.updateDrawablePosition(gpu.drawable, [effectiveBobX(), 0]);
+            renderer.updateDrawableDirectionScale(
+                gpu.drawable,
+                90 + (state.toolSway ? effectiveRoll() : 0),
+                [100, 100]
+            );
         }
         renderer.updateDrawableVisible(gpu.drawable, true);
+        syncPinnedTools();
         runtime._squiggle3dPose = poseOf();
         state.uploaded = state.rendered;
         state.uploads++;
@@ -840,8 +1117,12 @@ const createView3d = (runtime, world, options) => {
         if (state.uploaded !== state.rendered) present();
     };
 
-    const stepFramePose = () => {
+    const stepFramePose = progressOverride => {
         if (!state.on || !link.seam || !viewerAlive()) return false;
+        flushPending();
+        const frameStart = now();
+        state.drawMs = 0;
+        state.drew = false;
         if (gamepadKnown) {
             const at = now();
             const dtSec = state.gamepadAt > 0 ?
@@ -850,16 +1131,40 @@ const createView3d = (runtime, world, options) => {
             state.gamepadAt = at;
             pollGamepad(dtSec);
         }
-        if (!state.turn && !state.pitchDelta && !poseMoving()) return false;
-        flushPending();
-        const frameStart = now();
-        state.drawMs = 0;
-        state.drew = false;
-        applyTurn();
-        advancePose(progressNow());
+        const bobMoving = state.stepSpeed >= MIN_BOB_SPEED;
+        const moving = Boolean(
+            typeof progressOverride === 'number' ||
+            state.turn ||
+            state.pitchDelta ||
+            poseMoving() ||
+            bobMoving
+        );
         const beforeUploads = state.uploads;
-        refresh();
-        if (state.drew && !state.manual && opts.adaptive !== false) {
+        if (moving) {
+            if (bobMoving && pacing.running && typeof progressOverride !== 'number') {
+                const bobNow = now();
+                const bobDt = state.bobAt > 0 ?
+                    Math.min(0.1, Math.max(1 / 240, (bobNow - state.bobAt) / 1000)) :
+                    (frameMs() / 1000);
+                state.bobAt = bobNow;
+                const scaleDt = state.stepDt > 0 ? (bobDt / state.stepDt) : 1;
+                const strafe = state.gamepadMove && state.gamepadMove.active ? state.gamepadMove.strafe : null;
+                advanceBob(
+                    bobDt,
+                    state.stepDx * scaleDt,
+                    state.stepDy * scaleDt,
+                    poseOf().direction,
+                    strafe
+                );
+                state.bobFramed = true;
+            }
+            applyTurn();
+            advancePose(typeof progressOverride === 'number' ? progressOverride : progressNow());
+            refresh();
+        } else {
+            state.bobAt = now();
+        }
+        if (!state.manual && opts.adaptive !== false) {
             state.pendingWork = now() - frameStart;
             state.pendingDraw = state.drawMs;
         }
@@ -965,6 +1270,30 @@ const createView3d = (runtime, world, options) => {
     const hookEffect = (forward, drawableID, effect, value) =>
         forward(drawableID, effect, effect === 'ghost' && ghosting(drawableID) ? 100 : value);
 
+    const hookPosition = (forward, drawableID, position) => {
+        if (!state.on || !state.toolSway || !world || typeof world.isPinned !== 'function') {
+            return forward(drawableID, position);
+        }
+        const target = runtime.getTargetByDrawableId(drawableID);
+        if (target && world.isPinned(target) && Array.isArray(position)) {
+            const offsets = toolSwayOffsets();
+            return forward(drawableID, [position[0] + offsets.x, position[1] + offsets.y]);
+        }
+        return forward(drawableID, position);
+    };
+
+    const hookDirectionScale = (forward, drawableID, direction, scale) => {
+        if (!state.on || !state.toolSway || !world || typeof world.isPinned !== 'function') {
+            return forward(drawableID, direction, scale);
+        }
+        const target = runtime.getTargetByDrawableId(drawableID);
+        if (target && world.isPinned(target)) {
+            const offsets = toolSwayOffsets();
+            return forward(drawableID, num(direction, 90) + offsets.yawLag, scale);
+        }
+        return forward(drawableID, direction, scale);
+    };
+
     const pointerDocument = canvas => opts.document || canvas.ownerDocument ||
         (typeof document === 'undefined' ? null : document);
 
@@ -1003,9 +1332,15 @@ const createView3d = (runtime, world, options) => {
         };
         input.onMove = event => {
             if (!locked(input)) return;
+            const dpr = pixelRatio();
             const scale = mouseTurnScale();
-            state.turn += num(event.movementX, 0) * (scale / TURN_PER_PIXEL);
-            const my = num(event.movementY, 0);
+            const mx = num(event.movementX, 0) * dpr;
+            const my = num(event.movementY, 0) * dpr;
+            const yawDelta = mx * scale;
+            state.turn += yawDelta / TURN_PER_PIXEL;
+            if (state.toolSway && yawDelta !== 0) {
+                state.yawLag = Math.max(-TOOL_YAW_LAG_MAX, Math.min(TOOL_YAW_LAG_MAX, state.yawLag - yawDelta));
+            }
             if (my !== 0) {
                 const currentLook = lookOpts();
                 if (currentLook.lookUpDown !== false) {
@@ -1022,7 +1357,15 @@ const createView3d = (runtime, world, options) => {
             if (!state.on || !state.mouseTurn || !event || event.pointerType !== 'touch') return;
             const delta = moveTouchLook(state.touchLook, event.pointerId, event.clientX, event.clientY, lookOpts());
             if (!delta.active) return;
-            if (delta.yawDelta) state.turn += delta.yawDelta / TURN_PER_PIXEL;
+            if (delta.yawDelta) {
+                state.turn += delta.yawDelta / TURN_PER_PIXEL;
+                if (state.toolSway) {
+                    state.yawLag = Math.max(
+                        -TOOL_YAW_LAG_MAX,
+                        Math.min(TOOL_YAW_LAG_MAX, state.yawLag - delta.yawDelta)
+                    );
+                }
+            }
             if (delta.pitchDelta) state.pitchDelta += delta.pitchDelta;
         };
         input.onPointerUp = event => {
@@ -1067,7 +1410,12 @@ const createView3d = (runtime, world, options) => {
         releaseGamepadKeys();
         if (!state.on) return;
         state.on = false;
+        state.yawLag = 0;
+        state.stepSpeed = 0;
+        state.stepTriggered = false;
         stepHeadBob(state.bob, {visible: false});
+        syncPinnedTools();
+        syncSpatialAudio();
         if (state.release) state.release();
         state.release = null;
         if (world) world.setTilesHidden(false);
@@ -1099,9 +1447,9 @@ const createView3d = (runtime, world, options) => {
 
     const onBefore = () => {
         flushPending();
+        state.stepTriggered = false;
         if (!state.on) return;
         if (!pacing.running) startPacing();
-        state.tickStart = now();
         state.drawMs = 0;
         state.drew = false;
         if (!pacing.framed) pollGamepad(stepMs() / 1000);
@@ -1123,28 +1471,36 @@ const createView3d = (runtime, world, options) => {
         const prev = state.toPose || next;
         const stepDx = next.x - prev.x;
         const stepDy = next.y - prev.y;
-        const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
-        stepHeadBob(state.bob, {
-            dx: stepDx,
-            dy: stepDy,
-            dt: stepMs() / 1000,
-            elevation: elevationOf(state.viewer),
-            visible: state.on,
-            headBob,
-            sustainedOnly: true
-        });
+        const vmDt = stepMs() / 1000;
+        const stepDist = Math.hypot(stepDx, stepDy);
+        const stepSpeed = stepDist / Math.max(1e-4, vmDt);
+        const turnDelta = angleDelta(prev.direction, next.direction);
+        if (state.toolSway && Math.abs(turnDelta) > POSE_EPSILON) {
+            state.yawLag = Math.max(-TOOL_YAW_LAG_MAX, Math.min(TOOL_YAW_LAG_MAX, state.yawLag - turnDelta));
+        }
+        state.stepDx = stepDx;
+        state.stepDy = stepDy;
+        state.stepDt = vmDt;
+        state.stepSpeed = stepSpeed;
+        const strafe = state.gamepadMove && state.gamepadMove.active ? state.gamepadMove.strafe : null;
+        if (stepSpeed < MIN_BOB_SPEED || !state.bobFramed) {
+            advanceBob(vmDt, stepDx, stepDy, next.direction, strafe);
+        }
+        state.bobFramed = false;
         state.fromPose = {x: prev.x, y: prev.y, direction: prev.direction};
         state.toPose = next;
         state.stepAt = at;
-        advancePose(framed ? 0 : 1);
         syncGhosts();
-        refresh();
-        if (state.drew && state.tickStart > 0 && !state.manual && opts.adaptive !== false) {
-            state.pendingWork = now() - state.tickStart;
-            state.pendingDraw = state.drawMs;
+        syncSpatialAudio();
+        syncPinnedTools();
+        if (framed) {
+            advancePose(0);
+            refresh();
+            state.drawMs = 0;
+            state.drew = false;
+        } else {
+            stepFramePose(1);
         }
-        state.drawMs = 0;
-        state.drew = false;
     };
 
     const destroy = () => {
@@ -1213,6 +1569,8 @@ const createView3d = (runtime, world, options) => {
                 timeDraws(),
                 chainHook(seam, 'drawableProperties', hookProperties),
                 chainHook(seam, 'drawableEffect', hookEffect),
+                chainHook(seam, 'drawablePosition', hookPosition),
+                chainHook(seam, 'drawableDirectionScale', hookDirectionScale),
                 world.addDrawables(() => gpu.drawable)
             );
             return view;
@@ -1230,7 +1588,9 @@ const createView3d = (runtime, world, options) => {
             eye: state.eye,
             quality: state.manual ? 'manual' : policy.mode,
             floorTextures: policy.floorTextures,
-            textureFilter: textureFilterOn()
+            textureFilter: textureFilterOn(),
+            spriteStep: policy.spriteStep,
+            rayCap: policy.rayCap
         }),
         setSetting (name, value) {
             if (name === 'fov') state.fov = clampFov(value);
@@ -1256,25 +1616,66 @@ const createView3d = (runtime, world, options) => {
             if (state.usePlayerSettings && state.playerSettings && state.playerSettings.lookUpDown === false) {
                 return state.pitch;
             }
-            state.pitch = clampPitch(state.pitch + (Number(delta) || 0));
+            state.pitch = clampPanelPitch(state.pitch + (Number(delta) || 0));
             return state.pitch;
         },
         headBob: () => Object.assign({}, state.bob),
-        stepBob (dx, dy, dt, elevation) {
+        swayX: () => effectiveBobX(),
+        roll: () => effectiveRoll(),
+        stepBob (dx, dy, dt, elevation, direction, strafe) {
             const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
-            return stepHeadBob(state.bob, {
+            const prevSteps = state.bob.steps || 0;
+            const res = stepHeadBob(state.bob, {
                 dx,
                 dy,
                 dt,
                 elevation,
+                direction: typeof direction === 'number' ? direction : (state.viewer ? state.viewer.direction : 90),
+                strafe,
                 visible: state.on,
                 headBob
             });
+            if (res.stepped || (res.steps || 0) > prevSteps) {
+                state.stepTriggered = true;
+                playFootstepTap();
+            }
+            return res;
         },
         triggerLanding (impact) {
             const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
             return triggerLandingBob(state.bob, impact, headBob);
         },
+        toolSway: () => state.toolSway,
+        setToolSway (on) {
+            state.toolSway = !!on;
+            if (!state.toolSway) state.yawLag = 0;
+            syncPinnedTools();
+            if (state.on && viewerAlive()) refresh();
+        },
+        toolSwayOffsets,
+        footsteps: () => state.footsteps,
+        setFootsteps (on) {
+            state.footsteps = !!on;
+        },
+        footstepPlays: () => state.footstepPlays,
+        stepFired (target) {
+            const checkTarget = target || state.viewer;
+            if (!state.on || !checkTarget || checkTarget.isStage || checkTarget !== state.viewer) return false;
+            return Boolean(state.stepTriggered);
+        },
+        soundRange: () => state.soundRange,
+        setSoundRange (range) {
+            const n = Number(range);
+            state.soundRange = Number.isFinite(n) ?
+                Math.max(MIN_SOUND_RANGE, Math.min(MAX_SOUND_RANGE, n)) :
+                DEFAULT_SOUND_RANGE;
+            syncSpatialAudio();
+        },
+        soundFor (target) {
+            if (!target) return computeSoundFor(null);
+            return computeSoundFor(target);
+        },
+        gamepadMove: () => Object.assign({}, state.gamepadMove),
         usePlayerSettings: () => state.usePlayerSettings,
         setUsePlayerSettings (on) {
             state.usePlayerSettings = !!on;

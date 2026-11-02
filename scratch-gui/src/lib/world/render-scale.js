@@ -45,6 +45,10 @@ const RUNG_MESSAGES = Object.freeze({
         description: 'Toggle label for bilinear texture filtering on walls and floors'
     })
 });
+const DEFAULT_SPRITE_STEP = 1;
+const FAST_SPRITE_STEP = 2;
+const DEFAULT_RAY_CAP = 40;
+const FAST_RAY_CAP = 16;
 const PIXEL_BUDGET = 480 * 360;
 const WINDOW = 45;
 const OVER_BUDGET = 0.6;
@@ -73,6 +77,18 @@ const floorTexturesFor = (mode, scale) => {
     if (mode === 'fast' || mode === 'fastest') return false;
     if (mode === 'crisp' || mode === 'sharpest' || mode === '2x' || mode === '2.0x') return true;
     return (Number(scale) || 0) > 0.5;
+};
+
+const spriteStepFor = (mode, scale) => {
+    if (mode === 'fast' || mode === 'fastest') return FAST_SPRITE_STEP;
+    if (mode === 'crisp' || mode === 'sharpest' || mode === '2x' || mode === '2.0x') return DEFAULT_SPRITE_STEP;
+    return (Number(scale) || 0) <= 0.5 ? FAST_SPRITE_STEP : DEFAULT_SPRITE_STEP;
+};
+
+const rayCapFor = (mode, scale) => {
+    if (mode === 'fast' || mode === 'fastest') return FAST_RAY_CAP;
+    if (mode === 'crisp' || mode === 'sharpest' || mode === '2x' || mode === '2.0x') return DEFAULT_RAY_CAP;
+    return (Number(scale) || 0) <= 0.5 ? FAST_RAY_CAP : DEFAULT_RAY_CAP;
 };
 
 const textureFilterFor = (mode, scale, enabled = false) => {
@@ -143,6 +159,12 @@ const createScalePolicy = (options = {}) => {
         },
         get floorTextures () {
             return floorTexturesFor(state.mode, state.scale);
+        },
+        get spriteStep () {
+            return spriteStepFor(state.mode, state.scale);
+        },
+        get rayCap () {
+            return rayCapFor(state.mode, state.scale);
         },
         get textureFilter () {
             return textureFilterFor(state.mode, state.scale, state.textureFilter);
@@ -265,6 +287,10 @@ const createScalePolicy = (options = {}) => {
 };
 
 export {
+    DEFAULT_RAY_CAP,
+    DEFAULT_SPRITE_STEP,
+    FAST_RAY_CAP,
+    FAST_SPRITE_STEP,
     HEADROOM,
     LATE_SHARE_DOWN,
     LATE_SHARE_UP,
@@ -281,6 +307,8 @@ export {
     WINDOW,
     createScalePolicy,
     floorTexturesFor,
+    rayCapFor,
+    spriteStepFor,
     startScale,
     textureFilterFor
 };
