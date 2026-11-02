@@ -103,7 +103,7 @@
     position: absolute;
     top: calc(100% + 8px);
     right: 0;
-    width: 340px;
+    width: 360px;
     max-width: calc(100vw - 16px);
     max-height: min(460px, calc(100vh - 72px));
     display: flex;
@@ -295,10 +295,26 @@
 }
 
 @media (max-width: 480px) {
+    .root {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        max-width: 100%;
+    }
+
+    .toast,
+    .status-pill {
+        min-height: 28px;
+        padding: 0 8px;
+        font-size: 12px;
+    }
+
     .trigger,
     .close,
     .join-again {
-        min-height: 44px;
+        min-height: 40px;
+        padding: 0 10px;
+        font-size: 13px;
     }
 
     .panel {
