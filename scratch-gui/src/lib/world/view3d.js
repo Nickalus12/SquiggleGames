@@ -5,10 +5,15 @@ import {chainHook} from './world.js';
 import {createScalePolicy} from './render-scale.js';
 import {
     PLAYER_SETTINGS_CHANGED,
+    clampPitch,
+    createHeadBob,
     fogForDrawDistance,
     hasStoredPlayerSettings,
+    horizonForPitch,
     normalizePlayerSettings,
-    readPlayerSettings
+    readPlayerSettings,
+    stepHeadBob,
+    triggerLandingBob
 } from './player-settings.js';
 import {readGameSettings} from '../game-settings.js';
 import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, MAX_LIGHTS, WIDTH, clampEye, clampFalloff, clampFog, clampFov,
@@ -209,6 +214,7 @@ const createView3d = (runtime, world, options) => {
         fixedScale);
     const defaultScale = firstScale();
     let frame = createFrame(Math.round(stageW() * defaultScale), Math.round(stageH() * defaultScale));
+    frame.horizon = frame.height / 2;
     const cameraOwner = {kit: 'squiggle3d'};
     const serials = new WeakMap();
     const fresh = () => ({
@@ -217,7 +223,12 @@ const createView3d = (runtime, world, options) => {
         fov: DEFAULT_FOV,
         fog: 0,
         eye: DEFAULT_EYE,
+<<<<<<< HEAD
         lightFalloff: 0,
+||||||| parent of d9521c2 (edit-3d-player: add pitch blocks, frame.horizon shift, head-bob curve, and gamepad/touch-look helpers)
+=======
+        pitch: 0,
+>>>>>>> d9521c2 (edit-3d-player: add pitch blocks, frame.horizon shift, head-bob curve, and gamepad/touch-look helpers)
         floor: DEFAULT_FLOOR,
         ceiling: DEFAULT_CEILING,
         floorTexture: 'color',
@@ -251,7 +262,8 @@ const createView3d = (runtime, world, options) => {
         scale: defaultScale,
         usePlayerSettings: true,
         playerSettings: readPlayerSettings(playerStore),
-        hasPlayerOverride: hasStoredPlayerSettings(playerStore)
+        hasPlayerOverride: hasStoredPlayerSettings(playerStore),
+        bob: createHeadBob()
     });
     let state = fresh();
     const effectiveFov = () => (
@@ -269,6 +281,12 @@ const createView3d = (runtime, world, options) => {
             state.playerSettings.quality :
             quality()
     );
+    const effectivePitch = () => clampPitch(state.pitch);
+    const effectiveBobY = () => {
+        if (!state.on || !state.bob) return 0;
+        if (state.usePlayerSettings && state.playerSettings && state.playerSettings.headBob === 0) return 0;
+        return Number(state.bob.totalY) || 0;
+    };
     const gpu = {drawable: null, skin: null, image: null, scale: defaultScale};
     const link = {seam: null, disposers: [], effect: null, input: null};
     const cache = {
@@ -461,6 +479,7 @@ const createView3d = (runtime, world, options) => {
         const wantH = Math.max(45, Math.round(stageH() * state.scale));
         if (frame.width === wantW && frame.height === wantH) return false;
         frame = createFrame(wantW, wantH);
+        frame.horizon = frame.height / 2;
         gpu.image = null;
         state.rendered = -1;
         state.uploaded = -1;
@@ -506,6 +525,8 @@ const createView3d = (runtime, world, options) => {
         h = mix(h, effectiveFog());
         h = mix(h, state.eye);
         h = mix(h, state.lightFalloff);
+        h = mix(h, effectivePitch());
+        h = mix(h, effectiveBobY());
         h = mix(h, state.floor);
         h = mix(h, state.ceiling);
         h = mixStr(h, state.floorTexture);
@@ -610,6 +631,11 @@ const createView3d = (runtime, world, options) => {
         scene.floorTex = textureByName(level, scene.floorMode);
         scene.ceilingTex = textureByName(level, scene.ceilingMode);
         scene.floorTextures = floorTexturesOn();
+        const halfFovRad = (scene.fov * Math.PI / 180) * 0.5;
+        const focal = (frame.width / 2) / Math.max(1e-5, Math.tan(halfFovRad));
+        const horizon = horizonForPitch(effectivePitch(), frame.height, focal, effectiveBobY());
+        frame.horizon = horizon;
+        scene.horizon = horizon;
         collect(space);
     };
 
@@ -973,10 +999,39 @@ const createView3d = (runtime, world, options) => {
             else if (name === 'fog') state.fog = clampFog(value);
             else if (name === 'eye') state.eye = clampEye(value);
             else if (name === 'falloff' || name === 'lightFalloff') state.lightFalloff = clampFalloff(value);
+            else if (name === 'pitch') state.pitch = clampPitch(value);
         },
         lightFalloff: () => state.lightFalloff,
         setLightFalloff (value) {
             state.lightFalloff = clampFalloff(value);
+        },
+        pitch: () => effectivePitch(),
+        setPitch (value) {
+            state.pitch = clampPitch(value);
+            if (state.on && viewerAlive()) refresh();
+        },
+        addPitch (delta) {
+            if (state.usePlayerSettings && state.playerSettings && state.playerSettings.lookUpDown === false) {
+                return state.pitch;
+            }
+            state.pitch = clampPitch(state.pitch + (Number(delta) || 0));
+            return state.pitch;
+        },
+        headBob: () => Object.assign({}, state.bob),
+        stepBob (dx, dy, dt, elevation) {
+            const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
+            return stepHeadBob(state.bob, {
+                dx,
+                dy,
+                dt,
+                elevation,
+                visible: state.on,
+                headBob
+            });
+        },
+        triggerLanding (impact) {
+            const headBob = state.usePlayerSettings && state.playerSettings ? state.playerSettings.headBob : 100;
+            return triggerLandingBob(state.bob, impact, headBob);
         },
         usePlayerSettings: () => state.usePlayerSettings,
         setUsePlayerSettings (on) {

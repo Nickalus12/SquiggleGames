@@ -5,15 +5,37 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {EventEmitter} from 'node:events';
 import {
+    MAX_BOB_AMP,
+    MAX_PITCH,
+    MIN_PITCH,
     PLAYER_SETTINGS_KEY,
+    clampPitch,
+    createHeadBob,
     fogForDrawDistance,
+    horizonForPitch,
     normalizePlayerSettings,
     readPlayerSettings,
     resetPlayerSettings,
     resolvePlayerSettings,
+    stepHeadBob,
+    triggerLandingBob,
     updatePlayerSettings,
     writePlayerSettings
 } from '../../lib/world/player-settings.js';
+import {
+    GAMEPAD_LOOK_INNER,
+    GAMEPAD_MOVE_INNER,
+    TOUCH_LOOK_SLOP,
+    createTouchLookState,
+    endTouchLook,
+    gamepadLookDelta,
+    gamepadMoveKeys,
+    gamepadRadialStick,
+    isRightHalfTouch,
+    moveTouchLook,
+    startTouchLook,
+    syncGamepadKeys
+} from '../../lib/touch-keys.js';
 
 const require = createRequire(import.meta.url);
 const {transformSync} = require('@babel/core');
@@ -177,6 +199,120 @@ liveView.usePlayerSettings = () => false;
 const lockedMarkup = render(React.createElement(PlayerSettings, {vm: {runtime}, storage, defaultOpen: true}));
 ok('when the maker locks 3D settings the panel shows the lock banner',
     lockedMarkup.includes('data-testid="player-settings-locked"'));
+
+ok('clampPitch clamps pitch to -45..+45 degrees',
+    clampPitch(0) === 0 &&
+    clampPitch(90) === MAX_PITCH &&
+    clampPitch(-90) === MIN_PITCH &&
+    clampPitch('bad') === 0);
+
+const centerHorizon = horizonForPitch(0, 180, 180);
+const upHorizon = horizonForPitch(30, 180, 180);
+const downHorizon = horizonForPitch(-30, 180, 180);
+ok('horizonForPitch keeps 0 deg at height / 2 and shifts for +/- pitch within 1..height-1',
+    centerHorizon === 90 &&
+    upHorizon > 90 &&
+    downHorizon < 90 &&
+    horizonForPitch(45, 180, 180) <= 179 &&
+    horizonForPitch(-45, 180, 180) >= 1);
+
+const bob = createHeadBob();
+stepHeadBob(bob, {dx: 0.1, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+ok('head bob stays 0 below 8 units/s threshold', bob.amplitude === 0 && bob.totalY === 0);
+
+for (let i = 0; i < 15; i++) {
+    stepHeadBob(bob, {dx: 2, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+}
+ok('head bob at 60 units/s reaches ~2.4 px amplitude and advances phase',
+    bob.amplitude > 2.0 && bob.amplitude <= 2.5 && bob.phase > 0,
+    bob);
+
+const fastBob = createHeadBob();
+for (let i = 0; i < 15; i++) {
+    stepHeadBob(fastBob, {dx: 8, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+}
+ok('head bob caps amplitude at 4 px and cycles faster at higher speed',
+    fastBob.amplitude <= MAX_BOB_AMP && fastBob.phase > bob.phase,
+    {fast: fastBob, walk: bob});
+
+const halfBob = createHeadBob();
+for (let i = 0; i < 15; i++) {
+    stepHeadBob(halfBob, {dx: 2, dy: 0, dt: 1 / 30, headBob: 50, visible: true});
+}
+ok('player headBob slider scales amplitude proportionally',
+    Math.abs(halfBob.amplitude - (bob.amplitude * 0.5)) < 0.15,
+    {half: halfBob.amplitude, full: bob.amplitude});
+
+for (let i = 0; i < 20; i++) {
+    stepHeadBob(bob, {dx: 0, dy: 0, dt: 1 / 30, headBob: 100, visible: true});
+}
+ok('head bob eases out to 0 when stopped', bob.amplitude === 0 && bob.totalY === 0);
+
+stepHeadBob(bob, {dx: 2, dy: 0, dt: 1 / 30, headBob: 100, visible: false});
+ok('no head bob while the 3D view is hidden', bob.amplitude === 0 && bob.totalY === 0);
+
+const landBob = createHeadBob();
+stepHeadBob(landBob, {dx: 0, dy: 0, dt: 1 / 30, elevation: 40, headBob: 100, visible: true});
+stepHeadBob(landBob, {dx: 0, dy: 0, dt: 1 / 30, elevation: 0, headBob: 100, visible: true});
+const dipAfterLand = landBob.landingY;
+for (let i = 0; i < 15; i++) {
+    stepHeadBob(landBob, {dx: 0, dy: 0, dt: 1 / 30, elevation: 0, headBob: 100, visible: true});
+}
+triggerLandingBob(landBob, 4, 0);
+ok('landing from elevation dips the view and decays back to 0',
+    dipAfterLand > 0 && landBob.landingY === 0);
+
+const deadStick = gamepadRadialStick(0.15, 0.15, GAMEPAD_LOOK_INNER);
+const smallStick = gamepadRadialStick(0.5, 0, GAMEPAD_LOOK_INNER, 0.97, 2);
+const fullStick = gamepadRadialStick(1, 0, GAMEPAD_LOOK_INNER, 0.97, 2);
+ok('gamepad radial deadzone zeros inside inner radius and curves look response to 1 at outer radius',
+    deadStick.magnitude === 0 &&
+    smallStick.magnitude > 0 &&
+    smallStick.magnitude < 0.5 &&
+    fullStick.magnitude === 1);
+
+const padLook = gamepadLookDelta(1, -1, 0.05, {mouseSpeed: 12, invertLook: false, lookUpDown: true});
+const padLookInverted = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 12, invertLook: true, lookUpDown: true});
+const padLookNoPitch = gamepadLookDelta(0, -1, 0.05, {mouseSpeed: 12, invertLook: false, lookUpDown: false});
+ok('gamepad right stick turns and pitches with invert and lookUpDown options',
+    padLook.yawDelta > 0 &&
+    padLook.pitchDelta > 0 &&
+    padLookInverted.pitchDelta < 0 &&
+    padLookNoPitch.pitchDelta === 0);
+
+const moveKeys = gamepadMoveKeys(
+    {axes: [-0.8, -0.8], buttons: [{pressed: true}]},
+    ['w', 'a', 's', 'd', 'space']
+);
+ok('gamepad left stick and south button map to the project WASD and action keys',
+    moveKeys.includes('w') && moveKeys.includes('a') && moveKeys.includes('space') &&
+    gamepadRadialStick(0.1, 0.1, GAMEPAD_MOVE_INNER).magnitude === 0,
+    moveKeys);
+
+const events = [];
+const held = syncGamepadKeys((name, down) => events.push(`${name}:${down}`), new Set(), ['w', 'd']);
+syncGamepadKeys((name, down) => events.push(`${name}:${down}`), held, ['w']);
+ok('syncGamepadKeys emits only key state transitions',
+    events.join(',') === 'w:true,d:true,d:false');
+
+const stageRect = {left: 0, top: 0, width: 640, height: 360};
+const touchState = createTouchLookState();
+ok('left-half touch is ignored so touch controls keep working on the left half',
+    isRightHalfTouch(120, stageRect) === false &&
+    startTouchLook(touchState, 1, 120, 180, stageRect) === false);
+ok('right-half touch starts touch look',
+    isRightHalfTouch(480, stageRect) === true &&
+    startTouchLook(touchState, 1, 480, 180, stageRect) === true);
+const beforeSlop = moveTouchLook(touchState, 1, 480 + (TOUCH_LOOK_SLOP - 2), 180);
+const atSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 1, 180);
+const afterSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 21, 160, {mouseSpeed: 12});
+endTouchLook(touchState, 1);
+ok('touch look ignores movement inside 6px slop then turns and pitches on drag',
+    beforeSlop.active === false &&
+    atSlop.active === true &&
+    afterSlop.yawDelta > 0 &&
+    afterSlop.pitchDelta > 0 &&
+    touchState.pointerId === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

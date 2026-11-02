@@ -18,6 +18,14 @@ const MAX_HEAD_BOB = 100;
 const MIN_PITCH = -45;
 const MAX_PITCH = 45;
 
+const MIN_BOB_SPEED = 8;
+const BOB_AMP_PER_SPEED = 0.04;
+const MAX_BOB_AMP = 4;
+const STEP_DISTANCE = 24;
+const MIN_STEP_PERIOD = 0.28;
+const MAX_STEP_PERIOD = 0.60;
+const LANDING_MAX_OFFSET = 4;
+
 const QUALITY_MODES = MODES;
 const DRAW_DISTANCES = Object.freeze(['near', 'normal', 'far']);
 const DRAW_DISTANCE_FOG = Object.freeze({
@@ -65,14 +73,93 @@ const clampPitch = value => {
     return clamp(n, MIN_PITCH, MAX_PITCH);
 };
 
-const horizonForPitch = (pitch, height, focal) => {
+const horizonForPitch = (pitch, height, focal, bobOffsetPx = 0) => {
     const h = Math.max(1, Number(height) || 180);
     const half = h / 2;
     const deg = clampPitch(pitch);
-    if (deg === 0) return half;
+    const bobPx = (Number(bobOffsetPx) || 0) * (h / 360);
+    if (deg === 0 && bobPx === 0) return half;
     const f = Number(focal) > 0 ? Number(focal) : half;
-    const shift = Math.tan(deg * Math.PI / 180) * (f * 0.5);
-    return clamp(half + shift, 1, h - 1);
+    const shift = deg === 0 ? 0 : Math.tan(deg * Math.PI / 180) * (f * 0.5);
+    return clamp(half + shift + bobPx, 1, h - 1);
+};
+
+const createHeadBob = () => ({
+    phase: 0,
+    amplitude: 0,
+    offsetY: 0,
+    swayX: 0,
+    landingY: 0,
+    totalY: 0,
+    lastElevation: 0,
+    movingTicks: 0
+});
+
+const triggerLandingBob = (bobState, impact = LANDING_MAX_OFFSET, headBob = DEFAULT_HEAD_BOB) => {
+    const state = bobState || createHeadBob();
+    const scale = clampHeadBob(headBob) / 100;
+    const raw = Math.max(0, Number(impact) || 0);
+    const kick = clamp(raw, 0, LANDING_MAX_OFFSET) * scale;
+    state.landingY = Math.max(state.landingY || 0, kick);
+    state.totalY = (state.offsetY || 0) - state.landingY;
+    return state;
+};
+
+const stepHeadBob = (bobState, opts = {}) => {
+    const state = bobState || createHeadBob();
+    const visible = opts.visible !== false;
+    const scale = clampHeadBob(typeof opts.headBob === 'undefined' ? DEFAULT_HEAD_BOB : opts.headBob) / 100;
+    if (!visible || scale <= 0) {
+        state.phase = 0;
+        state.amplitude = 0;
+        state.offsetY = 0;
+        state.swayX = 0;
+        state.landingY = 0;
+        state.totalY = 0;
+        state.movingTicks = 0;
+        state.lastElevation = Math.max(0, Number(opts.elevation) || 0);
+        return state;
+    }
+    const dt = clamp(Number(opts.dt) || (1 / 30), 1 / 240, 0.25);
+    const dx = Number(opts.dx) || 0;
+    const dy = Number(opts.dy) || 0;
+    const dist = Math.hypot(dx, dy);
+    const speed = dist / dt;
+    const elevation = Math.max(0, Number(opts.elevation) || 0);
+    if (state.lastElevation > 0 && elevation <= 0) {
+        const drop = Math.min(LANDING_MAX_OFFSET, Math.max(1.5, state.lastElevation * 0.08));
+        state.landingY = Math.max(state.landingY || 0, drop * scale);
+    }
+    state.lastElevation = elevation;
+    if (state.landingY > 0) {
+        state.landingY *= Math.exp(-dt / 0.06);
+        if (state.landingY < 0.02) state.landingY = 0;
+    }
+    if (speed >= MIN_BOB_SPEED) {
+        state.movingTicks = (state.movingTicks || 0) + 1;
+        const rawAmp = Math.min(MAX_BOB_AMP, speed * BOB_AMP_PER_SPEED) * scale;
+        const blend = Math.min(1, dt / 0.08);
+        state.amplitude += (rawAmp - state.amplitude) * blend;
+        const stepPeriod = clamp(STEP_DISTANCE / speed, MIN_STEP_PERIOD, MAX_STEP_PERIOD);
+        const cyclePeriod = stepPeriod * 2;
+        state.phase = (state.phase + ((dt / cyclePeriod) * Math.PI * 2)) % (Math.PI * 4);
+        state.offsetY = Math.sin(state.phase) * state.amplitude;
+        state.swayX = Math.cos(state.phase * 0.5) * state.amplitude * 0.5;
+    } else {
+        state.movingTicks = 0;
+        state.amplitude *= Math.exp(-dt / 0.05);
+        if (state.amplitude < 0.02) {
+            state.amplitude = 0;
+            state.phase = 0;
+            state.offsetY = 0;
+            state.swayX = 0;
+        } else {
+            state.offsetY = Math.sin(state.phase) * state.amplitude;
+            state.swayX = Math.cos(state.phase * 0.5) * state.amplitude * 0.5;
+        }
+    }
+    state.totalY = state.offsetY - state.landingY;
+    return state;
 };
 
 const normalizeQuality = value => {
@@ -216,26 +303,34 @@ const resetPlayerSettings = (runtime, storage) => {
 };
 
 export {
+    BOB_AMP_PER_SPEED,
     DEFAULT_HEAD_BOB,
     DEFAULT_MOUSE_SPEED,
     DEFAULT_PLAYER_SETTINGS,
     DRAW_DISTANCES,
     DRAW_DISTANCE_FOG,
+    LANDING_MAX_OFFSET,
+    MAX_BOB_AMP,
     MAX_HEAD_BOB,
     MAX_MOUSE_SPEED,
     MAX_PITCH,
     MAX_PLAYER_FOV,
+    MAX_STEP_PERIOD,
+    MIN_BOB_SPEED,
     MIN_HEAD_BOB,
     MIN_MOUSE_SPEED,
     MIN_PITCH,
     MIN_PLAYER_FOV,
+    MIN_STEP_PERIOD,
     PLAYER_SETTINGS_CHANGED,
     PLAYER_SETTINGS_KEY,
     QUALITY_MODES,
+    STEP_DISTANCE,
     clampHeadBob,
     clampMouseSpeed,
     clampPitch,
     clampPlayerFov,
+    createHeadBob,
     fogForDrawDistance,
     hasStoredPlayerSettings,
     horizonForPitch,
@@ -245,6 +340,8 @@ export {
     readPlayerSettings,
     resetPlayerSettings,
     resolvePlayerSettings,
+    stepHeadBob,
+    triggerLandingBob,
     updatePlayerSettings,
     writePlayerSettings
 };

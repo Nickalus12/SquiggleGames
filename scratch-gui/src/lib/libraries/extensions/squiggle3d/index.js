@@ -132,6 +132,13 @@ class Squiggle3dBlocks {
                     text: 'use the player\'s 3D settings [ONOFF]',
                     arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
                 },
+                {
+                    opcode: 'setPitch',
+                    blockType: 'command',
+                    text: 'set 3D pitch to [N]',
+                    arguments: {N: {type: 'number', defaultValue: 0}}
+                },
+                {opcode: 'pitch', blockType: 'reporter', text: '3D pitch'},
                 {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'},
                 '---',
                 {
@@ -273,6 +280,14 @@ class Squiggle3dBlocks {
 
     usePlayerSettings (args) {
         this.view.setUsePlayerSettings(str(args.ONOFF) !== 'off');
+    }
+
+    setPitch (args) {
+        this.view.setPitch(args.N);
+    }
+
+    pitch () {
+        return this.view.pitch();
     }
 
     spriteInSights () {

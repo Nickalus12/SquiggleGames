@@ -582,6 +582,39 @@ ok('locking player settings restores project fov and fog',
     playerView.effectiveSettings().fog === 20);
 playerView.setUsePlayerSettings(true);
 ok('unlocking player settings re-applies player overrides', playerView.effectiveSettings().fov === 95);
+ok('default pitch is 0 and frame.horizon is frame.height / 2',
+    playerView.pitch() === 0 && playerView.frame.horizon === playerView.frame.height / 2);
+playerView.setPitch(30);
+ok('setPitch updates pitch and shifts frame.horizon above centre',
+    playerView.pitch() === 30 && playerView.frame.horizon > playerView.frame.height / 2);
+playerView.setPitch(99);
+ok('setPitch clamps to +45 degrees', playerView.pitch() === 45);
+playerView.setPitch(-99);
+ok('setPitch clamps to -45 degrees and shifts frame.horizon below centre',
+    playerView.pitch() === -45 && playerView.frame.horizon < playerView.frame.height / 2);
+playerView.setPitch(0);
+playerView.setPlayerSettings({lookUpDown: false});
+playerView.addPitch(20);
+ok('addPitch respects player lookUpDown toggle', playerView.pitch() === 0);
+playerView.setPlayerSettings({lookUpDown: true, headBob: 100});
+playerView.addPitch(15);
+ok('addPitch adjusts pitch when lookUpDown is on', playerView.pitch() === 15);
+playerView.stepBob(2, 0, 1 / 30, 0);
+ok('stepBob updates view headBob amplitude while view is on', playerView.headBob().amplitude > 0);
+playerView.hide();
+playerView.stepBob(2, 0, 1 / 30, 0);
+ok('stepBob zeros headBob while view is hidden', playerView.headBob().amplitude === 0);
 playerView.dispose();
+
+const {default: Squiggle3dBlocks} = await import('../libraries/extensions/squiggle3d/index.js');
+const ext = new Squiggle3dBlocks(runtime);
+ext.setPitch({N: 25});
+ok('squiggle3d setPitch and pitch blocks read and write pitch', ext.pitch() === 25);
+ext.setPitch({N: -100});
+ok('squiggle3d setPitch block clamps to -45', ext.pitch() === -45);
+ext.setPitch({N: 0});
+ext.usePlayerSettings({ONOFF: 'off'});
+ok('squiggle3d usePlayerSettings block toggles maker lock', ext.view.usePlayerSettings() === false);
+ext.usePlayerSettings({ONOFF: 'on'});
 
 done();
