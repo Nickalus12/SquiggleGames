@@ -17,7 +17,7 @@
     --hud-armor: #5ec8ff;
     --hud-face: clamp(46px, 11cqw, 96px);
     --hud-number: clamp(18px, 4.6cqw, 40px);
-    --hud-label: clamp(10px, 1.6cqw, 14px);
+    --hud-label: 14px;
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -418,13 +418,14 @@
 .keycap {
     display: grid;
     place-items: center;
-    width: clamp(15px, 2.6cqw, 24px);
-    height: clamp(15px, 2.6cqw, 24px);
+    width: clamp(18px, 3cqw, 24px);
+    height: clamp(18px, 3cqw, 24px);
     border-radius: 6px;
     background: var(--hud-plate-hi);
     color: var(--hud-muted);
-    font-size: clamp(10px, 1.6cqw, 14px);
+    font-size: 14px;
     font-weight: 900;
+    line-height: 1;
     box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
 }
 
@@ -476,6 +477,9 @@
     place-items: center;
     width: var(--hud-face);
     height: var(--hud-face);
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    box-sizing: border-box;
     margin-top: calc(-0.42 * var(--hud-face));
     border-radius: 50%;
     background: radial-gradient(circle at 50% 35%, #2b2360 0%, var(--hud-plate-deep) 72%);
@@ -486,6 +490,8 @@
 .face {
     width: 86%;
     height: 86%;
+    aspect-ratio: 1 / 1;
+    display: block;
     transform-origin: 50% 80%;
 }
 
@@ -508,6 +514,23 @@
 }
 
 @container sqhud (max-width: 620px) {
+    .topRow {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 6px;
+        margin-top: -4px;
+    }
+
+    .topLeftSpacer {
+        display: none;
+    }
+
+    .topCenter {
+        justify-content: flex-start;
+        gap: 6px;
+    }
+
     .slotLabelText {
         display: none;
     }
@@ -522,14 +545,41 @@
     }
 
     .boardCard {
-        min-width: 120px;
-        max-width: 160px;
+        min-width: 112px;
+        max-width: 152px;
+    }
+
+    .boardToggle {
+        min-height: 28px;
+        padding: 2px 8px;
+    }
+
+    .boardList {
+        max-height: 46px;
+        overflow-y: auto;
+        padding: 0 6px 5px;
+        gap: 2px;
+    }
+
+    .boardRow {
+        padding: 1px 6px;
     }
 
     .plate {
         min-height: 28px;
-        padding: 2px var(--sq-space-2);
-        font-size: 12px;
+        padding: 2px 8px;
+        gap: 6px;
+        font-size: 14px;
+    }
+
+    .teamPlate {
+        padding: 2px 4px;
+        gap: 4px;
+    }
+
+    .teamChip {
+        padding: 1px 6px;
+        gap: 4px;
     }
 
     .teamScore,
@@ -538,7 +588,7 @@
     }
 }
 
-@container sqhud (max-width: 400px) {
+@container sqhud (max-width: 420px) {
     .faceSlot {
         --hud-face: 44px;
     }
@@ -548,13 +598,28 @@
     }
 
     .slot {
-        min-width: 38px;
+        min-width: 36px;
         padding: 2px 4px;
         border-radius: 9px;
     }
 
+    .keycaps {
+        gap: 2px;
+    }
+
+    .keycap {
+        width: 18px;
+        height: 18px;
+    }
+
     .band {
+        gap: 4px;
+        padding: 4px 6px 5px;
         border-radius: 14px 14px 0 0;
+    }
+
+    .bandSide {
+        gap: 4px;
     }
 }
 

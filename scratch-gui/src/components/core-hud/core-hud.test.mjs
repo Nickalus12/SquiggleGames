@@ -1,39 +1,46 @@
 process.removeAllListeners('warning');
 
-import {createRequire} from 'node:module';
-import {readFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
-import {EventEmitter} from 'node:events';
+const {createRequire} = process.getBuiltinModule('module');
+const {readFileSync} = process.getBuiltinModule('fs');
+const {fileURLToPath} = process.getBuiltinModule('url');
+const {EventEmitter} = process.getBuiltinModule('events');
 
-const require = createRequire(import.meta.url);
-const {transformSync} = require('@babel/core');
-const React = require('react');
-const {renderToStaticMarkup} = require('react-dom/server');
-const {IntlProvider} = require('react-intl');
+const loadPkg = createRequire(import.meta.url);
+const {transformSync} = loadPkg('@babel/core');
+const React = loadPkg('react');
+const {renderToStaticMarkup} = loadPkg('react-dom/server');
+const {IntlProvider} = loadPkg('react-intl');
 
 let pass = 0;
 let fail = 0;
 const ok = (label, cond, detail) => {
     if (cond) pass++;
     else fail++;
-    console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${!cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : ''}`);
+    const extra = !cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : '';
+    console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${extra}`);
 };
 
 const load = (name, stubs) => {
     const file = fileURLToPath(new URL(name, import.meta.url));
+    const presets = [
+        [loadPkg.resolve('@babel/preset-env'), {targets: {node: 'current'}, ignoreBrowserslistConfig: true}],
+        loadPkg.resolve('@babel/preset-react')
+    ];
     const {code} = transformSync(readFileSync(file, 'utf8'), {
         babelrc: false,
         configFile: false,
         filename: file,
-        presets: [[require.resolve('@babel/preset-env'), {targets: {node: 'current'}, ignoreBrowserslistConfig: true}], require.resolve('@babel/preset-react')]
+        presets
     });
-    const module = {exports: {}};
-    const local = id => (Object.prototype.hasOwnProperty.call(stubs, id) ? stubs[id] : require(id));
-    new Function('require', 'module', 'exports', code)(local, module, module.exports);
-    return module.exports;
+    const mod = {exports: {}};
+    const local = id => (Object.prototype.hasOwnProperty.call(stubs, id) ? stubs[id] : loadPkg(id));
+    new Function('require', 'module', 'exports', code)(local, mod, mod.exports);
+    return mod.exports;
 };
 
-const styles = new Proxy({}, {get: (unused, key) => (typeof key === 'string' && key !== '__esModule' ? key : undefined)});
+const styles = new Proxy({}, {
+    get: (unused, key) => (typeof key === 'string' && key !== '__esModule' ? key : null)
+});
 const face = load('./hud-face.jsx', {});
 let fixture = null;
 let extracts = 0;
@@ -180,6 +187,16 @@ hud2.setState = patch => Object.assign(hud2.state, patch);
 hud2.componentDidMount();
 hud2.componentWillUnmount();
 ok('a sprite the game hid itself stays hidden after unmount', shy.visible === false);
+
+const cssSource = readFileSync(fileURLToPath(new URL('./core-hud.css', import.meta.url)), 'utf8');
+const fontSizes = [...cssSource.matchAll(/font-size:\s*([^;]+);/g)].map(m => m[1].trim());
+const sub14 = fontSizes.filter(val => {
+    const px = [...val.matchAll(/(\d+(?:\.\d+)?)px/g)].map(m => Number(m[1]));
+    return px.some(n => n < 14);
+});
+ok('every HUD font-size rule stays 14px or larger', sub14.length === 0, sub14);
+ok('face porthole locks a 1:1 aspect ratio so it stays round on phones',
+    /\.faceSlot\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1/.test(cssSource));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
