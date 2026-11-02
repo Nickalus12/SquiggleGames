@@ -20,6 +20,9 @@ const LATE_FRAME_MS = 25;
 const VIEW_NAME = /^(.*)-([1-8])$/;
 const LOOKS = Object.freeze({picture: 1, views: 2, nothing: 0});
 const TURN_PER_PIXEL = 0.25;
+const MAX_STEP_DISTANCE = 64;
+const MAX_TURN_SNAP = 45;
+const POSE_EPSILON = 1e-3;
 const MIN_ELEVATION = -100;
 const MAX_ELEVATION = 1000;
 const DEFAULT_FLOOR = pixel(0x5b, 0x4b, 0x3d);
@@ -35,7 +38,41 @@ const num = (value, fallback) => {
     return Number.isFinite(n) ? n : fallback;
 };
 
+const clamp01 = value => Math.min(1, Math.max(0, num(value, 1)));
+
 const mix = (h, value) => Math.imul(h ^ (Math.round(value * 1024) | 0), 16777619) >>> 0;
+
+const wrapAngle = angle => {
+    let a = ((((angle + 180) % 360) + 360) % 360) - 180;
+    if (a === -180) a = 180;
+    return a;
+};
+
+const angleDelta = (from, to) => wrapAngle(to - from);
+
+const stepPose = (fromPose, toPose, progress, turn = 0) => {
+    const yaw = num(turn, 0) * TURN_PER_PIXEL;
+    const tx = num(toPose && toPose.x, 0);
+    const ty = num(toPose && toPose.y, 0);
+    const td = wrapAngle(num(toPose && toPose.direction, 90) + yaw);
+    if (!fromPose) {
+        return {x: tx, y: ty, direction: td};
+    }
+    const t = clamp01(progress);
+    const fx = num(fromPose.x, tx);
+    const fy = num(fromPose.y, ty);
+    const fd = wrapAngle(num(fromPose.direction, td) + yaw);
+    const dx = tx - fx;
+    const dy = ty - fy;
+    const dist = Math.hypot(dx, dy);
+    const x = dist > POSE_EPSILON && dist <= MAX_STEP_DISTANCE ? fx + (dx * t) : tx;
+    const y = dist > POSE_EPSILON && dist <= MAX_STEP_DISTANCE ? fy + (dy * t) : ty;
+    const dd = angleDelta(fd, td);
+    const direction = Math.abs(dd) > POSE_EPSILON && Math.abs(dd) <= MAX_TURN_SNAP ?
+        wrapAngle(fd + (dd * t)) :
+        td;
+    return {x, y, direction};
+};
 
 const imageSize = (image, costume) => {
     const w = image.naturalWidth || image.width || (costume.size ? costume.size[0] : 0);
@@ -170,6 +207,10 @@ const createView3d = (runtime, world, options) => {
         views: new WeakMap(),
         mouseTurn: false,
         turn: 0,
+        fromPose: null,
+        toPose: null,
+        pose: null,
+        stepAt: 0,
         rendered: -1,
         sightsHash: -1,
         uploaded: -1,
@@ -284,6 +325,65 @@ const createView3d = (runtime, world, options) => {
 
     const viewerAlive = () => !!state.viewer && runtime.targets.indexOf(state.viewer) !== -1;
 
+    const requestFrame = opts.requestFrame ||
+        (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+    const pacing = {running: false, last: 0, shortest: Infinity, framed: false};
+
+    const interpolating = () => Boolean(
+        runtime && (runtime.interpolationEnabled || (runtime.frameLoop && runtime.frameLoop._interpolationAnimation))
+    );
+
+    const stepMs = () => {
+        const current = Number(runtime && runtime.currentStepTime);
+        return current > 0 ? current : frameMs();
+    };
+
+    const poseSnapshot = target => ({
+        x: num(target && target.x, 0),
+        y: num(target && target.y, 0),
+        direction: wrapAngle(num(target && target.direction, 90))
+    });
+
+    const poseOf = () => (state.pose && (pacing.last > 0 || interpolating()) ? state.pose : state.viewer);
+
+    const poseMoving = () => {
+        if (!viewerAlive() || !state.pose || !state.toPose) return false;
+        const dx = state.toPose.x - state.pose.x;
+        const dy = state.toPose.y - state.pose.y;
+        const dd = angleDelta(state.pose.direction, state.toPose.direction);
+        return Math.hypot(dx, dy) > POSE_EPSILON || Math.abs(dd) > POSE_EPSILON;
+    };
+
+    const progressNow = () => {
+        if (state.stepAt <= 0) return 1;
+        return clamp01((now() - state.stepAt) / stepMs());
+    };
+
+    const advancePose = progress => {
+        if (!viewerAlive()) return;
+        if (!state.toPose) {
+            const snap = poseSnapshot(state.viewer);
+            state.fromPose = snap;
+            state.toPose = Object.assign({}, snap);
+        }
+        state.pose = stepPose(state.fromPose, state.toPose, progress, state.turn);
+        runtime._squiggle3dPose = state.pose;
+    };
+
+    const applyTurn = () => {
+        if (!state.turn) return false;
+        const turn = state.turn;
+        state.turn = 0;
+        if (!viewerAlive()) return false;
+        const delta = turn * TURN_PER_PIXEL;
+        const redraw = runtime.redrawRequested;
+        state.viewer.setDirection(state.viewer.direction + delta);
+        runtime.redrawRequested = redraw;
+        if (state.fromPose) state.fromPose.direction = wrapAngle(state.fromPose.direction + delta);
+        if (state.toPose) state.toPose.direction = wrapAngle(state.toPose.direction + delta);
+        return true;
+    };
+
     const ensureFrame = () => {
         const wantW = Math.max(60, Math.round(stageW() * state.scale));
         const wantH = Math.max(45, Math.round(stageH() * state.scale));
@@ -315,51 +415,6 @@ const createView3d = (runtime, world, options) => {
         sampleTick(work, state.pendingDraw);
     };
 
-    const requestFrame = opts.requestFrame ||
-        (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
-    const pacing = {running: false, last: 0, shortest: Infinity};
-
-    const paceFrame = () => {
-        if (!pacing.running) return;
-        if (!state.on || state.manual || !link.seam) {
-            pacing.running = false;
-            return;
-        }
-        const at = now();
-        if (pacing.last > 0) {
-            const gap = at - pacing.last;
-            pacing.shortest = Math.max(MIN_REFRESH_MS, Math.min(pacing.shortest, gap));
-            policy.paced(gap > Math.max(LATE_FRAME_MS, pacing.shortest * 1.75));
-        }
-        pacing.last = at;
-        requestFrame(paceFrame);
-    };
-
-    const startPacing = () => {
-        if (pacing.running || !requestFrame || state.manual || opts.adaptive === false) return;
-        pacing.running = true;
-        pacing.last = 0;
-        requestFrame(paceFrame);
-    };
-
-    const timeDraws = () => {
-        const renderer = runtime.renderer;
-        if (!renderer || typeof renderer.draw !== 'function') return () => {};
-        const original = renderer.draw;
-        const timed = (...args) => {
-            if (state.pendingWork < 0) return original.apply(renderer, args);
-            const started = now();
-            const result = original.apply(renderer, args);
-            state.pendingWork += now() - started;
-            flushPending();
-            return result;
-        };
-        renderer.draw = timed;
-        return () => {
-            if (renderer.draw === timed) renderer.draw = original;
-        };
-    };
-
     const setQuality = mode => {
         state.manual = false;
         applyScale(configure(mode));
@@ -367,7 +422,7 @@ const createView3d = (runtime, world, options) => {
 
     const frameHash = () => {
         ensureFrame();
-        const viewer = state.viewer;
+        const viewer = poseOf();
         let h = 2166136261;
         h = mix(h, frame.width);
         h = mix(h, frame.height);
@@ -396,7 +451,7 @@ const createView3d = (runtime, world, options) => {
     };
 
     const collect = space => {
-        const viewer = state.viewer;
+        const viewer = poseOf();
         const pool = scene.sprites;
         let n = 0;
         for (const target of runtime.targets) {
@@ -431,7 +486,7 @@ const createView3d = (runtime, world, options) => {
     const prepareScene = () => {
         const level = grid();
         const space = level || FREE_GRID;
-        const viewer = state.viewer;
+        const viewer = poseOf();
         prepareLevel(level);
         scene.player.u = (viewer.x - space.origin[0]) / space.tileSize;
         scene.player.v = (space.origin[1] - viewer.y) / space.tileSize;
@@ -485,6 +540,7 @@ const createView3d = (runtime, world, options) => {
             renderer.updateBitmapSkin(gpu.skin, gpu.image, state.scale);
         }
         renderer.updateDrawableVisible(gpu.drawable, true);
+        runtime._squiggle3dPose = poseOf();
         state.uploaded = state.rendered;
         state.uploads++;
     };
@@ -493,6 +549,70 @@ const createView3d = (runtime, world, options) => {
         const hash = frameHash();
         if (hash !== state.rendered) draw(hash);
         if (state.uploaded !== state.rendered) present();
+    };
+
+    const stepFramePose = () => {
+        if (!state.on || !link.seam || !viewerAlive()) return false;
+        if (!state.turn && !poseMoving()) return false;
+        flushPending();
+        applyTurn();
+        advancePose(progressNow());
+        const beforeUploads = state.uploads;
+        refresh();
+        state.drawMs = 0;
+        state.drew = false;
+        return state.uploads !== beforeUploads;
+    };
+
+    const paceFrame = () => {
+        if (!pacing.running) return;
+        if (!state.on || !link.seam || (state.manual && !state.mouseTurn)) {
+            pacing.running = false;
+            return;
+        }
+        const at = now();
+        if (pacing.last > 0 && !state.manual && opts.adaptive !== false) {
+            const gap = at - pacing.last;
+            pacing.shortest = Math.max(MIN_REFRESH_MS, Math.min(pacing.shortest, gap));
+            policy.paced(gap > Math.max(LATE_FRAME_MS, pacing.shortest * 1.75));
+        }
+        pacing.last = at;
+        pacing.framed = true;
+        if (stepFramePose() && !interpolating() && runtime.renderer && typeof runtime.renderer.draw === 'function') {
+            runtime.renderer.draw();
+        }
+        requestFrame(paceFrame);
+    };
+
+    const startPacing = () => {
+        if (pacing.running || !requestFrame) return;
+        if ((state.manual || opts.adaptive === false) && !state.mouseTurn) return;
+        pacing.running = true;
+        pacing.last = 0;
+        pacing.framed = false;
+        requestFrame(paceFrame);
+    };
+
+    const timeDraws = () => {
+        const renderer = runtime.renderer;
+        if (!renderer || typeof renderer.draw !== 'function') return () => {};
+        const original = renderer.draw;
+        const timed = (...args) => {
+            if (interpolating()) {
+                pacing.framed = true;
+                stepFramePose();
+            }
+            if (state.pendingWork < 0) return original.apply(renderer, args);
+            const started = now();
+            const result = original.apply(renderer, args);
+            state.pendingWork += now() - started;
+            flushPending();
+            return result;
+        };
+        renderer.draw = timed;
+        return () => {
+            if (renderer.draw === timed) renderer.draw = original;
+        };
     };
 
     const shouldGhost = target => !target.isStage && !(world && world.isPinned(target));
@@ -562,6 +682,7 @@ const createView3d = (runtime, world, options) => {
         input.onMove = event => {
             if (locked(input)) state.turn += num(event.movementX, 0);
         };
+        canvas.addEventListener('mousedown', input.onClick);
         canvas.addEventListener('click', input.onClick);
         doc.addEventListener('mousemove', input.onMove);
         link.input = input;
@@ -570,6 +691,7 @@ const createView3d = (runtime, world, options) => {
     const detachInput = () => {
         const input = link.input;
         if (!input) return;
+        input.canvas.removeEventListener('mousedown', input.onClick);
         input.canvas.removeEventListener('click', input.onClick);
         input.doc.removeEventListener('mousemove', input.onMove);
         if (locked(input) && typeof input.doc.exitPointerLock === 'function') input.doc.exitPointerLock();
@@ -596,11 +718,18 @@ const createView3d = (runtime, world, options) => {
     const showView = viewer => {
         if (!viewer || viewer.isStage) return;
         state.viewer = viewer;
+        const snap = poseSnapshot(viewer);
+        state.fromPose = snap;
+        state.toPose = Object.assign({}, snap);
+        state.pose = Object.assign({}, snap);
+        state.stepAt = now();
+        runtime._squiggle3dPose = state.pose;
         if (!state.on) {
             state.on = true;
             state.release = world ? world.holdCamera(cameraOwner) : null;
             if (world) world.setTilesHidden(true);
             state.rendered = -1;
+            state.sightsHash = -1;
             state.uploaded = -1;
         }
         if (state.mouseTurn) attachInput();
@@ -615,10 +744,7 @@ const createView3d = (runtime, world, options) => {
         state.tickStart = now();
         state.drawMs = 0;
         state.drew = false;
-        if (!state.turn) return;
-        const turn = state.turn;
-        state.turn = 0;
-        if (viewerAlive()) state.viewer.setDirection(state.viewer.direction + (turn * TURN_PER_PIXEL));
+        applyTurn();
     };
 
     const onAfter = () => {
@@ -627,6 +753,17 @@ const createView3d = (runtime, world, options) => {
             hideView();
             return;
         }
+        applyTurn();
+        const at = now();
+        const recent = state.stepAt > 0 && (at - state.stepAt) <= (stepMs() * 2);
+        const framed = (pacing.framed && recent) || interpolating();
+        pacing.framed = false;
+        const next = poseSnapshot(state.viewer);
+        const prev = state.toPose || next;
+        state.fromPose = {x: prev.x, y: prev.y, direction: prev.direction};
+        state.toPose = next;
+        state.stepAt = at;
+        advancePose(framed ? 0 : 1);
         syncGhosts();
         refresh();
         if (state.drew && state.tickStart > 0 && !state.manual && opts.adaptive !== false) {
@@ -720,9 +857,13 @@ const createView3d = (runtime, world, options) => {
         mouseTurn: () => state.mouseTurn,
         setMouseTurn (on) {
             state.mouseTurn = !!on;
-            if (state.mouseTurn && state.on) attachInput();
+            if (state.mouseTurn && state.on) {
+                attachInput();
+                if (!pacing.running) startPacing();
+            }
             if (!state.mouseTurn) detachInput();
         },
+        pose: () => poseOf(),
         scale: () => state.scale,
         quality: () => (state.manual ? 'manual' : policy.mode),
         setScale (nextScale) {
@@ -760,6 +901,7 @@ const createView3d = (runtime, world, options) => {
             states.delete(runtime);
         }
     };
+    runtime._squiggle3d = view;
     return view;
 };
 
@@ -775,8 +917,11 @@ export {
     RESOLUTION,
     TEXTURE_SIZE,
     TURN_PER_PIXEL,
+    angleDelta,
     facingCostume,
     createPixelCache,
     createView3d,
-    getView3d
+    getView3d,
+    stepPose,
+    wrapAngle
 };

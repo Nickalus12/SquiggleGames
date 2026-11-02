@@ -217,7 +217,11 @@ const createWorld = (vm, runtime, renderer) => {
 
     installProjectSeam(vm);
 
-    runtime.on(BEFORE_EXECUTE, () => steps.before.forEach(fn => fn()));
+    runtime.on(BEFORE_EXECUTE, () => {
+        const redraw = runtime.redrawRequested;
+        steps.before.forEach(fn => fn());
+        runtime.redrawRequested = redraw;
+    });
     runtime.on(AFTER_EXECUTE, () => steps.after.forEach(fn => fn()));
 
     const applyWorldMode = on => {

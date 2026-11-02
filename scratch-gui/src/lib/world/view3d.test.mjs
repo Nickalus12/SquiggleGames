@@ -15,7 +15,7 @@ const {installWorldSeams} = await import('./seams.js');
 const {getWorld} = await import('./world.js');
 const {FLAGS, createGrid, addTexture, setCell, encodeLevel} = await import('./tilemap.js');
 const {HEIGHT, WIDTH, pixel} = await import('./raycast.js');
-const {LAYER, RESOLUTION, TURN_PER_PIXEL, createPixelCache, createView3d} = await import('./view3d.js');
+const {LAYER, RESOLUTION, TURN_PER_PIXEL, createPixelCache, createView3d, stepPose} = await import('./view3d.js');
 const {default: guiLog} = await import('../log.js');
 
 const unhandled = [];
@@ -476,5 +476,74 @@ paced.setScale(0.75);
 runFrames(1);
 ok('a manual scale stops watching display frames', frameQueue.length === 0);
 paced.dispose();
+
+section('per-frame pose interpolation and mouse turn');
+{
+    const mid = stepPose({x: 10, y: 20, direction: 80}, {x: 14, y: 28, direction: 88}, 0.5, 8);
+    ok('stepPose lerps x, y and committed yaw by progress and adds pending turn in full',
+        near(mid.x, 12) && near(mid.y, 24) && near(mid.direction, 84 + (8 * TURN_PER_PIXEL)), mid);
+    const wrapped = stepPose({x: 0, y: 0, direction: 178}, {x: 0, y: 0, direction: -178}, 0.5, 0);
+    ok('stepPose wraps committed yaw across +/-180', Math.abs(wrapped.direction) === 180, wrapped);
+    const snapped = stepPose({x: 0, y: 0, direction: 0}, {x: 200, y: 0, direction: 90}, 0.25, 0);
+    ok('stepPose snaps large teleports and large angle jumps',
+        snapped.x === 200 && snapped.direction === 90, snapped);
+
+    let rafClock = 100;
+    const rafQueue = [];
+    const smooth = createView3d(runtime, world, {
+        canvas,
+        document: doc,
+        toBitmap: bitmap,
+        devicePixelRatio: 1,
+        now: () => rafClock,
+        requestFrame: cb => rafQueue.push(cb)
+    });
+    smooth.attach(seam);
+    hero.setXY(0, 0);
+    hero.setDirection(90);
+    smooth.show(hero);
+    smooth.setMouseTurn(true);
+    doc.pointerLockElement = canvas;
+
+    let steppedInTick = false;
+    const origStepThreads = runtime.sequencer.stepThreads;
+    runtime.sequencer.stepThreads = function () {
+        steppedInTick = !runtime.redrawRequested;
+        hero.setXY(hero.x + 4, hero.y);
+        return origStepThreads.call(this);
+    };
+    listeners.doc.get('mousemove')({movementX: 12});
+    runtime._step();
+    runtime.sequencer.stepThreads = origStepThreads;
+    ok('applying mouse turn in BEFORE_EXECUTE does not set redrawRequested or starve threads',
+        steppedInTick && near(hero.direction, 93) && near(hero.x, 4));
+
+    const uploadsAtStep = smooth.stats().uploads;
+    rafClock += (1000 / 30) * 0.5;
+    listeners.doc.get('mousemove')({movementX: 8});
+    const nextRaf = rafQueue.shift();
+    if (nextRaf) nextRaf();
+    const rafPose = smooth.pose();
+    ok('display rAF applies pending mouse turn in full, lerps position, and uploads bitmap',
+        near(hero.direction, 95) && near(rafPose.direction, 95) && near(rafPose.x, 2) &&
+        smooth.stats().uploads === uploadsAtStep + 1, {rafPose, uploads: smooth.stats().uploads});
+
+    rafClock += (1000 / 30) * 0.5;
+    hero.setXY(8, 0);
+    runtime._step();
+    runtime.interpolationEnabled = true;
+    const uploadsBeforeInterp = smooth.stats().uploads;
+    rafClock += (1000 / 30) * 0.5;
+    listeners.doc.get('mousemove')({movementX: 4});
+    runtime.renderer.draw();
+    const interpPose = smooth.pose();
+    runtime.interpolationEnabled = false;
+    ok('interpolation draw updates 3D bitmap with lerped pose and full pending turn',
+        near(interpPose.x, 6) && near(interpPose.direction, 96) &&
+        smooth.stats().uploads === uploadsBeforeInterp + 1, {interpPose, uploads: smooth.stats().uploads});
+
+    doc.pointerLockElement = null;
+    smooth.dispose();
+}
 
 done();
