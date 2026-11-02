@@ -5,6 +5,20 @@ import {playerName, playerValue, teamName, timeLeft} from './together2/game-stat
 const HEALTH_KEYS = ['hp', 'health', 'hearts', 'lives', 'hull', 'energy', 'p1 hp', 'p1_hp', 'player_hp'];
 const SHIELD_KEYS = ['shield', 'armor', 'armour', 'p1 shield', 'p1_shield'];
 const AMMO_KEYS = ['ammo', 'bolts', 'charges', 'shells', 'p1 ammo', 'p1_ammo'];
+const AMMO_KINDS = ['bullets', 'shells', 'cells', 'rockets', 'bolts', 'charges', 'arrows', 'darts', 'gems'];
+const WEAPON_KEYS = ['weapon', 'cur_wpn', 'wpn', 'cur_weapon', 'current_weapon'];
+const WEAPON_SLOT_KEYS = ['weapon_slots', 'weapons', 'wpn_slots'];
+const ITEM_PATTERN = /(^|[_ ])(key|keycard|card|pass)$/;
+const ITEM_TONES = [
+    ['gold', /gold|yellow|amber/],
+    ['red', /red|crimson/],
+    ['blue', /blue|cyan|ice/],
+    ['green', /green|lime|jade/],
+    ['purple', /purple|violet/]
+];
+const MAX_WEAPON_SLOTS = 7;
+const DEFAULT_WEAPON_SLOTS = 3;
+const MAX_ITEMS = 4;
 const SCORE_KEYS = ['score', 'points', 'pts', 'frags', 'captures', 'tags', 'coins', 'gems', 'stars', 'clears', 'laps'];
 const TIMER_KEYS = [
     'time_left', 'time left', 'timer', 'cur_timer', 'last_timer',
@@ -57,21 +71,74 @@ const readDefaultPlayerValues = mark => {
     return out;
 };
 
+const has = (src, key) => !!src && Object.prototype.hasOwnProperty.call(src, key);
+
+const numberIn = (src, key) => {
+    if (has(src, key)) {
+        const n = numOrNull(src[key]);
+        if (n !== null) return n;
+    }
+    const lastKey = `last_${key}`;
+    return has(src, lastKey) ? numOrNull(src[lastKey]) : null;
+};
+
 const pickFirstNumber = (sources, keys) => {
-    for (const key of keys) {
-        for (const src of sources) {
-            if (src && Object.prototype.hasOwnProperty.call(src, key)) {
-                const n = numOrNull(src[key]);
-                if (n !== null) return {key, value: n};
-            }
-            const lastKey = `last_${key}`;
-            if (src && Object.prototype.hasOwnProperty.call(src, lastKey)) {
-                const n = numOrNull(src[lastKey]);
-                if (n !== null) return {key, value: n};
-            }
+    for (const src of sources) {
+        for (const key of keys) {
+            const n = numberIn(src, key);
+            if (n !== null) return {key, value: n};
         }
     }
     return null;
+};
+
+const titleCase = text => {
+    const words = String(text).replace(/[_]+/g, ' ')
+        .trim();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+const itemTone = name => {
+    const lower = String(name).toLowerCase();
+    const hit = ITEM_TONES.find(pair => pair[1].test(lower));
+    return hit ? hit[0] : 'purple';
+};
+
+const collectItems = (sources, declared) => {
+    const names = [];
+    const seen = new Set();
+    const add = name => {
+        const key = String(name).trim()
+            .toLowerCase();
+        if (!key || seen.has(key) || !ITEM_PATTERN.test(key) || key.startsWith('last_')) return;
+        seen.add(key);
+        names.push(key);
+    };
+    declared.forEach(add);
+    sources.forEach(src => Object.keys(src || {}).forEach(add));
+    return names.slice(0, MAX_ITEMS).map(id => {
+        const hit = pickFirstNumber(sources, [id]);
+        const count = hit ? Math.max(0, hit.value) : 0;
+        return {id, label: titleCase(id), tone: itemTone(id), count, owned: count > 0};
+    });
+};
+
+const collectAmmoKinds = (sources, mainKey) => AMMO_KINDS
+    .filter(kind => kind !== mainKey)
+    .map(kind => {
+        const hit = pickFirstNumber(sources, [kind]);
+        return hit ? {id: kind, label: titleCase(kind), value: Math.max(0, hit.value)} : null;
+    })
+    .filter(Boolean);
+
+const moodFor = (hp, maxHp) => {
+    if (typeof hp !== 'number') return 'good';
+    if (hp <= 0) return 'out';
+    const ratio = hp / Math.max(1, maxHp || 100);
+    if (ratio >= 0.8) return 'great';
+    if (ratio >= 0.55) return 'good';
+    if (ratio >= 0.3) return 'worried';
+    return 'low';
 };
 
 const teamTone = name => {
@@ -89,6 +156,25 @@ const teamTone = name => {
         return 'green';
     }
     return 'purple';
+};
+
+const statusBarLayout = (vitals, leaderboard) => {
+    if (!vitals) return null;
+    const filled = [
+        typeof vitals.hp === 'number',
+        typeof vitals.shield === 'number',
+        typeof vitals.ammo === 'number',
+        !!vitals.weapon
+    ].filter(Boolean).length;
+    if (filled === 0) return null;
+    const me = leaderboard && leaderboard.rows ? leaderboard.rows.find(row => row.isMe) : null;
+    const frags = me ? {label: leaderboard.boardName, value: me.score, place: me.rank} : null;
+    const soloBoard = !!leaderboard && leaderboard.rows.length <= 1;
+    return {
+        layout: filled >= 2 ? 'band' : 'compact',
+        frags: filled >= 2 ? frags : null,
+        foldsBoard: filled >= 2 && soloBoard && !!frags
+    };
 };
 
 export const extractHudState = (vm, netOverride) => {
@@ -198,6 +284,10 @@ export const extractHudState = (vm, netOverride) => {
         const hpHit = pickFirstNumber(sources, HEALTH_KEYS);
         const shieldHit = pickFirstNumber(sources, SHIELD_KEYS);
         const ammoHit = pickFirstNumber(sources, AMMO_KEYS);
+        const weaponHit = pickFirstNumber(sources, WEAPON_KEYS);
+        const slotsHit = pickFirstNumber(sources, WEAPON_SLOT_KEYS);
+        const items = collectItems(sources, Object.keys(defaults));
+        const ammoKinds = collectAmmoKinds(sources, ammoHit ? ammoHit.key : '');
         if (hpHit || shieldHit || ammoHit) {
             const hpKey = hpHit ? hpHit.key : null;
             const maxHpDefault = hpKey && numOrNull(defaults[hpKey]) ? Math.max(1, Number(defaults[hpKey])) : 100;
@@ -205,13 +295,28 @@ export const extractHudState = (vm, netOverride) => {
             const maxShieldDefault = shieldKey && numOrNull(defaults[shieldKey]) ?
                 Math.max(1, Number(defaults[shieldKey])) :
                 100;
+            const hp = hpHit ? Math.max(0, hpHit.value) : null;
+            const maxHp = hpHit ? Math.max(maxHpDefault, hpHit.value) : 100;
+            const weaponSlot = weaponHit ? Math.round(weaponHit.value) : null;
+            const slotCount = Math.min(MAX_WEAPON_SLOTS, Math.max(
+                slotsHit ? Math.round(slotsHit.value) : DEFAULT_WEAPON_SLOTS,
+                weaponSlot || 0
+            ));
             vitals = {
-                hp: hpHit ? Math.max(0, hpHit.value) : null,
-                maxHp: hpHit ? Math.max(maxHpDefault, hpHit.value) : 100,
+                hp,
+                maxHp,
                 hpLabel: hpKey === 'lives' || hpKey === 'hearts' ? 'Lives' : 'HP',
+                hpKind: hpKey === 'lives' || hpKey === 'hearts' ? 'lives' : 'health',
                 shield: shieldHit ? Math.max(0, shieldHit.value) : null,
                 maxShield: shieldHit ? Math.max(maxShieldDefault, shieldHit.value) : 100,
-                ammo: ammoHit ? Math.max(0, ammoHit.value) : null
+                shieldKind: shieldKey === 'shield' || shieldKey === 'p1 shield' || shieldKey === 'p1_shield' ?
+                    'shield' :
+                    'armor',
+                ammo: ammoHit ? Math.max(0, ammoHit.value) : null,
+                ammoKinds,
+                weapon: weaponSlot !== null && weaponSlot >= 1 ? {slot: weaponSlot, slots: slotCount} : null,
+                items,
+                mood: moodFor(hp, maxHp)
             };
         }
     }
@@ -294,6 +399,7 @@ export const extractHudState = (vm, netOverride) => {
     }
 
     const hasHudContent = !!(timer || teams.length > 0 || vitals || leaderboard || statusPill);
+    const bar = statusBarLayout(vitals, leaderboard);
 
     return {
         enabled: true,
@@ -303,10 +409,12 @@ export const extractHudState = (vm, netOverride) => {
         teams,
         vitals,
         leaderboard,
-        statusPill
+        statusPill,
+        bar
     };
 };
 
 export {
-    formatClock
+    formatClock,
+    moodFor
 };
