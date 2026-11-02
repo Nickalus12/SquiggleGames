@@ -454,6 +454,91 @@ if (process.env.SQ_PERF === '1') {
         `p95 ${p952.toFixed(3)} ms`);
     ok('mixed-geometry median frame under 4 ms', median2 < 4, median2);
     ok('mixed-geometry p95 frame under 4 ms', p952 < 4, p952);
+
+    const denseSize = 48;
+    const denseGrid = room(denseSize, denseSize, {texture: true});
+    for (let i = 4; i < denseSize - 4; i += 6) {
+        for (let j = 4; j < denseSize - 4; j += 2) setCell(denseGrid, 'main', i, j, 1);
+    }
+    const denseSprites = [];
+    for (let i = 0; i < 16; i++) {
+        denseSprites.push({
+            name: `D${i}`,
+            u: 2 + ((i * 5) % 42) + 0.5,
+            v: 2 + ((i * 9) % 42) + 0.5,
+            image: solidImage(48, 64, RED),
+            height: 1
+        });
+    }
+    const denseMap = mapOf(denseGrid);
+    const runDense = (label, extra) => {
+        const df = createFrame(640, 360);
+        df.timings = {};
+        const ds = Object.assign({
+            map: denseMap,
+            player: {u: 3.5, v: 3.5, direction: 135},
+            fov: 90,
+            fog: 30,
+            floor: BLUE,
+            ceiling: RED,
+            texture: () => tex,
+            sprites: denseSprites
+        }, extra);
+        for (let i = 0; i < 15; i++) {
+            ds.player = {u: 3.5 + ((i % 30) * 0.05), v: 3.5 + ((i % 20) * 0.05), direction: (i * 5) % 360};
+            render(df, ds);
+        }
+        const tot = [];
+        const surf = [];
+        const wall = [];
+        for (let i = 0; i < 30; i++) {
+            ds.player = {u: 3.5 + ((i % 30) * 0.05), v: 3.5 + ((i % 20) * 0.05), direction: (i * 5) % 360};
+            const t0 = performance.now();
+            render(df, ds);
+            tot.push(performance.now() - t0);
+            surf.push(df.timings.surfacesMs || 0);
+            wall.push(df.timings.wallTexMs || 0);
+        }
+        tot.sort((a, b) => a - b);
+        surf.sort((a, b) => a - b);
+        wall.sort((a, b) => a - b);
+        const res = {
+            renderMedian: tot[15],
+            renderP95: tot[28],
+            surfacesMedian: surf[15],
+            surfacesP95: surf[28],
+            wallsMedian: wall[15]
+        };
+        console.log(
+            `  info  dense 48x48 640x360 ${label}: render med ${res.renderMedian.toFixed(3)} ms ` +
+            `(p95 ${res.renderP95.toFixed(3)} ms), surfaces med ${res.surfacesMedian.toFixed(3)} ms, ` +
+            `walls med ${res.wallsMedian.toFixed(3)} ms`
+        );
+        return res;
+    };
+    const flatRes = runDense('flat_fill', {floorMode: 'flat', ceilingMode: 'flat', lightFalloff: 0});
+    const skyRes = runDense('sky_strip', {floorMode: 'flat', ceilingMode: 'sky', lightFalloff: 0});
+    const shadeRes = runDense('shade_table', {floorMode: 'flat', ceilingMode: 'flat', lightFalloff: 30});
+    const onePlaneRes = runDense('one_floor_plane', {
+        floorMode: 'brick', ceilingMode: 'flat', floorTex: tex, floorTextures: true, lightFalloff: 0
+    });
+    const twoPlanesRes = runDense('two_planes', {
+        floorMode: 'brick',
+        ceilingMode: 'brick',
+        floorTex: tex,
+        ceilTex: tex,
+        floorTextures: true,
+        lightFalloff: 30
+    });
+    const floorSkyRes = runDense('floor_plus_sky', {
+        floorMode: 'brick', ceilingMode: 'sky', floorTex: tex, floorTextures: true, lightFalloff: 30
+    });
+    ok('dense 48x48 640x360 flat fill under 2 ms', flatRes.renderMedian < 2, flatRes.renderMedian);
+    ok('dense 48x48 640x360 sky strip under 2 ms', skyRes.renderMedian < 2, skyRes.renderMedian);
+    ok('dense 48x48 640x360 shade table under 2 ms', shadeRes.renderMedian < 2, shadeRes.renderMedian);
+    ok('dense 48x48 640x360 one plane under 3 ms', onePlaneRes.renderMedian < 3, onePlaneRes.renderMedian);
+    ok('dense 48x48 640x360 two planes under 4 ms', twoPlanesRes.renderMedian < 4, twoPlanesRes.renderMedian);
+    ok('dense 48x48 640x360 floor+sky under 3 ms', floorSkyRes.renderMedian < 3, floorSkyRes.renderMedian);
 }
 
 section('no allocation per frame');
