@@ -6,7 +6,7 @@ process.removeAllListeners('warning');
 const {ok, section, done, fakeClock} = await import('./harness.test-util.mjs');
 const {pageSocketBase, playSocketUrl, gameSocketUrl} = await import('./net.js');
 const {PLAY_CLOSE_DEFAULT, PLAY_CLOSE_TEXTS, playCloseText, RELOAD_TEXT, BAD_FRAME_TEXT} = await import('./texts.js');
-const {NET_BRIDGE_KEYS, createPlayClient} = await import('./play-client.js');
+const {NET_BRIDGE_KEYS, PEER_PALETTE, PLAYER_COLORS, createPlayClient} = await import('./play-client.js');
 const {gameExtensionIds, initPlay, playMode} = await import('./play.js');
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -406,6 +406,26 @@ section('latency goes to the page at most once a second');
     clock.advance(80);
     ws.deliver({type: 'tick', t: 4, ack: 3});
     ok('and goes out after it', posted('latency').length === 2, posted('latency'));
+}
+
+section('20-player palette keeps the first 8 colours and gives 20 distinct peer styles');
+{
+    const first8 = ['#f25f5c', '#2a9d8f', '#5b6ee1', '#f0912b', '#b8336a', '#8cc63f', '#16b3c7', '#b07a4f'];
+    ok('PLAYER_COLORS has 20 distinct hex colours',
+        PLAYER_COLORS.length === 20 && new Set(PLAYER_COLORS).size === 20, PLAYER_COLORS);
+    ok('the first 8 colours match old rooms',
+        JSON.stringify(PLAYER_COLORS.slice(0, 8)) === JSON.stringify(first8), PLAYER_COLORS.slice(0, 8));
+    ok('PEER_PALETTE has 20 distinct colour-times-shape entries',
+        PEER_PALETTE.length === 20 && new Set(PEER_PALETTE.map(p => `${p.color}:${p.shape}`)).size === 20);
+    const {open, posted} = playFixture();
+    const ws = open(1);
+    const names = {};
+    for (let s = 1; s <= 20; s++) names[s] = `Player ${s}`;
+    ws.deliver({type: 'tick', t: 1, kf: 1, ack: 0, y: {names}});
+    const roster = posted('roster').slice(-1)[0];
+    const pairs = new Set(roster.players.map(p => `${p.peerColor}:${p.shape}`));
+    ok('a 20-player roster carries 20 distinct peer colour-and-shape pairs',
+        roster.players.length === 20 && pairs.size === 20, roster.players.length);
 }
 
 done();

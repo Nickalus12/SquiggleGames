@@ -3,6 +3,7 @@ import {TICK_MS, createInterpolationBuffer} from './buffer.js';
 import {createPrediction} from './prediction.js';
 import {applyTick, createGameState, playerName} from './game-state.js';
 import {RULES_KEY} from '../collab/project-seam.js';
+import {playerPeerStyle} from '../themes/peers.js';
 
 const SPRITE_LAYER = 'sprite';
 const FLAG_VISIBLE = 1;
@@ -79,6 +80,7 @@ const renderedDirection = (style, direction, size, out) => {
 
 const createAvatarLayer = runtime => {
     const drawn = new Map();
+    const styles = new Map();
     const position = [0, 0];
     const turned = {direction: 0, scale: [0, 0]};
     const renderer = () => runtime.renderer || null;
@@ -90,6 +92,7 @@ const createAvatarLayer = runtime => {
             if (typeof id === 'undefined') {
                 id = r.createDrawable(SPRITE_LAYER);
                 drawn.set(slot, id);
+                styles.set(slot, playerPeerStyle(slot));
             }
             const costumes = source.sprite.costumes;
             const costume = costumes[clamp((a[3] | 0) - 1, 0, costumes.length - 1)];
@@ -101,9 +104,13 @@ const createAvatarLayer = runtime => {
             r.updateDrawableDirectionScale(id, turned.direction, turned.scale);
             r.updateDrawableVisible(id, (a[4] & FLAG_VISIBLE) === FLAG_VISIBLE);
         },
+        style (slot) {
+            return styles.get(slot) || playerPeerStyle(slot);
+        },
         remove (slot) {
             const id = drawn.get(slot);
             drawn.delete(slot);
+            styles.delete(slot);
             const r = renderer();
             if (r && typeof id !== 'undefined') r.destroyDrawable(id, SPRITE_LAYER);
         },
@@ -399,6 +406,9 @@ const createGameLink = ({
         },
         get game () {
             return game;
+        },
+        get avatars () {
+            return avatars;
         },
         get latched () {
             return latched;

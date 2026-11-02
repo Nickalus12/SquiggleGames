@@ -47,12 +47,15 @@ const shapeSvg = (style, size) => {
     svg.setAttribute('height', String(size));
     svg.setAttribute('viewBox', '0 0 20 20');
     svg.setAttribute('aria-hidden', 'true');
+    if (style.color) svg.dataset.peerColor = style.color;
+    if (style.shape) svg.dataset.peerShape = style.shape;
+    if (style.name) svg.dataset.peerName = style.name;
     svg.style.display = 'block';
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', style.d);
     path.setAttribute('fill', style.hex);
     path.setAttribute('fill-rule', style.fillRule);
-    path.setAttribute('stroke', '#ffffff');
+    path.setAttribute('stroke', style.outlineOnBar || '#ffffff');
     path.setAttribute('stroke-width', '1.2');
     svg.appendChild(path);
     return svg;
@@ -112,6 +115,9 @@ const CURSOR_SHAPES = {
 const ringElement = (kind, name, style) => {
     const el = document.createElement('div');
     el.dataset.slot = String(style.slot);
+    if (style.color) el.dataset.peerColor = style.color;
+    if (style.shape) el.dataset.peerShape = style.shape;
+    if (style.name) el.dataset.peerName = style.name;
     el.dataset.ring = kind;
     el.style.cssText = [
         'position:absolute', 'left:0', 'top:0', 'box-sizing:border-box', 'border-radius:12px',
@@ -134,6 +140,10 @@ const ringElement = (kind, name, style) => {
 const cursorElement = (id, cursorShape, name, style) => {
     const el = document.createElement('div');
     el.dataset.peer = String(id);
+    el.dataset.slot = String(style.slot);
+    if (style.color) el.dataset.peerColor = style.color;
+    if (style.shape) el.dataset.peerShape = style.shape;
+    if (style.name) el.dataset.peerName = style.name;
     el.style.cssText = 'position:absolute;left:0;top:0;will-change:transform;display:none';
     const shape = CURSOR_SHAPES[cursorShape] || CURSOR_SHAPES.arrow;
     const svg = document.createElementNS(SVG_NS, 'svg');

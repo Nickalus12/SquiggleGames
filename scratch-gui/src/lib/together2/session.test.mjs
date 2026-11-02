@@ -60,6 +60,7 @@ section('others are drawn without clones');
     ok('it stands where the tick says', calls.some(c => c[0] === 'updateDrawablePosition' && c[2].join() === '20,30'));
     layer.draw('3', [21, 30, -90, 9, 0, 0], source);
     ok('the drawable is reused', calls.filter(c => c[0] === 'createDrawable').length === 1);
+    ok('the slot carries its 20-peer style', layer.style('3').name === 'Amber triangle', layer.style('3'));
     ok('a costume past the end clamps', calls.filter(c => c[0] === 'updateDrawableSkinId').pop()[2] === 12);
     ok('the visible flag hides it', calls.filter(c => c[0] === 'updateDrawableVisible').pop()[2] === false);
     layer.remove('3');

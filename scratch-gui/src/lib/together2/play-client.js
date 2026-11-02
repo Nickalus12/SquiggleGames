@@ -1,6 +1,7 @@
 import {createGameLink} from './session.js';
 import {MAX_OP_NAME, pageSocketBase, playSocketUrl} from './net.js';
 import {playCloseText} from './texts.js';
+import {PEER_PALETTE, playerPeerStyle} from '../themes/peers.js';
 import log from '../log.js';
 
 const NET_BRIDGE_KEYS = Object.freeze([
@@ -15,7 +16,9 @@ const GAME_ENDED_CODE = 1000;
 const SESSION_FULL_CODE = 1013;
 const LATENCY_EVERY_MS = 1000;
 const PLAYER_COLORS = Object.freeze([
-    '#f25f5c', '#2a9d8f', '#5b6ee1', '#f0912b', '#b8336a', '#8cc63f', '#16b3c7', '#b07a4f'
+    '#f25f5c', '#2a9d8f', '#5b6ee1', '#f0912b', '#b8336a', '#8cc63f', '#16b3c7', '#b07a4f',
+    '#e8505b', '#d9700a', '#b88700', '#5f9e1b', '#1f9d55', '#0f9488', '#0e8fb3', '#3f82e3',
+    '#5b5fe8', '#9152e0', '#c94fb5', '#e0457b'
 ]);
 
 const orEmpty = value => (typeof value === 'undefined' || value === null ? '' : value);
@@ -65,7 +68,21 @@ const createPlayClient = ({
         }
     };
 
-    const player = slot => ({id: Number(slot), name: known[slot], color: colorOf(slot)});
+    const player = slot => {
+        const style = playerPeerStyle(slot);
+        return {
+            id: Number(slot),
+            name: known[slot],
+            color: colorOf(slot),
+            shape: style.shape,
+            peerColor: style.color,
+            peerName: style.name,
+            hex: style.hex,
+            ink: style.ink,
+            d: style.d,
+            fillRule: style.fillRule
+        };
+    };
 
     const roster = () => {
         const mine = link.slot === null ? null : String(link.slot);
@@ -284,6 +301,8 @@ const createPlayClient = ({
 
 export {
     NET_BRIDGE_KEYS,
+    PEER_PALETTE,
     PLAYER_COLORS,
-    createPlayClient
+    createPlayClient,
+    playerPeerStyle
 };

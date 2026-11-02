@@ -3,12 +3,15 @@ process.removeAllListeners('warning');
 const {
     DRAG_LOCK_MS,
     FOLLOW_GRACE_MS,
+    MAX_PEERS,
+    PEER_PALETTE,
     createFields,
     createFollow,
     createGate,
     createLocks,
     createStyleBook,
-    initials
+    initials,
+    playerPeerStyle
 } = await import('./presence.js');
 const {assignPeerStyles, peerStyle} = await import('../themes/peers.js');
 
@@ -163,6 +166,43 @@ console.log('gate and initials');
     ok('initials of two words', initials('Ada Lovelace') === 'AL');
     ok('initials of one word', initials('sam') === 'S');
     ok('initials of nothing', initials('  ') === '?');
+}
+
+console.log('palette for 20 peers');
+{
+    ok('the palette seats 20 peers', MAX_PEERS === 20 && PEER_PALETTE.length === 20, PEER_PALETTE.length);
+    const pairs = new Set(PEER_PALETTE.map(p => `${p.color}:${p.shape}`));
+    const names = new Set(PEER_PALETTE.map(p => p.name));
+    ok('all 20 palette entries have distinct colour and shape pairs', pairs.size === 20, pairs.size);
+    ok('all 20 palette entries have distinct kid-readable names', names.size === 20, names.size);
+    ok('slot 1 is Coral circle and slot 8 is Blue square',
+        playerPeerStyle(1).name === 'Coral circle' && playerPeerStyle(8).name === 'Blue square');
+    ok('slot 13 shifts Coral to square and slot 20 is Blue triangle',
+        playerPeerStyle(13).name === 'Coral square' && playerPeerStyle(20).name === 'Blue triangle');
+    const ids8 = Array.from({length: 8}, (v, i) => `peer-${i}`);
+    const ids20 = Array.from({length: 20}, (v, i) => `peer-${i}`);
+    const room8 = assignPeerStyles(ids8);
+    const expected8 = [36, 71, 34, 69, 52, 3, 38, 1];
+    ok('an 8-peer room keeps the exact old slots',
+        JSON.stringify(ids8.map(id => room8[id].slot)) === JSON.stringify(expected8),
+        ids8.map(id => room8[id].slot));
+    const room20 = assignPeerStyles(ids20);
+    const expected20 = [57, 4, 56, 69, 71, 3, 70, 1, 44, 12, 61, 28, 2, 29, 15, 42, 30, 43, 48, 14];
+    ok('a 20-peer room reproduces the PEERS.md check values',
+        JSON.stringify(ids20.map(id => room20[id].slot)) === JSON.stringify(expected20),
+        ids20.map(id => room20[id].slot));
+    const room20Pairs = new Set(ids20.map(id => `${room20[id].color}:${room20[id].shape}`));
+    ok('all 20 room peers get distinct colour-times-shape slots', room20Pairs.size === 20, room20Pairs.size);
+    const sorted20 = ids20.slice().sort((a, b) => (peerStyle(a).slot - peerStyle(b).slot) || (a < b ? -1 : 1));
+    const first8Room = assignPeerStyles(sorted20.slice(0, 8));
+    ok('scaling from 8 to 20 peers keeps the first 8 sorted peers identical',
+        sorted20.slice(0, 8).every(id => first8Room[id].slot === room20[id].slot));
+    const book = createStyleBook();
+    sorted20.slice(0, 8).forEach(id => book.assign(id));
+    const first8Slots = sorted20.slice(0, 8).map(id => book.get(id).slot);
+    sorted20.slice(8).forEach(id => book.assign(id));
+    ok('adding peers 9 through 20 in styleBook keeps the first 8 identical',
+        JSON.stringify(sorted20.slice(0, 8).map(id => book.get(id).slot)) === JSON.stringify(first8Slots));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

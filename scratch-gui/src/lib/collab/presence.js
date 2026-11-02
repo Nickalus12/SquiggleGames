@@ -1,4 +1,13 @@
-import {PEER_COLORS, PEER_SHAPES, PEER_SLOTS, peerSlot, styleForSlot} from '../themes/peers.js';
+import {
+    MAX_PEERS,
+    PEER_COLORS,
+    PEER_PALETTE,
+    PEER_SHAPES,
+    PEER_SLOTS,
+    peerSlot,
+    playerPeerStyle,
+    styleForSlot
+} from '../themes/peers.js';
 
 const DRAG_LOCK_MS = 1500;
 const DRAG_MOVE_EVERY_MS = 500;
@@ -236,6 +245,8 @@ export {
     DRAG_MOVE_EVERY_MS,
     FIELD_TTL_MS,
     FOLLOW_GRACE_MS,
+    MAX_PEERS,
+    PEER_PALETTE,
     TABS,
     VIEWPORT_EVERY_MS,
     createFields,
@@ -243,5 +254,6 @@ export {
     createGate,
     createLocks,
     createStyleBook,
-    initials
+    initials,
+    playerPeerStyle
 };
