@@ -290,13 +290,13 @@ const moveTouchLook = (state, pointerId, clientX, clientY, opts = {}) => {
     const y = Number(clientY) || 0;
     if (!state.active) {
         const travel = Math.hypot(x - state.startX, y - state.startY);
-        if (travel < TOUCH_LOOK_SLOP) {
+        if (travel <= TOUCH_LOOK_SLOP) {
             return {yawDelta: 0, pitchDelta: 0, active: false};
         }
+        const ratio = TOUCH_LOOK_SLOP / travel;
+        state.lastX = state.startX + ((x - state.startX) * ratio);
+        state.lastY = state.startY + ((y - state.startY) * ratio);
         state.active = true;
-        state.lastX = x;
-        state.lastY = y;
-        return {yawDelta: 0, pitchDelta: 0, active: true};
     }
     const dx = x - state.lastX;
     const dy = y - state.lastY;

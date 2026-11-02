@@ -303,13 +303,15 @@ ok('left-half touch is ignored so touch controls keep working on the left half',
 ok('right-half touch starts touch look',
     isRightHalfTouch(480, stageRect) === true &&
     startTouchLook(touchState, 1, 480, 180, stageRect) === true);
-const beforeSlop = moveTouchLook(touchState, 1, 480 + (TOUCH_LOOK_SLOP - 2), 180);
-const atSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 1, 180);
+const beforeSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP, 180);
+const atSeventhPx = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 1, 180, {mouseSpeed: 12});
 const afterSlop = moveTouchLook(touchState, 1, 480 + TOUCH_LOOK_SLOP + 21, 160, {mouseSpeed: 12});
 endTouchLook(touchState, 1);
-ok('touch look ignores movement inside 6px slop then turns and pitches on drag',
+ok('touch look adds 0 yaw on first 6 CSS px and turns on the 7th px',
     beforeSlop.active === false &&
-    atSlop.active === true &&
+    beforeSlop.yawDelta === 0 &&
+    atSeventhPx.active === true &&
+    atSeventhPx.yawDelta > 0 &&
     afterSlop.yawDelta > 0 &&
     afterSlop.pitchDelta > 0 &&
     touchState.pointerId === null);

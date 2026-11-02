@@ -789,10 +789,17 @@ const createView3d = (runtime, world, options) => {
         pollGamepad(dtSec);
         if (!state.turn && !state.pitchDelta && !poseMoving()) return false;
         flushPending();
+        const frameStart = now();
+        state.drawMs = 0;
+        state.drew = false;
         applyTurn();
         advancePose(progressNow());
         const beforeUploads = state.uploads;
         refresh();
+        if (state.drew && !state.manual && opts.adaptive !== false) {
+            state.pendingWork = now() - frameStart;
+            state.pendingDraw = state.drawMs;
+        }
         state.drawMs = 0;
         state.drew = false;
         return state.uploads !== beforeUploads;
@@ -918,7 +925,11 @@ const createView3d = (runtime, world, options) => {
         const input = {canvas, doc};
         input.onClick = () => {
             if (state.on && state.mouseTurn && !locked(input) && typeof canvas.requestPointerLock === 'function') {
-                Promise.resolve(canvas.requestPointerLock()).catch(() => {});
+                Promise.resolve(canvas.requestPointerLock({unadjustedMovement: true})).catch(err => {
+                    if (err && err.name === 'NotSupportedError') {
+                        Promise.resolve(canvas.requestPointerLock()).catch(() => {});
+                    }
+                });
             }
         };
         input.onMove = event => {

@@ -712,6 +712,24 @@ section('per-frame pose interpolation and mouse turn');
 
     activeGamepads = [];
     doc.pointerLockElement = null;
+    const lockCalls = [];
+    const origRequest = canvas.requestPointerLock;
+    canvas.requestPointerLock = optsLock => {
+        lockCalls.push(optsLock);
+        if (optsLock && optsLock.unadjustedMovement) {
+            const err = new Error('not supported');
+            err.name = 'NotSupportedError';
+            return Promise.reject(err);
+        }
+        return Promise.resolve();
+    };
+    listeners.canvas.get('click')();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    canvas.requestPointerLock = origRequest;
+    ok('pointer lock requests unadjustedMovement: true and retries without options on NotSupportedError',
+        lockCalls.length === 2 &&
+        lockCalls[0] && lockCalls[0].unadjustedMovement === true &&
+        typeof lockCalls[1] === 'undefined');
     smooth.dispose();
 }
 
