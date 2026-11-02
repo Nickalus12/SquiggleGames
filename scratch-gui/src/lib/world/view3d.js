@@ -799,10 +799,17 @@ const createView3d = (runtime, world, options) => {
         }
         if (!state.turn && !state.pitchDelta && !poseMoving()) return false;
         flushPending();
+        const frameStart = now();
+        state.drawMs = 0;
+        state.drew = false;
         applyTurn();
         advancePose(progressNow());
         const beforeUploads = state.uploads;
         refresh();
+        if (state.drew && !state.manual && opts.adaptive !== false) {
+            state.pendingWork = now() - frameStart;
+            state.pendingDraw = state.drawMs;
+        }
         state.drawMs = 0;
         state.drew = false;
         return state.uploads !== beforeUploads;

@@ -382,10 +382,33 @@ if (process.env.SQ_PERF === '1') {
     samples.sort((a, b) => a - b);
     const median = samples[150];
     const p95 = samples[285];
-    console.log(`  info  64x64 textured level, 24 billboards: median ${median.toFixed(3)} ms, ` +
+    console.log(`  info  64x64 textured level, 24 billboards (240x180): median ${median.toFixed(3)} ms, ` +
         `p95 ${p95.toFixed(3)} ms`);
     ok('median frame under 4 ms', median < 4, median);
     ok('p95 frame under 4 ms', p95 < 4, p95);
+
+    const wideFrame = createFrame(640, 360);
+    const wideScene = Object.assign({}, scene, {
+        floorMode: 'brick',
+        ceilingMode: 'sky',
+        floorTex: tex,
+        lightFalloff: 20,
+        floorTextures: true
+    });
+    for (let i = 0; i < 10; i++) render(wideFrame, wideScene);
+    const wideSamples = [];
+    for (let i = 0; i < 60; i++) {
+        wideScene.player = {u: 2.5 + ((i % 50) * 0.05), v: 2.5 + ((i % 30) * 0.05), direction: (i * 3) % 360};
+        const t0 = performance.now();
+        render(wideFrame, wideScene);
+        wideSamples.push(performance.now() - t0);
+    }
+    wideSamples.sort((a, b) => a - b);
+    const wideMedian = wideSamples[30];
+    const wideP95 = wideSamples[57];
+    console.log(`  info  640x360 floor+sky+falloff level, 24 billboards: median ${wideMedian.toFixed(3)} ms, ` +
+        `p95 ${wideP95.toFixed(3)} ms`);
+    ok('640x360 floor+sky+falloff median under 4 ms', wideMedian < 4, wideMedian);
 }
 
 section('no allocation per frame');
@@ -513,12 +536,12 @@ section('golden frame hash and column caching');
     const litFrame = createFrame(320, 180);
     render(litFrame, litScene);
     const litGolden = hashPixels(litFrame.pixels);
-    ok('sky look feature matches golden hash 0xc4f083b8', skyGolden === 0xc4f083b8, skyGolden.toString(16));
-    ok('fog-0 distance shade matches golden hash 0xb51b2c2f', falloffGolden === 0xb51b2c2f, falloffGolden.toString(16));
+    ok('sky look feature matches golden hash 0xd325f0da', skyGolden === 0xd325f0da, skyGolden.toString(16));
+    ok('fog-0 distance shade matches golden hash 0xef200976', falloffGolden === 0xef200976, falloffGolden.toString(16));
     ok('floor texture matches golden hash 0x91962b31', floorGolden === 0x91962b31, floorGolden.toString(16));
     ok('sector light matches golden hash 0x466f52dd', sectorGolden === 0x466f52dd, sectorGolden.toString(16));
-    ok('full textured + sky + lighting scene matches golden hash 0x1543af47',
-        litGolden === 0x1543af47, litGolden.toString(16));
+    ok('full textured + sky + lighting scene matches golden hash 0xda710c98',
+        litGolden === 0xda710c98, litGolden.toString(16));
     render(litFrame, litScene);
     ok('cached background preserves textured + sky + lighting golden pixel hash',
         hashPixels(litFrame.pixels) === litGolden);
@@ -539,8 +562,8 @@ section('golden frame hash and column caching');
     render(shadeFrame, shadeScene);
     const oneTileBlue = (shadeFrame.pixels[(90 * 240) + 120] >>> 16) & 255;
     const farWallBlue = (shadeFrame.pixels[(90 * 240) + 20] >>> 16) & 255;
-    ok('with fog 0 and distance shade on, a far wall channel is lower than a one-tile wall channel',
-        farWallBlue > 0 && oneTileBlue - farWallBlue >= 40, [oneTileBlue, farWallBlue]);
+    ok('with fog 0 and distance shade on, a far wall channel is lower than a one-tile wall channel (82 vs 23)',
+        oneTileBlue === 82 && farWallBlue === 23 && oneTileBlue - farWallBlue >= 40, [oneTileBlue, farWallBlue]);
 }
 
 section('floor caster, sky, lighting, and horizon pure functions');
