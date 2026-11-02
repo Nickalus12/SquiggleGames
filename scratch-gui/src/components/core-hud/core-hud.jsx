@@ -8,6 +8,7 @@ import styles from './core-hud.css';
 
 const POLL_MS = 100;
 const HURT_MS = 650;
+const FLASH_MS = 360;
 const LEGACY_HUD = {StatusHUD: 'bar', TimerHUD: 'timer'};
 
 const messages = defineMessages({
@@ -295,13 +296,17 @@ Slot.propTypes = {
     label: PropTypes.node
 };
 
-const HealthSlot = ({vitals}) => {
+const HealthSlot = ({vitals, flash}) => {
     const ratio = clampRatio(vitals.hp, vitals.maxHp);
     const lives = vitals.hpKind === 'lives';
     return (
         <Slot
             kind={lives ? 'lives' : 'health'}
-            className={classNames(styles.slotHealth, healthTone(lives ? 1 : ratio))}
+            className={classNames(
+                styles.slotHealth,
+                healthTone(lives ? 1 : ratio),
+                {[styles.slotFlash]: flash, [styles.slotHealthFlash]: flash}
+            )}
             label={<FormattedMessage {...(lives ? messages.lives : messages.health)} />}
         >
             <span className={styles.bigNumber}>{Math.round(vitals.hp)}</span>
@@ -314,7 +319,10 @@ const HealthSlot = ({vitals}) => {
         </Slot>
     );
 };
-HealthSlot.propTypes = {vitals: PropTypes.object};
+HealthSlot.propTypes = {
+    flash: PropTypes.bool,
+    vitals: PropTypes.object
+};
 
 const ArmorSlot = ({vitals}) => {
     const ratio = clampRatio(vitals.shield, vitals.maxShield);
@@ -335,10 +343,14 @@ const ArmorSlot = ({vitals}) => {
 };
 ArmorSlot.propTypes = {vitals: PropTypes.object};
 
-const AmmoSlot = ({vitals}) => (
+const AmmoSlot = ({vitals, flash}) => (
     <Slot
         kind="ammo"
-        className={classNames(styles.slotAmmo, vitals.ammo <= 0 ? styles.toneDanger : null)}
+        className={classNames(
+            styles.slotAmmo,
+            vitals.ammo <= 0 ? styles.toneDanger : null,
+            {[styles.slotFlash]: flash, [styles.slotAmmoFlash]: flash}
+        )}
         label={<FormattedMessage {...messages.ammo} />}
     >
         <span className={styles.bigNumber}>{Math.round(vitals.ammo)}</span>
@@ -357,7 +369,10 @@ const AmmoSlot = ({vitals}) => (
         ) : null}
     </Slot>
 );
-AmmoSlot.propTypes = {vitals: PropTypes.object};
+AmmoSlot.propTypes = {
+    flash: PropTypes.bool,
+    vitals: PropTypes.object
+};
 
 const WeaponSlot = ({weapon, intl}) => {
     const caps = [];
@@ -425,16 +440,19 @@ ItemsSlot.propTypes = {
     items: PropTypes.arrayOf(PropTypes.object)
 };
 
-const FragsSlot = ({frags}) => (
+const FragsSlot = ({frags, flash}) => (
     <Slot
         kind="frags"
-        className={styles.slotFrags}
+        className={classNames(styles.slotFrags, {[styles.slotFlash]: flash, [styles.slotFragsFlash]: flash})}
         label={frags.label}
     >
         <span className={styles.bigNumber}>{frags.value}</span>
     </Slot>
 );
-FragsSlot.propTypes = {frags: PropTypes.shape({label: PropTypes.string, value: PropTypes.number})};
+FragsSlot.propTypes = {
+    flash: PropTypes.bool,
+    frags: PropTypes.shape({label: PropTypes.string, value: PropTypes.number})
+};
 
 const FaceSlot = ({mood, intl}) => (
     <div
@@ -456,7 +474,7 @@ FaceSlot.propTypes = {
     mood: PropTypes.string
 };
 
-const StatusBandComponent = ({vitals, bar, hurt, intl}) => {
+const StatusBandComponent = ({vitals, bar, hurt, ammoFlash, fragsFlash, intl}) => {
     if (!vitals || !bar) return null;
     const hasHp = typeof vitals.hp === 'number';
     const hasShield = typeof vitals.shield === 'number';
@@ -474,9 +492,19 @@ const StatusBandComponent = ({vitals, bar, hurt, intl}) => {
                     role="group"
                     aria-label={intl.formatMessage(messages.statusBar)}
                 >
-                    {hasHp ? <HealthSlot vitals={vitals} /> : null}
+                    {hasHp ? (
+                        <HealthSlot
+                            flash={hurt}
+                            vitals={vitals}
+                        />
+                    ) : null}
                     {hasShield ? <ArmorSlot vitals={vitals} /> : null}
-                    {hasAmmo ? <AmmoSlot vitals={vitals} /> : null}
+                    {hasAmmo ? (
+                        <AmmoSlot
+                            flash={ammoFlash}
+                            vitals={vitals}
+                        />
+                    ) : null}
                 </div>
             </div>
         );
@@ -493,8 +521,18 @@ const StatusBandComponent = ({vitals, bar, hurt, intl}) => {
                 data-testid="core-hud-band"
             >
                 <div className={styles.bandSide}>
-                    {hasAmmo ? <AmmoSlot vitals={vitals} /> : null}
-                    {hasHp ? <HealthSlot vitals={vitals} /> : null}
+                    {hasAmmo ? (
+                        <AmmoSlot
+                            flash={ammoFlash}
+                            vitals={vitals}
+                        />
+                    ) : null}
+                    {hasHp ? (
+                        <HealthSlot
+                            flash={hurt}
+                            vitals={vitals}
+                        />
+                    ) : null}
                     {vitals.weapon ? (
                         <WeaponSlot
                             intl={intl}
@@ -514,18 +552,25 @@ const StatusBandComponent = ({vitals, bar, hurt, intl}) => {
                             items={items}
                         />
                     ) : null}
-                    {bar.frags ? <FragsSlot frags={bar.frags} /> : null}
+                    {bar.frags ? (
+                        <FragsSlot
+                            flash={fragsFlash}
+                            frags={bar.frags}
+                        />
+                    ) : null}
                 </div>
             </div>
         </div>
     );
 };
 StatusBandComponent.propTypes = {
+    ammoFlash: PropTypes.bool,
     bar: PropTypes.shape({
         layout: PropTypes.oneOf(['band', 'compact']),
         frags: PropTypes.object,
         foldsBoard: PropTypes.bool
     }),
+    fragsFlash: PropTypes.bool,
     hurt: PropTypes.bool,
     intl: intlShape,
     vitals: PropTypes.object
@@ -539,17 +584,23 @@ class CoreHud extends React.Component {
         this.state = {
             hud,
             collapsed: false,
-            hurt: false
+            hurt: false,
+            ammoFlash: false,
+            fragsFlash: false
         };
         this.sig = JSON.stringify(hud);
         this.lastPoll = 0;
         this.hurtTimer = null;
+        this.ammoTimer = null;
+        this.fragsTimer = null;
         this.hiddenLegacy = new Set();
         this.handleAfterStep = this.handleAfterStep.bind(this);
         this.handleForceRefresh = this.handleForceRefresh.bind(this);
         this.handleProjectLoaded = this.handleProjectLoaded.bind(this);
         this.handleToggleBoard = this.handleToggleBoard.bind(this);
         this.clearHurt = this.clearHurt.bind(this);
+        this.clearAmmoFlash = this.clearAmmoFlash.bind(this);
+        this.clearFragsFlash = this.clearFragsFlash.bind(this);
     }
 
     componentDidMount () {
@@ -568,6 +619,8 @@ class CoreHud extends React.Component {
 
     componentWillUnmount () {
         clearTimeout(this.hurtTimer);
+        clearTimeout(this.ammoTimer);
+        clearTimeout(this.fragsTimer);
         this.restoreLegacy(this.props.vm);
         this.unbindRuntime(this.props.vm);
     }
@@ -650,11 +703,31 @@ class CoreHud extends React.Component {
         const after = next && next.vitals;
         const hit = !!before && !!after && typeof before.hp === 'number' && typeof after.hp === 'number' &&
             after.hp < before.hp;
+        const ammoChanged = !!before && !!after && typeof before.ammo === 'number' &&
+            typeof after.ammo === 'number' && after.ammo !== before.ammo;
+        const beforeFrags = this.state.hud && this.state.hud.bar && this.state.hud.bar.frags ?
+            this.state.hud.bar.frags.value :
+            null;
+        const afterFrags = next && next.bar && next.bar.frags ? next.bar.frags.value : null;
+        const fragsRose = typeof beforeFrags === 'number' && typeof afterFrags === 'number' &&
+            afterFrags > beforeFrags;
+        const patch = {hud: next};
         if (hit) {
             clearTimeout(this.hurtTimer);
             this.hurtTimer = setTimeout(this.clearHurt, HURT_MS);
+            patch.hurt = true;
         }
-        this.setState(hit ? {hud: next, hurt: true} : {hud: next});
+        if (ammoChanged) {
+            clearTimeout(this.ammoTimer);
+            this.ammoTimer = setTimeout(this.clearAmmoFlash, FLASH_MS);
+            patch.ammoFlash = true;
+        }
+        if (fragsRose) {
+            clearTimeout(this.fragsTimer);
+            this.fragsTimer = setTimeout(this.clearFragsFlash, FLASH_MS);
+            patch.fragsFlash = true;
+        }
+        this.setState(patch);
     }
 
     clearHurt () {
@@ -662,12 +735,22 @@ class CoreHud extends React.Component {
         this.setState({hurt: false});
     }
 
+    clearAmmoFlash () {
+        this.ammoTimer = null;
+        this.setState({ammoFlash: false});
+    }
+
+    clearFragsFlash () {
+        this.fragsTimer = null;
+        this.setState({fragsFlash: false});
+    }
+
     handleToggleBoard () {
         this.setState(prev => ({collapsed: !prev.collapsed}));
     }
 
     render () {
-        const {hud, collapsed, hurt} = this.state;
+        const {hud, collapsed, hurt, ammoFlash, fragsFlash} = this.state;
         if (!hud || !hud.enabled || !hud.hasHudContent) return null;
         const foldsBoard = !!(hud.bar && hud.bar.foldsBoard);
         return (
@@ -691,7 +774,9 @@ class CoreHud extends React.Component {
                     )}
                 </div>
                 <StatusBand
+                    ammoFlash={ammoFlash}
                     bar={hud.bar}
+                    fragsFlash={fragsFlash}
                     hurt={hurt}
                     vitals={hud.vitals}
                 />

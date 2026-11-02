@@ -309,6 +309,8 @@
 }
 
 .slot {
+    position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -320,6 +322,28 @@
     background: var(--hud-well);
     border: 2px solid var(--hud-well-line);
     box-sizing: border-box;
+}
+
+.slot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--flash-tone, rgba(255, 255, 255, 0.28));
+    opacity: 0;
+    pointer-events: none;
+}
+
+.slotHealthFlash {
+    --flash-tone: rgba(255, 90, 110, 0.34);
+}
+
+.slotAmmoFlash {
+    --flash-tone: rgba(255, 197, 61, 0.3);
+}
+
+.slotFragsFlash {
+    --flash-tone: rgba(153, 102, 255, 0.36);
 }
 
 .slotBody {
@@ -631,11 +655,31 @@
     .bandHurt {
         animation: sqHudThump 0.32s ease-out;
     }
+
+    .slotFlash {
+        animation: sqHudSlotPulse 0.32s ease-out;
+    }
+
+    .slotFlash::after {
+        animation: sqHudSlotFlash 0.32s ease-out;
+    }
+
+    .slotHealthFlash {
+        animation: sqHudHealthDrop 0.32s ease-out;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .meterFill {
         transition: none;
+    }
+
+    .bandHurt,
+    .bandHurt .face,
+    .slotFlash,
+    .slotFlash::after,
+    .slotHealthFlash {
+        animation: none;
     }
 }
 
@@ -664,5 +708,50 @@
 
     100% {
         transform: translateY(0);
+    }
+}
+
+@keyframes sqHudSlotPulse {
+    0% {
+        transform: scale(1);
+    }
+
+    35% {
+        transform: scale(1.06) translateY(-1px);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes sqHudHealthDrop {
+    0% {
+        transform: translateY(0) scale(1);
+    }
+
+    35% {
+        transform: translateY(2px) scale(0.96);
+    }
+
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes sqHudSlotFlash {
+    0% {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+
+    30% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1);
     }
 }

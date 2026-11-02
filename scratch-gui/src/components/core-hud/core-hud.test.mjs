@@ -153,13 +153,39 @@ ok('thirty ticks inside 100 ms read the game at most once', extracts - before <=
 
 fixture = hudOf(vitals({hp: 70, mood: 'good'}));
 hud.handleForceRefresh();
-ok('losing health flashes the hurt face', hud.state.hurt === true && hud.state.hud.vitals.hp === 70);
+ok('losing health flashes the hurt face and health tile',
+    hud.state.hurt === true && hud.state.hud.vitals.hp === 70 &&
+    render(hud.render()).includes('slotHealthFlash'));
 await new Promise(resolve => setTimeout(resolve, 700));
 ok('the hurt flash clears on its own', hud.state.hurt === false);
 
 fixture = hudOf(vitals({hp: 90, mood: 'great'}));
 hud.handleForceRefresh();
 ok('healing does not flash', hud.state.hurt === false);
+
+fixture = hudOf(vitals({hp: 90, ammo: 39, mood: 'great'}));
+hud.handleForceRefresh();
+ok('ammo change flashes the ammo tile',
+    hud.state.ammoFlash === true && render(hud.render()).includes('slotAmmoFlash'));
+await new Promise(resolve => setTimeout(resolve, 420));
+ok('ammo flash clears on its own', hud.state.ammoFlash === false);
+
+fixture = hudOf(
+    vitals({hp: 90, ammo: 39, mood: 'great'}),
+    {layout: 'band', frags: {label: 'Frags', value: 3, place: 1}, foldsBoard: true}
+);
+hud.handleForceRefresh();
+ok('rising frags flashes the frags tile',
+    hud.state.fragsFlash === true && render(hud.render()).includes('slotFragsFlash'));
+await new Promise(resolve => setTimeout(resolve, 420));
+ok('frags flash clears on its own', hud.state.fragsFlash === false);
+
+fixture = hudOf(
+    vitals({hp: 90, ammo: 39, mood: 'great'}),
+    {layout: 'band', frags: {label: 'Frags', value: 1, place: 1}, foldsBoard: true}
+);
+hud.handleForceRefresh();
+ok('dropping frags does not flash the frags tile', hud.state.fragsFlash === false);
 
 const same = hud.state.hud;
 hud.handleForceRefresh();
@@ -197,6 +223,16 @@ const sub14 = fontSizes.filter(val => {
 ok('every HUD font-size rule stays 14px or larger', sub14.length === 0, sub14);
 ok('face porthole locks a 1:1 aspect ratio so it stays round on phones',
     /\.faceSlot\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1/.test(cssSource));
+
+const keyframeBlocks = [...cssSource.matchAll(/@keyframes\s+\S+\s*\{([\s\S]*?\n\})/g)].map(m => m[1]);
+const keyframeProps = keyframeBlocks.flatMap(block =>
+    [...block.matchAll(/^\s*([a-z-]+)\s*:/gm)].map(m => m[1])
+);
+const badAnimProps = keyframeProps.filter(p => p !== 'transform' && p !== 'opacity');
+ok('band feedback keyframes use transform and opacity only',
+    keyframeProps.length > 0 && badAnimProps.length === 0, badAnimProps);
+ok('prefers-reduced-motion disables band animations',
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.slotFlash[\s\S]*?animation:\s*none/.test(cssSource));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
