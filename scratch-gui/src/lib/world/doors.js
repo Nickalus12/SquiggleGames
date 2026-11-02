@@ -1,4 +1,4 @@
-import {FLAGS, cellAt, flagsAt, inside} from './tilemap.js';
+import {FLAGS, cellAt, flagsAt, inside, markDirtyWallCell, stepHeights} from './tilemap.js';
 
 const OPEN_MS = 400;
 const HOLD_MS = 3000;
@@ -170,21 +170,34 @@ const doorOpenAt = (grid, col, row) => {
 };
 
 const setDoorProgress = (grid, progress) => {
-    if (!grid || !grid._doors || grid._doors.size === 0) return false;
+    const hasDoors = Boolean(grid && grid._doors && grid._doors.size > 0);
+    const hasHeights = Boolean(grid && grid._heightAnims && grid._heightAnims.size > 0);
+    if (!hasDoors && !hasHeights) return false;
     const n = Number(progress);
     const p = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
     const prevP = typeof grid._doorProgress === 'number' ? grid._doorProgress : 1;
     grid._doorProgress = p;
     if (Math.abs(p - prevP) <= 1e-6) return false;
     let moving = false;
-    for (const entry of grid._doors.values()) {
-        const prev = typeof entry.prevOpen === 'number' ? entry.prevOpen : entry.open;
-        if (Math.abs(entry.open - prev) > 1e-6) {
-            moving = true;
-            break;
+    if (hasDoors) {
+        for (const entry of grid._doors.values()) {
+            const prev = typeof entry.prevOpen === 'number' ? entry.prevOpen : entry.open;
+            if (Math.abs(entry.open - prev) > 1e-6) {
+                moving = true;
+                break;
+            }
+        }
+        if (moving) bumpRev(grid);
+    }
+    if (hasHeights) {
+        for (const entry of grid._heightAnims.values()) {
+            const prev = typeof entry.prev === 'number' ? entry.prev : entry.current;
+            if (Math.abs(entry.current - prev) > 1e-6) {
+                markDirtyWallCell(grid, entry.col, entry.row);
+                moving = true;
+            }
         }
     }
-    if (moving) bumpRev(grid);
     return moving;
 };
 
@@ -196,8 +209,12 @@ const isDoorOpenAt = (grid, x, y, options) => {
 
 const stepDoors = (grid, dtMs, blockers) => {
     const dt = Number(dtMs);
-    if (!grid || !grid._doors || grid._doors.size === 0 || !Number.isFinite(dt) || dt <= 0) return false;
+    const hasDoors = Boolean(grid && grid._doors && grid._doors.size > 0);
+    const hasHeights = Boolean(grid && grid._heightAnims && grid._heightAnims.size > 0);
+    if ((!hasDoors && !hasHeights) || !Number.isFinite(dt) || dt <= 0) return false;
     grid._doorProgress = 1;
+    const heightChanged = hasHeights ? stepHeights(grid, dt) : false;
+    if (!hasDoors) return heightChanged;
     let changed = false;
     for (const entry of grid._doors.values()) {
         entry.prevOpen = entry.open;
@@ -246,7 +263,7 @@ const stepDoors = (grid, dtMs, blockers) => {
         }
     }
     if (changed) bumpRev(grid);
-    return changed;
+    return changed || heightChanged;
 };
 
 const encodeDoorValues = grid => {

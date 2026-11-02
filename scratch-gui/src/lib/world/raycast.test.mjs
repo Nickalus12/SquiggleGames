@@ -1,13 +1,14 @@
 import {ok, near, section, done} from './harness.mjs';
 
-const {FLAGS, addTexture, createGrid, flagsAt, setCell, setHeight} = await import('./tilemap.js');
+const {FLAGS, HEIGHT_ANIM_MS, addTexture, animateHeightAt, createGrid, flagsAt, heightAt, lightAt,
+    renderedHeightAt, setCell, setHeight} = await import('./tilemap.js');
 const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, setDoorProgress,
     isDoorOpenAt, encodeDoorValues, applyDoorValues} = await import('./doors.js');
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
 const {WIDTH, HEIGHT, MAX_LIGHTS, MAX_SEETHROUGH, DEFAULT_DOOR_TEXTURE, basis, castRay, castRayMulti,
-    createFrame, createLightBuffer, updateLightBuffer, drawSurfaces, drawWalls,
+    createFrame, markCellDirty, createLightBuffer, updateLightBuffer, drawSurfaces, drawWalls,
     facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
     fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, clampFalloff,
     lightFalloffFactor, horizonOf, wrapDegrees} = ray;
@@ -1025,6 +1026,79 @@ section('frame.horizon contract');
     const topAt65 = Array.from({length: 90}, (_, y) => frame.pixels[(y * 120) + 60]).indexOf(shaded);
     ok('shifting frame.horizon down by 20 rows shifts wall top down by 20 rows', topAt65 - topAt45 === 20,
         [topAt45, topAt65]);
+}
+
+section('dirty-cell column cache, 0.25 s height animation, and cell-change golden frame');
+{
+    const grid = room(16, 16, {texture: true});
+    const lavaId = addTexture(grid, 'lava', 0);
+    const ceilId = addTexture(grid, ' grates ', 0);
+    setCell(grid, 'main', 8, 5, 1);
+    const brickTex = solidImage(64, 64, pixel(180, 90, 60));
+    const lavaTex = solidImage(64, 64, pixel(240, 80, 20));
+    const ceilTex = solidImage(64, 64, pixel(50, 160, 210));
+    const map = mapOf(grid);
+    const frame = createFrame(120, 90);
+    const scene = {
+        map,
+        player: {u: 8.5, v: 8.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        texture: v => (v === 1 ? brickTex : (v === lavaId ? lavaTex : (v === ceilId ? ceilTex : null)))
+    };
+    render(frame, scene);
+    const baseHash = hashPixels(frame.pixels);
+    ok('initial render casts all columns', frame._lastRecastCols === 120);
+    render(frame, scene);
+    ok('unchanged frame casts 0 columns', frame._lastRecastCols === 0);
+
+    setCell(grid, 'floor', 8, 7, lavaId);
+    setCell(grid, 'ceiling', 8, 7, ceilId);
+    setCell(grid, 'light', 8, 6, 40);
+    ok('lightAt reads updated cell light', lightAt(grid, 8, 6) === 40);
+    render(frame, scene);
+    const surfaceChangedHash = hashPixels(frame.pixels);
+    ok('floor, ceiling, and light cell changes redraw surfaces with 0 wall rays recast',
+        frame._lastRecastCols === 0 && surfaceChangedHash !== baseHash);
+
+    ok('HEIGHT_ANIM_MS is 250 ms (0.25 s)', HEIGHT_ANIM_MS === 250);
+    animateHeightAt(grid, 8, 5, 2);
+    ok('heightAt immediately reports target height 2 while renderedHeightAt starts at 1',
+        heightAt(grid, 8, 5) === 2 && near(renderedHeightAt(grid, 8, 5), 1, 1e-6));
+
+    stepDoors(grid, 125);
+    ok('at 125 ms (half of 0.25 s), renderedHeightAt is 1.5',
+        near(renderedHeightAt(grid, 8, 5), 1.5, 1e-6));
+    render(frame, scene);
+    const midRecastCols = frame._lastRecastCols;
+    const midHash = hashPixels(frame.pixels);
+    const freshMid = createFrame(120, 90);
+    render(freshMid, Object.assign({}, scene, {map: mapOf(grid)}));
+    ok('changing one cell height marks only that cell columns dirty and matches full render bit-for-bit',
+        midRecastCols > 0 && midRecastCols < 45 && midHash === hashPixels(freshMid.pixels) &&
+        midHash !== surfaceChangedHash,
+        [midRecastCols, midHash.toString(16)]);
+
+    stepDoors(grid, 125);
+    ok('at 250 ms (0.25 s), height animation completes at target height 2',
+        near(renderedHeightAt(grid, 8, 5), 2, 1e-6) && grid._heightAnims.size === 0);
+    render(frame, scene);
+    const finalRecastCols = frame._lastRecastCols;
+    const finalCellChangeHash = hashPixels(frame.pixels);
+    const freshFinal = createFrame(120, 90);
+    render(freshFinal, Object.assign({}, scene, {map: mapOf(grid)}));
+    ok('completed pillar rise recasts only dirty columns and matches full render and golden hash',
+        finalRecastCols === midRecastCols &&
+        finalCellChangeHash === hashPixels(freshFinal.pixels) &&
+        finalCellChangeHash !== midHash &&
+        finalCellChangeHash === 0x06b129af,
+        finalCellChangeHash.toString(16));
+
+    const marked = markCellDirty(frame, 8, 5);
+    render(frame, scene);
+    ok('markCellDirty marks and recasts only the columns intersecting that cell',
+        marked === midRecastCols && frame._lastRecastCols === marked);
 }
 
 done();

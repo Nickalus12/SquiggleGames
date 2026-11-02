@@ -23,6 +23,7 @@ const MAX_HEIGHT = 4;
 const DEFAULT_HEIGHT = 1;
 const HEIGHT_SCALE = 60;
 const HEIGHT_MAX = 240;
+const HEIGHT_ANIM_MS = 250;
 
 const maxForLayer = layer => {
     if (layer === 'flags') return FLAG_MASK;
@@ -198,12 +199,23 @@ const cloneGrid = grid => {
     copy.heights = grid.heights ? Uint8Array.from(grid.heights) : new Uint8Array(grid.cols * grid.rows);
     if (copy._doors) delete copy._doors;
     if (copy._doorRev) delete copy._doorRev;
+    if (copy._heightAnims) delete copy._heightAnims;
+    if (copy._dirtyWallCells) delete copy._dirtyWallCells;
+    if (copy._wallRev) delete copy._wallRev;
     return copy;
 };
 
 const inside = (grid, col, row) => col >= 0 && row >= 0 && col < grid.cols && row < grid.rows;
 
 const indexOf = (grid, col, row) => (inside(grid, col, row) ? (row * grid.cols) + col : -1);
+
+const markDirtyWallCell = (grid, col, row) => {
+    if (!grid) return;
+    grid._wallRev = (grid._wallRev || 0) + 1;
+    if (!grid._dirtyWallCells) grid._dirtyWallCells = [];
+    grid._dirtyWallCells.push({col, row, rev: grid._wallRev});
+    if (grid._dirtyWallCells.length > 32) grid._dirtyWallCells.shift();
+};
 
 const getCell = (grid, layer, col, row) => {
     const i = indexOf(grid, col, row);
@@ -222,6 +234,8 @@ const setCell = (grid, layer, col, row, value) => {
         const v = n === 0 ? 0 : encodeHeight(n);
         if (grid.heights[i] === v) return false;
         grid.heights[i] = v;
+        grid.heights._version = (grid.heights._version | 0) + 1;
+        markDirtyWallCell(grid, col, row);
         return true;
     }
     if (GRIDS.indexOf(layer) === -1) return false;
@@ -229,7 +243,25 @@ const setCell = (grid, layer, col, row, value) => {
     if (grid[layer][i] === v) return false;
     grid[layer][i] = v;
     grid[layer]._version = (grid[layer]._version | 0) + 1;
+    if (layer === 'main' || layer === 'flags') {
+        markDirtyWallCell(grid, col, row);
+    } else if (layer === 'floor') {
+        if (v > 0) grid._hasFloor = true;
+        grid._surfaceRev = (grid._surfaceRev || 0) + 1;
+    } else if (layer === 'ceiling') {
+        if (v > 0) grid._hasCeiling = true;
+        grid._surfaceRev = (grid._surfaceRev || 0) + 1;
+    } else if (layer === 'light') {
+        if (v !== DEFAULT_LIGHT) grid._hasLight = true;
+        grid._surfaceRev = (grid._surfaceRev || 0) + 1;
+    }
     return true;
+};
+
+const lightAt = (grid, col, row) => {
+    const i = indexOf(grid, col, row);
+    if (i === -1 || !grid.light) return DEFAULT_LIGHT;
+    return grid.light[i];
 };
 
 const flagsAt = (grid, col, row) => {
@@ -253,6 +285,21 @@ const heightAt = (grid, col, row) => {
     return th ? clampHeight(th) : DEFAULT_HEIGHT;
 };
 
+const renderedHeightAt = (grid, col, row) => {
+    if (grid && grid._heightAnims && grid._heightAnims.size > 0) {
+        const i = indexOf(grid, col, row);
+        if (i !== -1) {
+            const entry = grid._heightAnims.get(i);
+            if (entry) {
+                const p = typeof grid._doorProgress === 'number' ? grid._doorProgress : 1;
+                const prev = typeof entry.prev === 'number' ? entry.prev : entry.current;
+                return p < 1 ? prev + ((entry.current - prev) * p) : entry.current;
+            }
+        }
+    }
+    return heightAt(grid, col, row);
+};
+
 const setHeight = (grid, col, row, height) => setCell(
     grid,
     'heights',
@@ -260,6 +307,52 @@ const setHeight = (grid, col, row, height) => setCell(
     row,
     height === 0 || height === null || typeof height === 'undefined' ? 0 : encodeHeight(height)
 );
+
+const animateHeightAt = (grid, col, row, height) => {
+    const i = indexOf(grid, col, row);
+    if (i === -1) return false;
+    const from = renderedHeightAt(grid, col, row);
+    const changed = setHeight(grid, col, row, height);
+    const to = heightAt(grid, col, row);
+    if (Math.abs(to - from) <= 1e-6) {
+        if (grid._heightAnims) grid._heightAnims.delete(i);
+        return changed;
+    }
+    if (!grid._heightAnims) grid._heightAnims = new Map();
+    grid._heightAnims.set(i, {
+        col,
+        row,
+        idx: i,
+        from,
+        to,
+        prev: from,
+        current: from,
+        elapsed: 0
+    });
+    markDirtyWallCell(grid, col, row);
+    return true;
+};
+
+const stepHeights = (grid, dtMs) => {
+    const dt = Number(dtMs);
+    if (!grid || !grid._heightAnims || grid._heightAnims.size === 0 || !Number.isFinite(dt) || dt <= 0) {
+        return false;
+    }
+    let changed = false;
+    for (const [idx, entry] of grid._heightAnims.entries()) {
+        entry.prev = entry.current;
+        entry.elapsed = Math.min(HEIGHT_ANIM_MS, entry.elapsed + dt);
+        const t = entry.elapsed / HEIGHT_ANIM_MS;
+        entry.current = entry.from + ((entry.to - entry.from) * t);
+        markDirtyWallCell(grid, entry.col, entry.row);
+        changed = true;
+        if (entry.elapsed >= HEIGHT_ANIM_MS) {
+            entry.current = entry.to;
+            grid._heightAnims.delete(idx);
+        }
+    }
+    return changed;
+};
 
 const cellAt = (grid, x, y) => ({
     col: Math.floor((x - grid.origin[0]) / grid.tileSize),
@@ -371,6 +464,7 @@ export {
     DEFAULT_HEIGHT,
     HEIGHT_SCALE,
     HEIGHT_MAX,
+    HEIGHT_ANIM_MS,
     clampHeight,
     encodeHeight,
     decodeHeight,
@@ -383,12 +477,17 @@ export {
     cloneGrid,
     inside,
     indexOf,
+    markDirtyWallCell,
     getCell,
     setCell,
+    lightAt,
     flagsAt,
     flagBit,
     heightAt,
+    renderedHeightAt,
     setHeight,
+    animateHeightAt,
+    stepHeights,
     cellAt,
     cellCenter,
     levelRect,

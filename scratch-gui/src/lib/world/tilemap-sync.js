@@ -199,10 +199,13 @@ const createTilemapSync = options => {
         let sent = 0;
         for (const [level, cells] of Array.from(pending.entries())) {
             pending.delete(level);
-            const grid = world.level(level);
+            const saved = world.level(level);
+            const play = typeof world.current === 'function' ? world.current() : null;
+            const grid = saved || (play && play.id === level ? play : null);
             if (!grid) continue;
+            const tileSource = play && play.id === grid.id && play.tiles.length >= grid.tiles.length ? play : grid;
             const known = stampsOf(grid.id);
-            const patches = buildPatches(grid, Array.from(cells.values()), author, nextSeq);
+            const patches = buildPatches(tileSource, Array.from(cells.values()), author, nextSeq);
             for (const patch of patches) {
                 patch.base = grid.v || 0;
                 setVersion(grid, patch.base + 1);

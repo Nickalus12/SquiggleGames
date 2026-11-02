@@ -1,5 +1,5 @@
 import {createRequire} from 'node:module';
-import {ok, section, done, stubRenderer} from './harness.mjs';
+import {ok, near, section, done, stubRenderer} from './harness.mjs';
 
 const require = createRequire(import.meta.url);
 const VM = require('scratch-vm');
@@ -13,7 +13,9 @@ globalThis.document = {hidden: true};
 
 const {installWorldSeams} = await import('./seams.js');
 const {getWorld, extendSeam} = await import('./world.js');
-const {FLAGS, FLAG_MASK, createGrid, addTexture, setCell, encodeLevel, getCell, heightAt, setHeight} = await import('./tilemap.js');
+const {FLAGS, FLAG_MASK, createGrid, addTexture, setCell, encodeLevel, getCell, heightAt,
+    renderedHeightAt, setHeight, cellCenter} = await import('./tilemap.js');
+const {stepDoors} = await import('./doors.js');
 const {PATCH_TYPE, MAX_RUNS, MAX_BYTES, encodeSegments, decodeSegments, readPatch, compareStamp, createTilemapSync} =
     await import('./tilemap-sync.js');
 
@@ -271,6 +273,36 @@ section('door, seethrough, and height sync');
         heightAt(bGrid, 4, 2) === 3);
     setHeight(bGrid, 5, 2, 0.5);
     ok('setHeight updates heightAt on the level', heightAt(bGrid, 5, 2) === 0.5);
+
+    pA.world.useLevel('yard');
+    pB.world.useLevel('yard');
+    const posFloor = cellCenter(pA.world.current(), 6, 6);
+    const posCeil = cellCenter(pA.world.current(), 7, 6);
+    const posLight = cellCenter(pA.world.current(), 8, 6);
+    const posWall = cellCenter(pA.world.current(), 9, 6);
+    pA.world.setFloorTextureAt(posFloor.x, posFloor.y, 'molten');
+    pA.world.setCeilingTextureAt(posCeil.x, posCeil.y, 'brick');
+    pA.world.setLightAt(posLight.x, posLight.y, 35);
+    pA.world.setWallHeightAt(posWall.x, posWall.y, 2.5);
+    pA.tick();
+    const playPatch = pA.outbox.shift();
+    ok('runtime 3D cell ops coalesce into a tilemap-patch with floor, ceiling, light, and heights',
+        Boolean(playPatch && playPatch.layers.floor && playPatch.layers.ceiling &&
+            playPatch.layers.light && playPatch.layers.heights));
+    const applyRes = pB.sync.apply(playPatch);
+    const bLive = pB.world.current();
+    const floorTileVal = getCell(bLive, 'floor', 6, 6);
+    const ceilTileVal = getCell(bLive, 'ceiling', 7, 6);
+    ok('runtime 3D cell ops round-trip across peers for floor, ceiling, light, and wall height',
+        applyRes.ok &&
+        floorTileVal > 0 && bLive.tiles[floorTileVal - 1].name === 'molten' &&
+        ceilTileVal > 0 && bLive.tiles[ceilTileVal - 1].name === 'brick' &&
+        pB.world.lightAt(posLight.x, posLight.y) === 35 &&
+        pB.world.wallHeightAt(posWall.x, posWall.y) === 2.5);
+    ok('remote wall height change animates over 0.25 s on the receiving peer',
+        near(renderedHeightAt(bLive, 9, 6), 1) &&
+        (stepDoors(bLive, 125), near(renderedHeightAt(bLive, 9, 6), 1.75)) &&
+        (stepDoors(bLive, 125), near(renderedHeightAt(bLive, 9, 6), 2.5)));
 }
 
 done();

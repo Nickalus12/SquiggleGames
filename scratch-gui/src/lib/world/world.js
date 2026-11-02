@@ -1,7 +1,8 @@
-import {FLAGS, MAX_LEVELS, addTexture, cellAt, cloneGrid, createGrid, flagsAt, levelRect, setCell,
-    toRulesLevel} from './tilemap.js';
+import {DEFAULT_HEIGHT, DEFAULT_LIGHT, FLAGS, MAX_LEVELS, addTexture, animateHeightAt, cellAt, clampHeight, cloneGrid,
+    createGrid, decodeHeight, flagsAt, getCell, heightAt, inside, levelRect, lightAt, setCell, setHeight, stepHeights,
+    tileIndex, toRulesLevel} from './tilemap.js';
 import {moveBy, onGround, overlapFlags} from './collision.js';
-import {PASS_OPEN, doorOpenAt, peekDoors} from './doors.js';
+import {PASS_OPEN, doorOpenAt, peekDoors, setDoorProgress} from './doors.js';
 import {STAGE_WIDTH, STAGE_HEIGHT, createCamera, toWorld} from './camera.js';
 import {createTileRenderer} from './render.js';
 import {createTextureCache, browserCanvas, browserImageLoader} from './textures.js';
@@ -49,6 +50,33 @@ const chainHook = (seam, name, fn) => {
 };
 
 const sameView = (a, b) => a && b && a.x === b.x && a.y === b.y && a.zoom === b.zoom;
+
+const resolveCell = (grid, x, y, asCell) => {
+    if (!grid) return null;
+    const nx = Number(x);
+    const ny = Number(y);
+    if (!Number.isFinite(nx) || !Number.isFinite(ny)) return null;
+    if (asCell) {
+        const col = Math.floor(nx);
+        const row = Math.floor(ny);
+        return inside(grid, col, row) ? {col, row} : null;
+    }
+    const worldCell = cellAt(grid, nx, ny);
+    if (inside(grid, worldCell.col, worldCell.row)) return worldCell;
+    if (Number.isInteger(nx) && Number.isInteger(ny) && inside(grid, nx, ny)) {
+        return {col: nx, row: ny};
+    }
+    return worldCell;
+};
+
+const parseWallHeight = value => {
+    if (typeof value === 'string') {
+        const cleaned = value.trim().replace(/x$/i, '');
+        const n = Number(cleaned);
+        if (Number.isFinite(n)) return n;
+    }
+    return Number(value);
+};
 
 const createWorldState = (runtime, options) => {
     const opts = options || {};
@@ -253,6 +281,7 @@ const createWorldState = (runtime, options) => {
     const afterStep = () => {
         const doors = peekDoors(runtime);
         if (doors) doors.step();
+        else if (state.play) stepHeights(state.play, runtime.currentStepTime || (1000 / 30));
         if (camera.isActive()) {
             const dt = (runtime.currentStepTime || (1000 / 30)) / 1000;
             camera.step(dt, followPosition());
@@ -290,6 +319,7 @@ const createWorldState = (runtime, options) => {
                 seam.setCamera(progress => {
                     const doors = peekDoors(runtime);
                     if (doors) doors.setProgress(progress);
+                    else if (state.play) setDoorProgress(state.play, progress);
                     const view = currentView(progress);
                     state.view = view;
                     applyScreenSpace(view);
@@ -373,10 +403,16 @@ const createWorldState = (runtime, options) => {
             const changed = [];
             const live = state.play && state.play.id === grid.id ? state.play : null;
             for (const cell of cells) {
-                if (setCell(grid, layer, cell.col, cell.row, cell.value)) {
+                const savedChanged = setCell(grid, layer, cell.col, cell.row, cell.value);
+                const liveChanged = live ? (
+                    layer === 'heights' && origin === 'remote' ?
+                        animateHeightAt(live, cell.col, cell.row, cell.value === 0 ? 0 : decodeHeight(cell.value)) :
+                        setCell(live, layer, cell.col, cell.row, cell.value)
+                ) : false;
+                if (savedChanged || liveChanged) {
                     changed.push({col: cell.col, row: cell.row, value: cell.value});
                 }
-                if (live && setCell(live, layer, cell.col, cell.row, cell.value) && state.tiles) {
+                if (liveChanged && state.tiles) {
                     state.tiles.markCell(cell.col, cell.row, layer);
                 }
             }
@@ -396,6 +432,87 @@ const createWorldState = (runtime, options) => {
             state.revision++;
             if (state.tiles) state.tiles.markCell(cell.col, cell.row, name);
             return true;
+        },
+        setSurfaceTextureAt (x, y, texture, layer, cellOpts) {
+            const grid = state.play;
+            if (!grid) return false;
+            const name = layer === 'ceiling' ? 'ceiling' : 'floor';
+            const cell = resolveCell(grid, x, y, cellOpts && cellOpts.cell);
+            if (!cell || !inside(grid, cell.col, cell.row)) return false;
+            let idx = 0;
+            if (texture !== 0 && texture !== null && typeof texture !== 'undefined') {
+                const raw = String(texture).trim();
+                const lower = raw.toLowerCase();
+                if (raw && lower !== '0' && lower !== 'color' && lower !== 'none' && lower !== 'empty') {
+                    idx = tileIndex(grid, texture);
+                    if (idx === -1) idx = world.addPlayTile(raw);
+                    if (idx <= 0) return false;
+                }
+            }
+            if (!setCell(grid, name, cell.col, cell.row, idx)) return false;
+            state.revision++;
+            emitter.emit('cells', {
+                level: grid.id,
+                layer: name,
+                cells: [{col: cell.col, row: cell.row, value: getCell(grid, name, cell.col, cell.row)}],
+                origin: 'play'
+            });
+            return true;
+        },
+        setFloorTextureAt (x, y, texture, cellOpts) {
+            return world.setSurfaceTextureAt(x, y, texture, 'floor', cellOpts);
+        },
+        setCeilingTextureAt (x, y, texture, cellOpts) {
+            return world.setSurfaceTextureAt(x, y, texture, 'ceiling', cellOpts);
+        },
+        setLightAt (x, y, value, cellOpts) {
+            const grid = state.play;
+            if (!grid) return false;
+            const cell = resolveCell(grid, x, y, cellOpts && cellOpts.cell);
+            if (!cell || !inside(grid, cell.col, cell.row)) return false;
+            if (!setCell(grid, 'light', cell.col, cell.row, value)) return false;
+            state.revision++;
+            emitter.emit('cells', {
+                level: grid.id,
+                layer: 'light',
+                cells: [{col: cell.col, row: cell.row, value: getCell(grid, 'light', cell.col, cell.row)}],
+                origin: 'play'
+            });
+            return true;
+        },
+        lightAt (x, y, cellOpts) {
+            const grid = state.play;
+            if (!grid) return DEFAULT_LIGHT;
+            const cell = resolveCell(grid, x, y, cellOpts && cellOpts.cell);
+            if (!cell) return DEFAULT_LIGHT;
+            return lightAt(grid, cell.col, cell.row);
+        },
+        setWallHeightAt (x, y, height, cellOpts) {
+            const grid = state.play;
+            if (!grid) return false;
+            const cell = resolveCell(grid, x, y, cellOpts && cellOpts.cell);
+            if (!cell || !inside(grid, cell.col, cell.row)) return false;
+            const clamped = clampHeight(parseWallHeight(height));
+            const animate = !cellOpts || cellOpts.animate !== false;
+            const ok = animate ?
+                animateHeightAt(grid, cell.col, cell.row, clamped) :
+                setHeight(grid, cell.col, cell.row, clamped);
+            if (!ok) return false;
+            state.revision++;
+            emitter.emit('cells', {
+                level: grid.id,
+                layer: 'heights',
+                cells: [{col: cell.col, row: cell.row, value: getCell(grid, 'heights', cell.col, cell.row)}],
+                origin: 'play'
+            });
+            return true;
+        },
+        wallHeightAt (x, y, cellOpts) {
+            const grid = state.play;
+            if (!grid) return DEFAULT_HEIGHT;
+            const cell = resolveCell(grid, x, y, cellOpts && cellOpts.cell);
+            if (!cell) return DEFAULT_HEIGHT;
+            return heightAt(grid, cell.col, cell.row);
         },
         addPlayTile (name) {
             const grid = state.play;
@@ -506,7 +623,8 @@ const createWorldState = (runtime, options) => {
             });
             return ids;
         },
-        revision: () => state.revision + (state.play ? state.play._doorRev || 0 : 0),
+        revision: () => state.revision +
+            (state.play ? (state.play._doorRev || 0) + (state.play._wallRev || 0) + (state.play._surfaceRev || 0) : 0),
         setTilesHidden (on) {
             if (state.tiles) state.tiles.setHidden(on);
         },

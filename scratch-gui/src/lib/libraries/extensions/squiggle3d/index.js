@@ -174,6 +174,65 @@ class Squiggle3dBlocks {
                     isEdgeActivated: true,
                     text: 'when I touch a 3D door',
                     filter: ['sprite']
+                },
+                '---',
+                {
+                    opcode: 'setFloorTextureAt',
+                    blockType: 'command',
+                    text: 'set 3D floor texture at x [X] y [Y] to [T]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0},
+                        T: {type: 'string', menu: 'surfaceTextures', defaultValue: 'color'}
+                    }
+                },
+                {
+                    opcode: 'setCeilingTextureAt',
+                    blockType: 'command',
+                    text: 'set 3D ceiling texture at x [X] y [Y] to [T]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0},
+                        T: {type: 'string', menu: 'surfaceTextures', defaultValue: 'color'}
+                    }
+                },
+                {
+                    opcode: 'setLightAt',
+                    blockType: 'command',
+                    text: 'set 3D light at x [X] y [Y] to [N]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0},
+                        N: {type: 'number', defaultValue: 100}
+                    }
+                },
+                {
+                    opcode: 'setWallHeightAt',
+                    blockType: 'command',
+                    text: 'set 3D wall height at x [X] y [Y] to [H]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0},
+                        H: {type: 'number', defaultValue: 1}
+                    }
+                },
+                {
+                    opcode: 'lightAt',
+                    blockType: 'reporter',
+                    text: '3D light at x [X] y [Y]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0}
+                    }
+                },
+                {
+                    opcode: 'wallHeightAt',
+                    blockType: 'reporter',
+                    text: '3D wall height at x [X] y [Y]',
+                    arguments: {
+                        X: {type: 'number', defaultValue: 0},
+                        Y: {type: 'number', defaultValue: 0}
+                    }
                 }
             ],
             menus: {
@@ -312,6 +371,30 @@ class Squiggle3dBlocks {
         if (!target || target.isStage) return false;
         if (viewer && target !== viewer) return false;
         return this.doors.touching(target);
+    }
+
+    setFloorTextureAt (args) {
+        this.world.setFloorTextureAt(num(args.X), num(args.Y), str(args.T));
+    }
+
+    setCeilingTextureAt (args) {
+        this.world.setCeilingTextureAt(num(args.X), num(args.Y), str(args.T));
+    }
+
+    setLightAt (args) {
+        this.world.setLightAt(num(args.X), num(args.Y), num(args.N));
+    }
+
+    setWallHeightAt (args) {
+        this.world.setWallHeightAt(num(args.X), num(args.Y), args.H);
+    }
+
+    lightAt (args) {
+        return this.world.lightAt(num(args.X), num(args.Y));
+    }
+
+    wallHeightAt (args) {
+        return this.world.wallHeightAt(num(args.X), num(args.Y));
     }
 }
 

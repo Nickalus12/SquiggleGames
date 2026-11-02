@@ -79,7 +79,9 @@ ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
     'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
     'mouseTurn', 'usePlayerSettings', 'setPitch', 'pitch', 'spriteInSights',
-    'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor'].join(), opcodes);
+    'openDoor', 'closeDoor', 'doorOpen', 'whenTouchDoor',
+    'setFloorTextureAt', 'setCeilingTextureAt', 'setLightAt', 'setWallHeightAt',
+    'lightAt', 'wallHeightAt'].join(), opcodes);
 ok('every opcode has a method', opcodes.every(opcode => typeof ext[opcode] === 'function'));
 const byOp = Object.fromEntries(blocks.map(block => [block.opcode, block]));
 ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER]' &&
@@ -98,13 +100,25 @@ ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER
     byOp.openDoor.text === 'open the 3D door at x [X] y [Y]' &&
     byOp.closeDoor.text === 'close the 3D door at x [X] y [Y]' &&
     byOp.doorOpen.text === '3D door at x [X] y [Y] open?' &&
-    byOp.whenTouchDoor.text === 'when I touch a 3D door');
+    byOp.whenTouchDoor.text === 'when I touch a 3D door' &&
+    byOp.setFloorTextureAt.text === 'set 3D floor texture at x [X] y [Y] to [T]' &&
+    byOp.setCeilingTextureAt.text === 'set 3D ceiling texture at x [X] y [Y] to [T]' &&
+    byOp.setLightAt.text === 'set 3D light at x [X] y [Y] to [N]' &&
+    byOp.setWallHeightAt.text === 'set 3D wall height at x [X] y [Y] to [H]' &&
+    byOp.lightAt.text === '3D light at x [X] y [Y]' &&
+    byOp.wallHeightAt.text === '3D wall height at x [X] y [Y]');
 ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blockType === 'reporter' &&
     byOp.showView.blockType === 'command' && byOp.setSurfaceTexture.blockType === 'command' &&
     byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command' &&
     byOp.openDoor.blockType === 'command' &&
     byOp.closeDoor.blockType === 'command' && byOp.doorOpen.blockType === 'Boolean' &&
-    byOp.whenTouchDoor.blockType === 'hat');
+    byOp.whenTouchDoor.blockType === 'hat' &&
+    byOp.setFloorTextureAt.blockType === 'command' &&
+    byOp.setCeilingTextureAt.blockType === 'command' &&
+    byOp.setLightAt.blockType === 'command' &&
+    byOp.setWallHeightAt.blockType === 'command' &&
+    byOp.lightAt.blockType === 'reporter' &&
+    byOp.wallHeightAt.blockType === 'reporter');
 ok('sprite-only blocks are filtered', byOp.showMeAs.filter.join() === 'sprite' &&
     byOp.setMyHeight.filter.join() === 'sprite' && byOp.glowIn3d.filter.join() === 'sprite' &&
     byOp.whenTouchDoor.filter.join() === 'sprite');
@@ -215,6 +229,60 @@ section('3D doors');
         world.solidAt(doorPos.x, doorPos.y) === true);
     world.deleteLevel(level.id);
     ext.hideView();
+}
+
+section('3D runtime cell blocks');
+{
+    const {FLAGS, addTexture, cellCenter, getCell, renderedHeightAt, setCell} =
+        await import('../../../world/tilemap.js');
+    const level = world.createLevel({name: 'Puzzle', cols: 10, rows: 10, tileSize: 32, origin: [-160, 160]});
+    addTexture(level, 'brick', FLAGS.solid);
+    addTexture(level, 'lava', FLAGS.hazard);
+    setCell(level, 'main', 4, 4, 1);
+    world.saveLevel(level);
+    world.useLevel(level.id);
+    const live = world.current();
+    const pos = cellCenter(live, 4, 4);
+
+    ext.setFloorTextureAt({X: pos.x, Y: pos.y, T: 'lava'});
+    ok('set 3D floor texture at x y sets the cell floor tile',
+        getCell(live, 'floor', 4, 4) === 2);
+    ext.setFloorTextureAt({X: pos.x, Y: pos.y, T: 'color'});
+    ok('set 3D floor texture to color clears the cell floor override',
+        getCell(live, 'floor', 4, 4) === 0);
+
+    ext.setCeilingTextureAt({X: pos.x, Y: pos.y, T: 'brick'});
+    ok('set 3D ceiling texture at x y sets the cell ceiling tile',
+        getCell(live, 'ceiling', 4, 4) === 1);
+    ext.setCeilingTextureAt({X: pos.x, Y: pos.y, T: 'color'});
+    ok('set 3D ceiling texture to color clears the cell ceiling override',
+        getCell(live, 'ceiling', 4, 4) === 0);
+
+    ok('3D light at x y defaults to 100', ext.lightAt({X: pos.x, Y: pos.y}) === 100);
+    ext.setLightAt({X: pos.x, Y: pos.y, N: 35});
+    ok('set 3D light at x y updates lightAt and clamps 0..100',
+        ext.lightAt({X: pos.x, Y: pos.y}) === 35);
+    ext.setLightAt({X: pos.x, Y: pos.y, N: -20});
+    ok('set 3D light clamps below 0 to 0', ext.lightAt({X: pos.x, Y: pos.y}) === 0);
+    ext.setLightAt({X: pos.x, Y: pos.y, N: 250});
+    ok('set 3D light clamps above 100 to 100', ext.lightAt({X: pos.x, Y: pos.y}) === 100);
+
+    ok('3D wall height at x y defaults to 1', ext.wallHeightAt({X: pos.x, Y: pos.y}) === 1);
+    ext.setWallHeightAt({X: pos.x, Y: pos.y, H: 3});
+    ok('set 3D wall height at x y updates wallHeightAt and animates over 0.25 s',
+        ext.wallHeightAt({X: pos.x, Y: pos.y}) === 3 &&
+        Math.abs(renderedHeightAt(live, 4, 4) - 1) < 1e-6);
+    ext.doors.step(125);
+    ok('wall height animation is halfway (2.0) at 125 ms',
+        Math.abs(renderedHeightAt(live, 4, 4) - 2) < 1e-6);
+    ext.doors.step(125);
+    ok('wall height animation reaches target (3.0) at 250 ms',
+        Math.abs(renderedHeightAt(live, 4, 4) - 3) < 1e-6);
+    ext.setWallHeightAt({X: pos.x, Y: pos.y, H: '0.25x'});
+    ok('set 3D wall height accepts 0.25x suffix and clamps 0.25..4',
+        ext.wallHeightAt({X: pos.x, Y: pos.y}) === 0.25);
+
+    world.deleteLevel(level.id);
 }
 
 section('saved projects');
