@@ -24,6 +24,8 @@ import randomizeSpritePosition from '../lib/randomize-sprite-position';
 import downloadBlob from '../lib/download-blob';
 import log from '../lib/log';
 import {placeInViewport} from '../lib/backpack/code-payload.js';
+import ExplainSprite from './explain-sprite.jsx';
+import {isBusy as explainBusy} from '../lib/ai/explain.js';
 
 class TargetPane extends React.Component {
     constructor (props) {
@@ -42,6 +44,9 @@ class TargetPane extends React.Component {
             'handleDrop',
             'handleDuplicateSprite',
             'handleExportSprite',
+            'handleExplainSprite',
+            'handleExplainClose',
+            'handleExplainOff',
             'handleNewSprite',
             'handleSelectSprite',
             'handleSurpriseSpriteClick',
@@ -50,6 +55,7 @@ class TargetPane extends React.Component {
             'handleSpriteUpload',
             'setFileInput'
         ]);
+        this.state = {explainId: null, explainOff: false};
     }
     componentDidMount () {
         this.props.vm.addListener('BLOCK_DRAG_END', this.handleBlockDragEnd);
@@ -99,6 +105,16 @@ class TargetPane extends React.Component {
         this.props.vm.exportSprite(id).then(content => {
             downloadBlob(`${spriteName}.sprite3`, content);
         });
+    }
+    handleExplainSprite (id) {
+        if (this.state.explainOff || explainBusy()) return;
+        this.setState({explainId: id});
+    }
+    handleExplainClose () {
+        this.setState({explainId: null});
+    }
+    handleExplainOff () {
+        this.setState({explainId: null, explainOff: true});
     }
     handleSelectSprite (id) {
         this.props.vm.setEditingTarget(id);
@@ -226,27 +242,38 @@ class TargetPane extends React.Component {
         } = this.props;
         /* eslint-enable no-unused-vars */
         return (
-            <TargetPaneComponent
-                {...componentProps}
-                fileInputRef={this.setFileInput}
-                onActivateBlocksTab={this.handleActivateBlocksTab}
-                onChangeSpriteDirection={this.handleChangeSpriteDirection}
-                onChangeSpriteName={this.handleChangeSpriteName}
-                onChangeSpriteRotationStyle={this.handleChangeSpriteRotationStyle}
-                onChangeSpriteSize={this.handleChangeSpriteSize}
-                onChangeSpriteVisibility={this.handleChangeSpriteVisibility}
-                onChangeSpriteX={this.handleChangeSpriteX}
-                onChangeSpriteY={this.handleChangeSpriteY}
-                onDeleteSprite={this.handleDeleteSprite}
-                onDrop={this.handleDrop}
-                onDuplicateSprite={this.handleDuplicateSprite}
-                onExportSprite={this.handleExportSprite}
-                onFileUploadClick={this.handleFileUploadClick}
-                onPaintSpriteClick={this.handlePaintSpriteClick}
-                onSelectSprite={this.handleSelectSprite}
-                onSpriteUpload={this.handleSpriteUpload}
-                onSurpriseSpriteClick={this.handleSurpriseSpriteClick}
-            />
+            <React.Fragment>
+                <TargetPaneComponent
+                    {...componentProps}
+                    fileInputRef={this.setFileInput}
+                    onActivateBlocksTab={this.handleActivateBlocksTab}
+                    onChangeSpriteDirection={this.handleChangeSpriteDirection}
+                    onChangeSpriteName={this.handleChangeSpriteName}
+                    onChangeSpriteRotationStyle={this.handleChangeSpriteRotationStyle}
+                    onChangeSpriteSize={this.handleChangeSpriteSize}
+                    onChangeSpriteVisibility={this.handleChangeSpriteVisibility}
+                    onChangeSpriteX={this.handleChangeSpriteX}
+                    onChangeSpriteY={this.handleChangeSpriteY}
+                    onDeleteSprite={this.handleDeleteSprite}
+                    onDrop={this.handleDrop}
+                    onDuplicateSprite={this.handleDuplicateSprite}
+                    onExplainSprite={this.state.explainOff ? null : this.handleExplainSprite}
+                    onExportSprite={this.handleExportSprite}
+                    onFileUploadClick={this.handleFileUploadClick}
+                    onPaintSpriteClick={this.handlePaintSpriteClick}
+                    onSelectSprite={this.handleSelectSprite}
+                    onSpriteUpload={this.handleSpriteUpload}
+                    onSurpriseSpriteClick={this.handleSurpriseSpriteClick}
+                />
+                {this.state.explainId ? (
+                    <ExplainSprite
+                        targetId={this.state.explainId}
+                        vm={this.props.vm}
+                        onClose={this.handleExplainClose}
+                        onOff={this.handleExplainOff}
+                    />
+                ) : null}
+            </React.Fragment>
         );
     }
 }

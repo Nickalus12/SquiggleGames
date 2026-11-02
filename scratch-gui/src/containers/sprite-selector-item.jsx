@@ -22,6 +22,7 @@ class SpriteSelectorItem extends React.PureComponent {
             'handleDelete',
             'handleDuplicate',
             'handleExport',
+            'handleExplain',
             'handleRename',
             'handleMouseEnter',
             'handleMouseLeave',
@@ -102,6 +103,10 @@ class SpriteSelectorItem extends React.PureComponent {
         e.stopPropagation();
         this.props.onExportButtonClick(this.props.id);
     }
+    handleExplain (e) {
+        e.stopPropagation();
+        this.props.onExplainButtonClick(this.props.id);
+    }
     handleRename (e) {
         e.stopPropagation();
         this.props.onRenameButtonClick(this.props.id);
@@ -126,6 +131,7 @@ class SpriteSelectorItem extends React.PureComponent {
             onDeleteButtonClick,
             onDuplicateButtonClick,
             onExportButtonClick,
+            onExplainButtonClick,
             onRenameButtonClick,
             dragPayload,
             receivedBlocks,
@@ -143,6 +149,7 @@ class SpriteSelectorItem extends React.PureComponent {
                 onDeleteButtonClick={onDeleteButtonClick ? this.handleDelete : null}
                 onDuplicateButtonClick={onDuplicateButtonClick ? this.handleDuplicate : null}
                 onExportButtonClick={onExportButtonClick ? this.handleExport : null}
+                onExplainButtonClick={onExplainButtonClick ? this.handleExplain : null}
                 onRenameButtonClick={onRenameButtonClick ? this.handleRename : null}
                 onMouseDown={this.handleMouseDown}
                 onMouseEnter={this.handleMouseEnter}
@@ -173,6 +180,7 @@ SpriteSelectorItem.propTypes = {
     onDrag: PropTypes.func.isRequired,
     onDuplicateButtonClick: PropTypes.func,
     onExportButtonClick: PropTypes.func,
+    onExplainButtonClick: PropTypes.func,
     receivedBlocks: PropTypes.bool.isRequired,
     selected: PropTypes.bool,
     vm: PropTypes.instanceOf(VM).isRequired

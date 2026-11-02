@@ -20,6 +20,7 @@ const ModalComponent = props => (
         })}
         contentLabel={props.contentLabel}
         overlayClassName={styles.modalOverlay}
+        onAfterOpen={props.onAfterOpen}
         onRequestClose={props.onRequestClose}
     >
         <Box
@@ -113,6 +114,7 @@ ModalComponent.propTypes = {
     headerClassName: PropTypes.string,
     headerImage: PropTypes.string,
     isRtl: PropTypes.bool,
+    onAfterOpen: PropTypes.func,
     onHelp: PropTypes.func,
     onRequestClose: PropTypes.func
 };

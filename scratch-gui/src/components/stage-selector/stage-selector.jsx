@@ -61,6 +61,7 @@ const StageSelector = props => {
         onNewBackdropClick,
         onSurpriseBackdropClick,
         onEmptyBackdropClick,
+        onExplainClick,
         ...componentProps
     } = props;
     return (
@@ -100,6 +101,15 @@ const StageSelector = props => {
                 />
             </div>
             <div className={styles.count}>{backdropCount}</div>
+            {selected && onExplainClick ? (
+                <button
+                    className={styles.explainButton}
+                    title="Explain the stage"
+                    onClick={onExplainClick}
+                >
+                    {'Explain'}
+                </button>
+            ) : null}
             <ActionMenu
                 className={styles.addButton}
                 img={backdropIcon}
@@ -147,6 +157,7 @@ StageSelector.propTypes = {
     onBackdropFileUploadClick: PropTypes.func,
     onClick: PropTypes.func,
     onEmptyBackdropClick: PropTypes.func,
+    onExplainClick: PropTypes.func,
     onMouseEnter: PropTypes.func,
     onMouseLeave: PropTypes.func,
     onNewBackdropClick: PropTypes.func,

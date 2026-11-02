@@ -74,6 +74,11 @@ const SpriteSelectorItem = props => (
                         />
                     </MenuItem>
                 ) : null }
+                {props.onExplainButtonClick ? (
+                    <MenuItem onClick={props.onExplainButtonClick}>
+                        {'Explain this sprite'}
+                    </MenuItem>
+                ) : null}
                 {props.onRenameButtonClick ? (
                     <MenuItem onClick={props.onRenameButtonClick}>
                         <FormattedMessage
@@ -109,6 +114,7 @@ SpriteSelectorItem.propTypes = {
     onDeleteButtonClick: PropTypes.func,
     onDuplicateButtonClick: PropTypes.func,
     onExportButtonClick: PropTypes.func,
+    onExplainButtonClick: PropTypes.func,
     onRenameButtonClick: PropTypes.func,
     onMouseDown: PropTypes.func,
     onMouseEnter: PropTypes.func,
