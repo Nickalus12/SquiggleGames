@@ -104,7 +104,7 @@ const messages = defineMessages({
     hazard: {id: 'sq.painter.flag.hazard', defaultMessage: 'hazard', description: 'Cell flag'},
     goal: {id: 'sq.painter.flag.goal', defaultMessage: 'goal', description: 'Cell flag'},
     door: {id: 'sq.painter.flag.door', defaultMessage: 'door', description: 'Cell flag'},
-    seethrough: {id: 'sq.painter.flag.seethrough', defaultMessage: 'see-through', description: 'Cell flag'},
+    seethrough: {id: 'sq.painter.flag.seethrough', defaultMessage: 'see-through (max 4)', description: 'Cell flag'},
     heightAmount: {
         id: 'sq.painter.heightAmount',
         defaultMessage: 'Wall height',

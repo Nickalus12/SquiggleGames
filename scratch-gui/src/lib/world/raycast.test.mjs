@@ -1,8 +1,8 @@
 import {ok, near, section, done} from './harness.mjs';
 
 const {FLAGS, addTexture, createGrid, flagsAt, setCell, setHeight} = await import('./tilemap.js');
-const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, isDoorOpenAt,
-    encodeDoorValues, applyDoorValues} = await import('./doors.js');
+const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, setDoorProgress,
+    isDoorOpenAt, encodeDoorValues, applyDoorValues} = await import('./doors.js');
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
@@ -409,6 +409,50 @@ if (process.env.SQ_PERF === '1') {
     console.log(`  info  640x360 floor+sky+falloff level, 24 billboards: median ${wideMedian.toFixed(3)} ms, ` +
         `p95 ${wideP95.toFixed(3)} ms`);
     ok('640x360 floor+sky+falloff median under 4 ms', wideMedian < 4, wideMedian);
+
+    const grid2 = room(size, size, {texture: true});
+    for (let i = 4; i < size - 4; i += 6) {
+        for (let j = 4; j < size - 4; j += 2) setCell(grid2, 'main', i, j, 1);
+    }
+    const grateId = addTexture(grid2, 'grate', FLAGS.seethrough);
+    const doorId = addTexture(grid2, 'door', FLAGS.door);
+    const tallId = addTexture(grid2, 'tall', FLAGS.solid, 4);
+    for (let c = 4; c < 20; c++) setCell(grid2, 'main', c, 10, grateId);
+    setCell(grid2, 'main', 12, 8, doorId);
+    openDoorAt(grid2, 12, 8, {cell: true, holdMs: 5000});
+    stepDoors(grid2, 200);
+    setCell(grid2, 'main', 14, 12, tallId);
+    const grateTex = solidImage(64, 64, 0);
+    for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x += 8) {
+            grateTex.data[(y * 64) + x] = pixel(180, 190, 200);
+            grateTex.data[(y * 64) + x + 1] = pixel(180, 190, 200);
+        }
+    }
+    const scene2 = {
+        map: mapOf(grid2),
+        player: {u: 2.5, v: 2.5, direction: 135},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        texture: v => (v === grateId ? grateTex : tex),
+        sprites
+    };
+    for (let i = 0; i < 30; i++) render(frame, scene2);
+    const samples2 = [];
+    for (let i = 0; i < 300; i++) {
+        scene2.player = {u: 2.5 + ((i % 50) * 0.05), v: 2.5 + ((i % 30) * 0.05), direction: (i * 3) % 360};
+        const t0 = performance.now();
+        render(frame, scene2);
+        samples2.push(performance.now() - t0);
+    }
+    samples2.sort((a, b) => a - b);
+    const median2 = samples2[150];
+    const p952 = samples2[285];
+    console.log(`  info  64x64 see-through row + 1 door + 1 height-4 tile: median ${median2.toFixed(3)} ms, ` +
+        `p95 ${p952.toFixed(3)} ms`);
+    ok('mixed-geometry median frame under 4 ms', median2 < 4, median2);
+    ok('mixed-geometry p95 frame under 4 ms', p952 < 4, p952);
 }
 
 section('no allocation per frame');
@@ -672,13 +716,15 @@ section('doors: recessed raycast and pure timing');
     ok('openDoorAt opens over 400 ms and holds for holdMs', OPEN_MS === 400 && HOLD_MS === 3000);
     openDoorAt(grid, 6, 5, {cell: true, holdMs: 1000});
     stepDoors(grid, 200);
-    ok('at 200 ms door is 50% open', near(doorOpenAt(grid, 6, 5), 0.5, 1e-6) && !isDoorOpenAt(grid, 6, 5, {cell: true}));
+    ok('at 200 ms door is 50% open',
+        near(doorOpenAt(grid, 6, 5), 0.5, 1e-6) && !isDoorOpenAt(grid, 6, 5, {cell: true}));
     const leftRay = castRay(map, 6.25, 8.5, 0, -1);
     const rightRay = castRay(map, 6.75, 8.5, 0, -1);
     ok('ray in the open half (u=6.25 < 6.5) passes through to the back wall',
         leftRay && leftRay.door === false && leftRay.row === 0 && near(leftRay.dist, 7.5, 1e-6), leftRay);
     ok('ray in the closed half (u=6.75 >= 6.5) hits the door with shifted wallX',
-        rightRay && rightRay.door === true && near(rightRay.dist, 3, 1e-6) && near(rightRay.wallX, 0.25, 1e-6), rightRay);
+        rightRay && rightRay.door === true && near(rightRay.dist, 3, 1e-6) && near(rightRay.wallX, 0.25, 1e-6),
+        rightRay);
     stepDoors(grid, 200);
     ok('at 400 ms door is 100% open', near(doorOpenAt(grid, 6, 5), 1, 1e-6) && isDoorOpenAt(grid, 6, 5, {cell: true}));
     const openRay = castRay(map, 6.75, 8.5, 0, -1);
@@ -709,6 +755,24 @@ section('doors: recessed raycast and pure timing');
     ok('closed door renders with DEFAULT_DOOR_TEXTURE on single-hit path',
         frame._multiHit === false && (DEFAULT_DOOR_TEXTURE.data.includes(centerColor) || centerColor !== BLUE));
     ok('closed door matches golden hash', closedDoorHash === 0xf47d207a, closedDoorHash.toString(16));
+    const solidRoomGrid = room(12, 12);
+    setCell(solidRoomGrid, 'flags', 6, 5, FLAGS.solid);
+    const solidRoomMap = mapOf(solidRoomGrid);
+    const solidHit = castRay(solidRoomMap, 6.5, 8.5, 0, -1);
+    const solidFrame = createFrame(120, 90);
+    render(solidFrame, {
+        map: solidRoomMap,
+        player: {u: 6.5, v: 7.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => backWallColor
+    });
+    const solidWallInDoorRoomHash = hashPixels(solidFrame.pixels);
+    ok('solid wall in the same room matches golden hash and differs from closed door by half-tile recess',
+        solidWallInDoorRoomHash === 0x8fce4bbd && solidWallInDoorRoomHash !== closedDoorHash &&
+        near(closedHit.dist - solidHit.dist, 0.5, 1e-6),
+        [solidWallInDoorRoomHash.toString(16), closedDoorHash.toString(16)]);
     openDoorAt(grid, 6, 5, {cell: true, holdMs: 1000});
     stepDoors(grid, 200);
     render(frame, {
@@ -738,6 +802,40 @@ section('doors: recessed raycast and pure timing');
     for (let c = 1; c <= 20; c++) setCell(peerGrid, 'flags', c, 5, FLAGS.door);
     const appliedCount = applyDoorValues(peerGrid, encodedDoors);
     ok('applyDoorValues syncs remote door open targets', appliedCount === MAX_DOORS);
+
+    const slideFrame = createFrame(240, 180);
+    const runSlide60Hz = interpolate => {
+        const g = room(12, 12);
+        setCell(g, 'flags', 6, 5, FLAGS.door);
+        openDoorAt(g, 6, 5, {cell: true, holdMs: 2000});
+        const m = mapOf(g);
+        let prevHash = null;
+        let unchanged = 0;
+        for (let stepIdx = 0; stepIdx < 12; stepIdx++) {
+            stepDoors(g, 1000 / 30);
+            for (let sub = 0; sub < 2; sub++) {
+                if (interpolate) setDoorProgress(g, (sub + 1) / 2);
+                render(slideFrame, {
+                    map: m,
+                    player: {u: 6.5, v: 6.5, direction: 0},
+                    fov: 66,
+                    floor: BLUE,
+                    ceiling: RED,
+                    wallColor: () => backWallColor,
+                    wallKey: (stepIdx * 2) + sub + 1
+                });
+                const h = hashPixels(slideFrame.pixels);
+                if (prevHash !== null && h === prevHash) unchanged++;
+                prevHash = h;
+            }
+        }
+        return unchanged / 24;
+    };
+    const stepOnlyUnchangedRatio = runSlide60Hz(false);
+    const interpolatedUnchangedRatio = runSlide60Hz(true);
+    ok('door slide at 60 Hz over 400 ms: 30 Hz step-only holds 0.5 of frames while setDoorProgress holds 0',
+        near(stepOnlyUnchangedRatio, 0.5, 1e-6) && interpolatedUnchangedRatio === 0,
+        [stepOnlyUnchangedRatio, interpolatedUnchangedRatio]);
 }
 
 section('see-through tiles and 4-hit cap');
@@ -750,6 +848,49 @@ section('see-through tiles and 4-hit cap');
     const lastHit = hits[hits.length - 1];
     ok('castRayMulti caps see-through hits at 4 per column and still hits the solid wall behind',
         MAX_SEETHROUGH === 4 && seeHits.length === 4 && !lastHit.seethrough && lastHit.row === 0, hits);
+    const sixGrid = room(12, 12, {texture: true});
+    const fenceColors = [
+        pixel(220, 50, 50),
+        pixel(50, 220, 50),
+        pixel(50, 120, 230),
+        pixel(230, 210, 40),
+        pixel(220, 60, 210),
+        pixel(50, 220, 220)
+    ];
+    const fenceTextures = {};
+    const fenceIds = [];
+    for (let i = 0; i < 6; i++) {
+        const id = addTexture(sixGrid, `fence${i + 1}`, FLAGS.seethrough);
+        fenceIds.push(id);
+        const fTex = solidImage(8, 8, 0);
+        for (let y = 0; y < 8; y++) fTex.data[(y * 8) + (i + 1)] = fenceColors[i];
+        fenceTextures[id] = fTex;
+        setCell(sixGrid, 'main', 6, 7 - i, id);
+    }
+    const sixFrame = createFrame(120, 90);
+    const sixWallTex = solidImage(8, 8, pixel(40, 180, 60));
+    render(sixFrame, {
+        map: mapOf(sixGrid),
+        player: {u: 6.5, v: 9.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        texture: v => (v === 1 ? sixWallTex : (fenceTextures[v] || null))
+    });
+    const shadedFenceColors = fenceColors.map(c => ray.shade(c, 0.72));
+    const fencePixelCounts = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < sixFrame.pixels.length; i++) {
+        const p = sixFrame.pixels[i];
+        const idx = shadedFenceColors.indexOf(p);
+        if (idx !== -1) fencePixelCounts[idx]++;
+    }
+    const drawnFences = fencePixelCounts.filter(c => c > 0).length;
+    ok('six see-through fences on one ray draw the nearest 4 and skip the 5th and 6th',
+        drawnFences === 4 &&
+        fencePixelCounts[0] > 0 && fencePixelCounts[1] > 0 &&
+        fencePixelCounts[2] > 0 && fencePixelCounts[3] > 0 &&
+        fencePixelCounts[4] === 0 && fencePixelCounts[5] === 0,
+        fencePixelCounts);
     const g2 = room(12, 12, {texture: true});
     const grateId = addTexture(g2, 'grate', FLAGS.seethrough);
     setCell(g2, 'main', 6, 5, grateId);

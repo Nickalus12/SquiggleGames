@@ -123,6 +123,7 @@ const openDoorAt = (grid, x, y, options) => {
             col: cell.col,
             row: cell.row,
             open: 0,
+            prevOpen: 0,
             target: 0,
             hold: 0,
             holdMs: HOLD_MS
@@ -162,7 +163,29 @@ const closeDoorAt = (grid, x, y, options) => {
 const doorOpenAt = (grid, col, row) => {
     if (!grid || !grid._doors || grid._doors.size === 0) return 0;
     const entry = grid._doors.get(cellKey(col, row));
-    return entry ? entry.open : 0;
+    if (!entry) return 0;
+    const p = typeof grid._doorProgress === 'number' ? grid._doorProgress : 1;
+    const prev = typeof entry.prevOpen === 'number' ? entry.prevOpen : entry.open;
+    return p < 1 ? prev + ((entry.open - prev) * p) : entry.open;
+};
+
+const setDoorProgress = (grid, progress) => {
+    if (!grid || !grid._doors || grid._doors.size === 0) return false;
+    const n = Number(progress);
+    const p = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+    const prevP = typeof grid._doorProgress === 'number' ? grid._doorProgress : 1;
+    grid._doorProgress = p;
+    if (Math.abs(p - prevP) <= 1e-6) return false;
+    let moving = false;
+    for (const entry of grid._doors.values()) {
+        const prev = typeof entry.prevOpen === 'number' ? entry.prevOpen : entry.open;
+        if (Math.abs(entry.open - prev) > 1e-6) {
+            moving = true;
+            break;
+        }
+    }
+    if (moving) bumpRev(grid);
+    return moving;
 };
 
 const isDoorOpenAt = (grid, x, y, options) => {
@@ -174,8 +197,10 @@ const isDoorOpenAt = (grid, x, y, options) => {
 const stepDoors = (grid, dtMs, blockers) => {
     const dt = Number(dtMs);
     if (!grid || !grid._doors || grid._doors.size === 0 || !Number.isFinite(dt) || dt <= 0) return false;
+    grid._doorProgress = 1;
     let changed = false;
     for (const entry of grid._doors.values()) {
+        entry.prevOpen = entry.open;
         const blocked = boxBlocksDoor(grid, entry.col, entry.row, blockers);
         let rem = dt;
         if (entry.target === 1) {
@@ -356,6 +381,9 @@ const createDoors = (runtime, world, options) => {
             return touchingDoor(grid, world.box(target)) !== null;
         },
         step,
+        setProgress (progress) {
+            return setDoorProgress(world.current(), progress);
+        },
         values () {
             return encodeDoorValues(world.current());
         },
@@ -389,6 +417,7 @@ export {
     openDoorAt,
     closeDoorAt,
     doorOpenAt,
+    setDoorProgress,
     isDoorOpenAt,
     stepDoors,
     encodeDoorValues,

@@ -288,6 +288,8 @@ const createWorldState = (runtime, options) => {
             ensureTiles();
             state.disposers.push(
                 seam.setCamera(progress => {
+                    const doors = peekDoors(runtime);
+                    if (doors) doors.setProgress(progress);
                     const view = currentView(progress);
                     state.view = view;
                     applyScreenSpace(view);
