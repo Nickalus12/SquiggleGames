@@ -38,7 +38,8 @@ export const DEFAULT_SQUIGGLE_SETTINGS = Object.freeze({
         scores: true,
         teams: true,
         timer: true,
-        health: true
+        health: true,
+        labels: Object.freeze({})
     })
 });
 
@@ -56,12 +57,23 @@ export const normalizeSquiggleSettings = raw => {
         });
     }
     const rawHud = src.hud && typeof src.hud === 'object' ? src.hud : {};
+    const labels = {};
+    if (rawHud.labels && typeof rawHud.labels === 'object') {
+        Object.keys(rawHud.labels).forEach(key => {
+            const k = String(key).trim()
+                .toLowerCase();
+            const val = String(rawHud.labels[key] || '').trim()
+                .slice(0, 24);
+            if (k && val) labels[k] = val;
+        });
+    }
     const hud = {
         enabled: rawHud.enabled !== false,
         scores: rawHud.scores !== false,
         teams: rawHud.teams !== false,
         timer: rawHud.timer !== false,
-        health: rawHud.health !== false
+        health: rawHud.health !== false,
+        labels
     };
     const ownHud = OWN_HUD_MODES.indexOf(src.ownHud) === -1 ? 'auto' : src.ownHud;
     const render3d = RENDER_3D_MODES.indexOf(src.render3d) === -1 ? 'auto' : src.render3d;
@@ -73,6 +85,7 @@ export const hasCustomSquiggleSettings = settings => {
     if (norm.touchMode !== 'thumbstick') return true;
     if (Object.keys(norm.actionLabels).length > 0) return true;
     if (norm.ownHud !== 'auto' || norm.render3d !== 'auto') return true;
+    if (norm.hud.labels && Object.keys(norm.hud.labels).length > 0) return true;
     return !norm.hud.enabled || !norm.hud.scores || !norm.hud.teams || !norm.hud.timer || !norm.hud.health;
 };
 
@@ -156,10 +169,14 @@ export const updateGameSettings = (vm, patch) => {
     const runtime = vm && (vm.runtime || vm);
     if (!runtime) return normalizeSquiggleSettings(null);
     const current = readGameSettings(vm);
+    const nextHud = patch && patch.hud ? Object.assign({}, current.hud, patch.hud) : current.hud;
+    if (patch && patch.hud && patch.hud.labels && current.hud && current.hud.labels) {
+        nextHud.labels = Object.assign({}, current.hud.labels, patch.hud.labels);
+    }
     const next = normalizeSquiggleSettings({
         touchMode: patch && typeof patch.touchMode !== 'undefined' ? patch.touchMode : current.touchMode,
         actionLabels: patch && patch.actionLabels ? patch.actionLabels : current.actionLabels,
-        hud: patch && patch.hud ? Object.assign({}, current.hud, patch.hud) : current.hud,
+        hud: nextHud,
         ownHud: patch && typeof patch.ownHud !== 'undefined' ? patch.ownHud : current.ownHud,
         render3d: patch && typeof patch.render3d !== 'undefined' ? patch.render3d : current.render3d
     });

@@ -18,7 +18,8 @@ let fail = 0;
 const ok = (label, cond, detail) => {
     if (cond) pass++;
     else fail++;
-    console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${!cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : ''}`);
+    const extra = !cond && typeof detail !== 'undefined' ? ` : ${JSON.stringify(detail)}` : '';
+    console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${extra}`);
 };
 
 ok('three presets, normal first', STAGE_PRESETS.length === 3 && STAGE_PRESETS[0].id === 'normal');
@@ -44,7 +45,8 @@ const vm = {
     storeProjectOptions: () => calls.push('store'),
     runtime: {findProjectOptionsComment: () => comment}
 };
-ok('storeGameSettings stores then rewrites the note', storeGameSettings(vm) === true && calls.length === 1 && comment.text.startsWith(SETTINGS_NOTE));
+ok('storeGameSettings stores then rewrites the note',
+    storeGameSettings(vm) === true && calls.length === 1 && comment.text.startsWith(SETTINGS_NOTE));
 ok('storeGameSettings is safe without a vm', storeGameSettings(null) === false && storeGameSettings({}) === false);
 
 const defaults = readGameSettings(vm);
@@ -89,6 +91,18 @@ const keptBack = readGameSettings({runtime: {findProjectOptionsComment: () => co
 ok('own HUD and 3D quality persist and keep the other settings',
     kept.ownHud === 'keep' && kept.render3d === 'fast' && kept.touchMode === 'dpad' &&
     keptBack.ownHud === 'keep' && keptBack.render3d === 'fast' && keptBack.hud.teams === false);
+
+const withLabels = updateGameSettings(vm, {
+    hud: {labels: {Ammo: '  Charges ', health: 'Energy', shield: 'Coolant'}}
+});
+const withLabelsBack = readGameSettings({runtime: {findProjectOptionsComment: () => comment}});
+ok('squiggle.hud.labels normalizes keys/values and round-trips through _twconfig_',
+    withLabels.hud.labels.ammo === 'Charges' &&
+    withLabels.hud.labels.health === 'Energy' &&
+    withLabels.hud.labels.shield === 'Coolant' &&
+    withLabelsBack.hud.labels.ammo === 'Charges' &&
+    withLabelsBack.hud.labels.health === 'Energy' &&
+    withLabelsBack.hud.teams === false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

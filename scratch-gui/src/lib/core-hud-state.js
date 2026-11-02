@@ -4,8 +4,11 @@ import {playerName, playerValue, teamName, timeLeft} from './together2/game-stat
 
 const HEALTH_KEYS = ['hp', 'health', 'hearts', 'lives', 'hull', 'energy', 'p1 hp', 'p1_hp', 'player_hp'];
 const SHIELD_KEYS = ['shield', 'armor', 'armour', 'p1 shield', 'p1_shield'];
-const AMMO_KEYS = ['ammo', 'bolts', 'charges', 'shells', 'p1 ammo', 'p1_ammo'];
-const AMMO_KINDS = ['bullets', 'shells', 'cells', 'rockets', 'bolts', 'charges', 'arrows', 'darts', 'gems'];
+const AMMO_KEYS = ['ammo', 'bolts', 'charges', 'shells', 'shards', 'p1 ammo', 'p1_ammo'];
+const AMMO_KINDS = [
+    'bullets', 'shells', 'cells', 'rockets', 'bolts',
+    'charges', 'shards', 'arrows', 'darts', 'gems'
+];
 const WEAPON_KEYS = ['weapon', 'cur_wpn', 'wpn', 'cur_weapon', 'current_weapon'];
 const WEAPON_SLOT_KEYS = ['weapon_slots', 'weapons', 'wpn_slots'];
 const ITEM_COLOR_WORDS = 'gold|yellow|amber|red|crimson|blue|cyan|ice|green|lime|jade|purple|violet';
@@ -316,6 +319,18 @@ export const extractHudState = (vm, netOverride) => {
     const liveBoards = game && Array.isArray(game.boards) ? game.boards : [];
     const boardSource = declaredBoards[0] || liveBoards[0] || null;
     const boardKey = boardSource ? String(boardSource.name || boardSource.n || '').toLowerCase() : '';
+    const hudLabels = sections && sections.labels && typeof sections.labels === 'object' ? sections.labels : {};
+    const stripPlayerPrefix = key => String(key || '').replace(/^(p\d+|player)[_ ]+/i, '');
+    const pickHudLabel = (keys, fallback) => {
+        for (const k of keys) {
+            const low = k ? String(k).trim()
+                .toLowerCase() : '';
+            if (low && typeof hudLabels[low] === 'string' && hudLabels[low].trim()) {
+                return hudLabels[low].trim();
+            }
+        }
+        return fallback;
+    };
 
     let timer = null;
     if (sections.timer !== false) {
@@ -323,16 +338,18 @@ export const extractHudState = (vm, netOverride) => {
             const names = Object.keys(game.timers);
             const activeName = names[0];
             const rem = timeLeft(game, activeName);
+            const defaultTimerLabel = timerLabel(activeName, mark, gameValues, vars);
             timer = {
-                label: timerLabel(activeName, mark, gameValues, vars),
+                label: pickHudLabel([activeName, 'timer', 'time'], defaultTimerLabel),
                 seconds: rem,
                 formatted: formatClock(rem)
             };
         } else {
             const foundTimer = pickFirstNumber([gameValues, vars], TIMER_KEYS);
             if (foundTimer && foundTimer.value >= 0) {
+                const defaultTimerLabel = roundNameFromRules(mark, gameValues, vars) || 'Time';
                 timer = {
-                    label: roundNameFromRules(mark, gameValues, vars) || 'Time',
+                    label: pickHudLabel([foundTimer.key, 'timer', 'time'], defaultTimerLabel),
                     seconds: foundTimer.value,
                     formatted: formatClock(foundTimer.value)
                 };
@@ -390,11 +407,15 @@ export const extractHudState = (vm, netOverride) => {
         const ammoKinds = collectAmmoKinds(sources, ammoHit ? ammoHit.key : '');
         if (hpHit || shieldHit || ammoHit) {
             const hpKey = hpHit ? hpHit.key : null;
+            const hpBase = hpKey ? stripPlayerPrefix(hpKey) : '';
             const maxHpDefault = hpKey && numOrNull(defaults[hpKey]) ? Math.max(1, Number(defaults[hpKey])) : 100;
             const shieldKey = shieldHit ? shieldHit.key : null;
+            const shieldBase = shieldKey ? stripPlayerPrefix(shieldKey) : '';
             const maxShieldDefault = shieldKey && numOrNull(defaults[shieldKey]) ?
                 Math.max(1, Number(defaults[shieldKey])) :
                 100;
+            const ammoKey = ammoHit ? ammoHit.key : null;
+            const ammoBase = ammoKey ? stripPlayerPrefix(ammoKey) : '';
             const hp = hpHit ? Math.max(0, hpHit.value) : null;
             const maxHp = hpHit ? Math.max(maxHpDefault, hpHit.value) : 100;
             const weaponSlot = weaponHit ? Math.round(weaponHit.value) : null;
@@ -402,20 +423,29 @@ export const extractHudState = (vm, netOverride) => {
                 slotsHit ? Math.round(slotsHit.value) : DEFAULT_WEAPON_SLOTS,
                 weaponSlot || 0
             ));
+            const isLives = hpBase === 'lives' || hpBase === 'hearts';
+            const derivedHpLabel = isLives ?
+                'Lives' :
+                (!hpBase || hpBase === 'hp' || hpBase === 'health' ? 'Health' : humanLabel(hpBase, 'Health'));
+            const isShield = shieldBase === 'shield';
+            const derivedShieldLabel = isShield ? 'Shield' : humanLabel(shieldBase || 'armor', 'Armor');
+            const derivedAmmoLabel = humanLabel(ammoBase || 'ammo', 'Ammo');
             vitals = {
                 hp,
                 maxHp,
-                hpLabel: hpKey === 'lives' || hpKey === 'hearts' ? 'Lives' : 'HP',
-                hpKind: hpKey === 'lives' || hpKey === 'hearts' ? 'lives' : 'health',
+                hpLabel: pickHudLabel([hpKey, hpBase, 'health', 'hp'], derivedHpLabel),
+                hpKind: isLives ? 'lives' : 'health',
                 shield: shieldHit ? Math.max(0, shieldHit.value) : null,
                 maxShield: shieldHit ? Math.max(maxShieldDefault, shieldHit.value) : 100,
-                shieldKind: shieldKey === 'shield' || shieldKey === 'p1 shield' || shieldKey === 'p1_shield' ?
-                    'shield' :
-                    'armor',
+                shieldKind: isShield ? 'shield' : 'armor',
+                shieldLabel: pickHudLabel([shieldKey, shieldBase, 'shield', 'armor'], derivedShieldLabel),
                 ammo: ammoHit ? Math.max(0, ammoHit.value) : null,
+                ammoLabel: pickHudLabel([ammoKey, ammoBase, 'ammo'], derivedAmmoLabel),
                 ammoKinds,
                 weapon: weaponSlot !== null && weaponSlot >= 1 ? {slot: weaponSlot, slots: slotCount} : null,
+                weaponLabel: pickHudLabel([weaponHit && weaponHit.key, 'weapon', 'weapons'], 'Weapon'),
                 items,
+                itemsLabel: pickHudLabel(['items', 'keys'], 'Keys'),
                 mood: moodFor(hp, maxHp)
             };
         }
@@ -441,8 +471,12 @@ export const extractHudState = (vm, netOverride) => {
                     tone: tName ? teamTone(tName) : ''
                 };
             });
+            const rawBoardName = first.n || first.name || 'Score';
             leaderboard = {
-                boardName: humanLabel(first.n || first.name || 'Score', 'Score'),
+                boardName: pickHudLabel(
+                    [rawBoardName, boardKey, 'frags', 'scores', 'score', 'board'],
+                    humanLabel(rawBoardName, 'Score')
+                ),
                 rows
             };
         } else {
@@ -481,7 +515,10 @@ export const extractHudState = (vm, netOverride) => {
                     });
                 }
                 leaderboard = {
-                    boardName: humanLabel(label, 'Score'),
+                    boardName: pickHudLabel(
+                        [label, boardKey, 'frags', 'scores', 'score', 'board'],
+                        humanLabel(label, 'Score')
+                    ),
                     rows: rows.slice(0, 6)
                 };
             }

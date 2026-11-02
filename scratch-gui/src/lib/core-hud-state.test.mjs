@@ -298,5 +298,45 @@ ok('no snake_case or camelCase identifier leaks into teams, boards, items, frags
     cleaned.statusPill === 'Red flag carrier',
     cleaned);
 
+const keyDerived = (playerVars, hudLabels) => extractHudState({
+    runtime: {
+        _squiggleSettings: hudLabels ? {hud: {labels: hudLabels}} : null,
+        targets: [{isStage: true, isOriginal: true, comments: {}, variables: vars(playerVars)}]
+    }
+}, null);
+
+ok('matched AMMO_KEYS and HEALTH_KEYS derive Charges, Bolts, Shells, Shards, Energy and Hull labels',
+    keyDerived({charges: 3, energy: 80}).vitals.ammoLabel === 'Charges' &&
+    keyDerived({charges: 3, energy: 80}).vitals.hpLabel === 'Energy' &&
+    keyDerived({bolts: 12, hull: 90}).vitals.ammoLabel === 'Bolts' &&
+    keyDerived({bolts: 12, hull: 90}).vitals.hpLabel === 'Hull' &&
+    keyDerived({shells: 8, hp: 100}).vitals.ammoLabel === 'Shells' &&
+    keyDerived({shells: 8, hp: 100}).vitals.hpLabel === 'Health' &&
+    keyDerived({shards: 5, shield: 50}).vitals.ammoLabel === 'Shards' &&
+    keyDerived({shards: 5, shield: 50}).vitals.shieldLabel === 'Shield');
+
+const overridden = keyDerived(
+    {charges: 3, hp: 100, shield: 50, weapon: 1, gold_key: 1, score: 10, timer: 45},
+    {
+        ammo: 'Surge',
+        health: 'Core',
+        shield: 'Buffer',
+        weapon: 'Gadget',
+        items: 'Relics',
+        scores: 'Points',
+        timer: 'Phase'
+    }
+);
+ok('squiggle.hud.labels overrides derived slot, board and timer labels',
+    overridden.vitals.ammoLabel === 'Surge' &&
+    overridden.vitals.hpLabel === 'Core' &&
+    overridden.vitals.shieldLabel === 'Buffer' &&
+    overridden.vitals.weaponLabel === 'Gadget' &&
+    overridden.vitals.itemsLabel === 'Relics' &&
+    overridden.leaderboard.boardName === 'Points' &&
+    overridden.bar.frags.label === 'Points' &&
+    overridden.timer.label === 'Phase',
+    overridden);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

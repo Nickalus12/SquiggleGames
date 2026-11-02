@@ -299,6 +299,10 @@ Slot.propTypes = {
 const HealthSlot = ({vitals, flash}) => {
     const ratio = clampRatio(vitals.hp, vitals.maxHp);
     const lives = vitals.hpKind === 'lives';
+    const defaultLabel = lives ? 'Lives' : 'Health';
+    const customLabel = vitals.hpLabel && vitals.hpLabel !== 'HP' && vitals.hpLabel !== defaultLabel ?
+        vitals.hpLabel :
+        null;
     return (
         <Slot
             kind={lives ? 'lives' : 'health'}
@@ -307,7 +311,7 @@ const HealthSlot = ({vitals, flash}) => {
                 healthTone(lives ? 1 : ratio),
                 {[styles.slotFlash]: flash, [styles.slotHealthFlash]: flash}
             )}
-            label={<FormattedMessage {...(lives ? messages.lives : messages.health)} />}
+            label={customLabel || <FormattedMessage {...(lives ? messages.lives : messages.health)} />}
         >
             <span className={styles.bigNumber}>{Math.round(vitals.hp)}</span>
             {lives ? null : (
@@ -327,11 +331,15 @@ HealthSlot.propTypes = {
 const ArmorSlot = ({vitals}) => {
     const ratio = clampRatio(vitals.shield, vitals.maxShield);
     const shield = vitals.shieldKind === 'shield';
+    const defaultLabel = shield ? 'Shield' : 'Armor';
+    const customLabel = vitals.shieldLabel && vitals.shieldLabel !== defaultLabel ?
+        vitals.shieldLabel :
+        null;
     return (
         <Slot
             kind={shield ? 'shield' : 'armor'}
             className={styles.slotArmor}
-            label={<FormattedMessage {...(shield ? messages.shield : messages.armor)} />}
+            label={customLabel || <FormattedMessage {...(shield ? messages.shield : messages.armor)} />}
         >
             <span className={styles.bigNumber}>{Math.round(vitals.shield)}</span>
             <Meter
@@ -343,41 +351,45 @@ const ArmorSlot = ({vitals}) => {
 };
 ArmorSlot.propTypes = {vitals: PropTypes.object};
 
-const AmmoSlot = ({vitals, flash}) => (
-    <Slot
-        kind="ammo"
-        className={classNames(
-            styles.slotAmmo,
-            vitals.ammo <= 0 ? styles.toneDanger : null,
-            {[styles.slotFlash]: flash, [styles.slotAmmoFlash]: flash}
-        )}
-        label={<FormattedMessage {...messages.ammo} />}
-    >
-        <span className={styles.bigNumber}>{Math.round(vitals.ammo)}</span>
-        {vitals.ammoKinds && vitals.ammoKinds.length > 0 ? (
-            <span className={styles.ammoKinds}>
-                {vitals.ammoKinds.slice(0, 3).map(kind => (
-                    <span
-                        key={kind.id}
-                        className={styles.ammoKind}
-                    >
-                        <span>{kind.label}</span>
-                        <span className={styles.ammoKindValue}>{kind.value}</span>
-                    </span>
-                ))}
-            </span>
-        ) : null}
-    </Slot>
-);
+const AmmoSlot = ({vitals, flash}) => {
+    const customLabel = vitals.ammoLabel && vitals.ammoLabel !== 'Ammo' ? vitals.ammoLabel : null;
+    return (
+        <Slot
+            kind="ammo"
+            className={classNames(
+                styles.slotAmmo,
+                vitals.ammo <= 0 ? styles.toneDanger : null,
+                {[styles.slotFlash]: flash, [styles.slotAmmoFlash]: flash}
+            )}
+            label={customLabel || <FormattedMessage {...messages.ammo} />}
+        >
+            <span className={styles.bigNumber}>{Math.round(vitals.ammo)}</span>
+            {vitals.ammoKinds && vitals.ammoKinds.length > 0 ? (
+                <span className={styles.ammoKinds}>
+                    {vitals.ammoKinds.slice(0, 3).map(kind => (
+                        <span
+                            key={kind.id}
+                            className={styles.ammoKind}
+                        >
+                            <span>{kind.label}</span>
+                            <span className={styles.ammoKindValue}>{kind.value}</span>
+                        </span>
+                    ))}
+                </span>
+            ) : null}
+        </Slot>
+    );
+};
 AmmoSlot.propTypes = {
     flash: PropTypes.bool,
     vitals: PropTypes.object
 };
 
-const WeaponSlot = ({weapon, intl}) => {
+const WeaponSlot = ({weapon, label, intl}) => {
     const caps = [];
     for (let n = 1; n <= weapon.slots; n++) caps.push(n);
     const columns = weapon.slots <= 4 ? weapon.slots : Math.ceil(weapon.slots / 2);
+    const customLabel = label && label !== 'Weapon' ? label : null;
     return (
         <div
             className={classNames(styles.slot, styles.slotWeapon)}
@@ -400,7 +412,7 @@ const WeaponSlot = ({weapon, intl}) => {
             </div>
             <div className={styles.slotLabel}>
                 <span className={styles.slotLabelText}>
-                    <FormattedMessage {...messages.weapon} />
+                    {customLabel || <FormattedMessage {...messages.weapon} />}
                 </span>
             </div>
         </div>
@@ -408,36 +420,41 @@ const WeaponSlot = ({weapon, intl}) => {
 };
 WeaponSlot.propTypes = {
     intl: intlShape,
+    label: PropTypes.string,
     weapon: PropTypes.shape({slot: PropTypes.number, slots: PropTypes.number})
 };
 
-const ItemsSlot = ({items, intl}) => (
-    <div
-        className={classNames(styles.slot, styles.slotItems)}
-        data-slot="items"
-    >
-        <ul className={styles.itemList}>
-            {items.map(item => (
-                <li
-                    key={item.id}
-                    className={classNames(styles.item, TONE_CLASS[item.tone], {[styles.itemOwned]: item.owned})}
-                    aria-label={intl.formatMessage(item.owned ? messages.itemOwned : messages.itemMissing,
-                        {item: item.label})}
-                >
-                    <KeyGlyph />
-                </li>
-            ))}
-        </ul>
-        <div className={styles.slotLabel}>
-            <span className={styles.slotLabelText}>
-                <FormattedMessage {...messages.keys} />
-            </span>
+const ItemsSlot = ({items, label, intl}) => {
+    const customLabel = label && label !== 'Keys' ? label : null;
+    return (
+        <div
+            className={classNames(styles.slot, styles.slotItems)}
+            data-slot="items"
+        >
+            <ul className={styles.itemList}>
+                {items.map(item => (
+                    <li
+                        key={item.id}
+                        className={classNames(styles.item, TONE_CLASS[item.tone], {[styles.itemOwned]: item.owned})}
+                        aria-label={intl.formatMessage(item.owned ? messages.itemOwned : messages.itemMissing,
+                            {item: item.label})}
+                    >
+                        <KeyGlyph />
+                    </li>
+                ))}
+            </ul>
+            <div className={styles.slotLabel}>
+                <span className={styles.slotLabelText}>
+                    {customLabel || <FormattedMessage {...messages.keys} />}
+                </span>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 ItemsSlot.propTypes = {
     intl: intlShape,
-    items: PropTypes.arrayOf(PropTypes.object)
+    items: PropTypes.arrayOf(PropTypes.object),
+    label: PropTypes.string
 };
 
 const FragsSlot = ({frags, flash}) => (
@@ -536,6 +553,7 @@ const StatusBandComponent = ({vitals, bar, hurt, ammoFlash, fragsFlash, intl}) =
                     {vitals.weapon ? (
                         <WeaponSlot
                             intl={intl}
+                            label={vitals.weaponLabel}
                             weapon={vitals.weapon}
                         />
                     ) : null}
@@ -550,6 +568,7 @@ const StatusBandComponent = ({vitals, bar, hurt, ammoFlash, fragsFlash, intl}) =
                         <ItemsSlot
                             intl={intl}
                             items={items}
+                            label={vitals.itemsLabel}
                         />
                     ) : null}
                     {bar.frags ? (

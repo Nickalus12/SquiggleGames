@@ -298,5 +298,21 @@ const soundSource = readFileSync(
 ok('sound editor toolbar uses sentence case and no Scratch branding',
     /defaultMessage:\s*'Copy to new'/.test(soundSource) && !/upload to Scratch/.test(soundSource));
 
+const customBand = band(vitals({
+    ammoLabel: 'Charges',
+    hpLabel: 'Energy',
+    shieldKind: 'shield',
+    shieldLabel: 'Coolant',
+    weaponLabel: 'Gadget',
+    itemsLabel: 'Relics'
+}));
+ok('StatusBand renders derived and overridden slot labels for ammo, health, shield, weapon and items',
+    customBand.includes('>Charges<') &&
+    customBand.includes('>Energy<') &&
+    customBand.includes('>Coolant<') &&
+    customBand.includes('>Gadget<') &&
+    customBand.includes('>Relics<'),
+    customBand);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
