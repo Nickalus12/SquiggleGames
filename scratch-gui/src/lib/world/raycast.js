@@ -1,5 +1,5 @@
 import {defaultSkyTexture} from './textures.js';
-import {FLAGS, clampHeight, decodeHeight, renderedHeightAt} from './tilemap.js';
+import {FLAGS, clampHeight, decodeFloorHeight, decodeHeight, floorHeightAt, renderedHeightAt} from './tilemap.js';
 import {doorOpenAt} from './doors.js';
 
 const WIDTH = 240;
@@ -189,6 +189,66 @@ const layerHasNonZero = bytes => {
     bytes._cachedNzVer = ver;
     bytes._cachedNz = nz;
     return nz;
+};
+
+const NO_FLOOR_HEIGHT_INFO = Object.freeze({
+    hasFloorHeights: false,
+    maxFloorHeight: 0,
+    minFloorHeight: 0,
+    minCol: 0,
+    maxCol: -1,
+    minRow: 0,
+    maxRow: -1,
+    hash: 0
+});
+
+const floorHeightsInfo = (bytes, cols, rows) => {
+    if (!bytes) return NO_FLOOR_HEIGHT_INFO;
+    const ver = bytes._version | 0;
+    const c = (cols | 0) || 0;
+    if (bytes._cachedFhVer === ver && bytes._cachedFhInfo && bytes._cachedFhCols === c) {
+        return bytes._cachedFhInfo;
+    }
+    let hasFloorHeights = false;
+    let maxFloorHeight = 0;
+    let minFloorHeight = 0;
+    let minCol = c;
+    let maxCol = -1;
+    let minRow = (rows | 0) || 0;
+    let maxRow = -1;
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < bytes.length; i++) {
+        const raw = bytes[i];
+        if (raw !== 0 && raw !== 120) {
+            hasFloorHeights = true;
+            const fh = decodeFloorHeight(raw);
+            if (fh > maxFloorHeight) maxFloorHeight = fh;
+            if (fh < minFloorHeight) minFloorHeight = fh;
+            if (c > 0) {
+                const col = i % c;
+                const row = (i / c) | 0;
+                if (col < minCol) minCol = col;
+                if (col > maxCol) maxCol = col;
+                if (row < minRow) minRow = row;
+                if (row > maxRow) maxRow = row;
+            }
+        }
+        h = Math.imul(h ^ raw, 16777619) >>> 0;
+    }
+    const info = {
+        hasFloorHeights,
+        maxFloorHeight,
+        minFloorHeight,
+        minCol,
+        maxCol,
+        minRow,
+        maxRow,
+        hash: hasFloorHeights ? (h >>> 0) : 0
+    };
+    bytes._cachedFhVer = ver;
+    bytes._cachedFhCols = c;
+    bytes._cachedFhInfo = info;
+    return info;
 };
 
 const updateLightBuffer = (buf, map, lights) => {
@@ -407,6 +467,11 @@ const castRay = (map, u, v, rx, ry, out, maxSteps) => {
                     continue;
                 }
                 solid = (cellFlags & (bit | FLAGS.seethrough)) !== 0;
+                if (solid && map._floorHeights && map._floorHeights[idx] !== 0 &&
+                    (!map._heights || map._heights[idx] === 0) &&
+                    (flags[idx] & (bit | FLAGS.seethrough | FLAGS.door)) === 0) {
+                    solid = false;
+                }
             }
             if (solid) {
                 const hit = out || {};
@@ -719,7 +784,10 @@ const createFrame = (width, height) => {
         _bgFloorVer: -1,
         _bgCeilVer: -1,
         _bgBilinear: false,
-        _bgLightVersion: -1
+        _bgLightVersion: -1,
+        _bgFloorHeightsHash: 0,
+        _rayFloorHeightsHash: 0,
+        _floorRowInv: null
     };
 };
 
@@ -858,7 +926,8 @@ const sampleBilinearSurfaceTexel = (texData, texW, texH, tex64, fu, fv) => {
     return (OPAQUE | rb | g) >>> 0;
 };
 
-const eyeOf = scene => clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100;
+const eyeOf = scene => (clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100) +
+    (scene && scene.player && typeof scene.player.z === 'number' ? scene.player.z : 0);
 
 const isTexOpaque = tex => {
     if (!tex || !tex.data) return true;
@@ -1804,6 +1873,263 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
 
 const drawWalls = sampleWalls;
 
+const drawFloorElevations = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
+    const map = scene.map || null;
+    if (!map) return;
+    const cols = map.cols ? (map.cols | 0) : 0;
+    const rows = map.rows ? (map.rows | 0) : 0;
+    if (cols <= 0 || rows <= 0) return;
+    const floorHeights = map._floorHeights || null;
+    const fhInfo = floorHeights ? floorHeightsInfo(floorHeights, cols, rows) : null;
+    if ((!fhInfo || !fhInfo.hasFloorHeights) && !map._hasFloorHeights) return;
+    const {pixels, rowColors, colOk, colDist, colRx, colRy} = frame;
+    const w = frame.width || WIDTH;
+    const h = frame.height || HEIGHT;
+    const half = horizonOf(frame, scene);
+    const focal = view.focal;
+    const allowTex = scene.floorTextures !== false;
+    const main = map._riserMain || map._main || null;
+    const floorGrid = map._floor || null;
+    const getTex = scene.texture || null;
+    const getWallColor = scene.wallColor || null;
+    const floorMode = scene.floorMode || 'color';
+    const globalFloorTex = allowTex && floorMode !== 'color' ? (scene.floorTex || null) : null;
+    const falloff = clampFalloff(scene.lightFalloff);
+    const shadeTable = falloff > 0 ? shadeTableFor(falloff) : null;
+    const hasLightBuf = Boolean(lightBuf && lightBuf.active);
+    const hasGlow = Boolean(hasLightBuf && lightBuf.hasGlow);
+    const lightLevel = hasLightBuf ? lightBuf.level : null;
+    const glowR = hasGlow ? lightBuf.glowR : null;
+    const glowG = hasGlow ? lightBuf.glowG : null;
+    const glowB = hasGlow ? lightBuf.glowB : null;
+    const pu = scene.player ? scene.player.u : 0;
+    const pv = scene.player ? scene.player.v : 0;
+    const baseColor = scene.floor;
+    const baseR = baseColor & 255;
+    const baseG = (baseColor >>> 8) & 255;
+    const baseB = (baseColor >>> 16) & 255;
+    const fogColorR = fogColor & 255;
+    const fogColorG = (fogColor >>> 8) & 255;
+    const fogColorB = (fogColor >>> 16) & 255;
+    let rowInv = frame._floorRowInv;
+    if (!rowInv || rowInv.length < h) {
+        rowInv = new Float32Array(h);
+        frame._floorRowInv = rowInv;
+    }
+    const minFloorY = Math.max(0, Math.ceil(half));
+    for (let y = minFloorY; y < h; y++) {
+        const denom = (y + 0.5) - half;
+        rowInv[y] = denom > 0.25 ? focal / denom : 0;
+    }
+
+    const startCol = Math.floor(pu) | 0;
+    const startRow = Math.floor(pv) | 0;
+    const startIn = startCol >= 0 && startRow >= 0 && startCol < cols && startRow < rows;
+    const startIdx = startIn ? ((startRow * cols) + startCol) : -1;
+    const startRaw = startIdx >= 0 && floorHeights ? floorHeights[startIdx] : 0;
+    const startZ = startRaw > 0 ? decodeFloorHeight(startRaw) :
+        (startIn && map.floorHeight ? map.floorHeight(startCol, startRow) : 0);
+    const hasBounds = Boolean(fhInfo && fhInfo.hasFloorHeights && fhInfo.maxCol >= fhInfo.minCol);
+    const boxU0 = hasBounds ? Math.max(0, fhInfo.minCol - 1) : 0;
+    const boxU1 = hasBounds ? Math.min(cols, fhInfo.maxCol + 2) : cols;
+    const boxV0 = hasBounds ? Math.max(0, fhInfo.minRow - 1) : 0;
+    const boxV1 = hasBounds ? Math.min(rows, fhInfo.maxRow + 2) : rows;
+
+    for (let x = 0; x < w; x++) {
+        const rx = colRx[x];
+        const ry = colRy[x];
+        const maxDist = colOk[x] ? colDist[x] : 64;
+        let tMin = 0;
+        let tMax = maxDist;
+        if (hasBounds && startZ === 0) {
+            if (rx !== 0) {
+                const invRx = 1 / rx;
+                const t1 = (boxU0 - pu) * invRx;
+                const t2 = (boxU1 - pu) * invRx;
+                const tNear = t1 < t2 ? t1 : t2;
+                const tFar = t1 > t2 ? t1 : t2;
+                if (tNear > tMin) tMin = tNear;
+                if (tFar < tMax) tMax = tFar;
+            } else if (pu < boxU0 || pu > boxU1) {
+                continue;
+            }
+            if (ry !== 0) {
+                const invRy = 1 / ry;
+                const t1 = (boxV0 - pv) * invRy;
+                const t2 = (boxV1 - pv) * invRy;
+                const tNear = t1 < t2 ? t1 : t2;
+                const tFar = t1 > t2 ? t1 : t2;
+                if (tNear > tMin) tMin = tNear;
+                if (tFar < tMax) tMax = tFar;
+            } else if (pv < boxV0 || pv > boxV1) {
+                continue;
+            }
+            if (tMin >= tMax || tMax <= 0) continue;
+        }
+        const dx = rx === 0 ? Infinity : Math.abs(1 / rx);
+        const dy = ry === 0 ? Infinity : Math.abs(1 / ry);
+        const stepX = rx < 0 ? -1 : 1;
+        const stepY = ry < 0 ? -1 : 1;
+        let col = startCol;
+        let row = startRow;
+        let cellIdx = startIdx;
+        let curZ = startZ;
+        let dIn = 0;
+        let sideX;
+        let sideY;
+        if (tMin > 0.02 && startZ === 0) {
+            dIn = tMin - 0.01;
+            const u0 = pu + (dIn * rx);
+            const v0 = pv + (dIn * ry);
+            col = Math.floor(u0) | 0;
+            row = Math.floor(v0) | 0;
+            const in0 = col >= 0 && row >= 0 && col < cols && row < rows;
+            cellIdx = in0 ? ((row * cols) + col) : -1;
+            const r0 = cellIdx >= 0 && floorHeights ? floorHeights[cellIdx] : 0;
+            curZ = r0 > 0 ? decodeFloorHeight(r0) : 0;
+            sideX = dIn + (rx < 0 ? (u0 - col) * dx : (col + 1 - u0) * dx);
+            sideY = dIn + (ry < 0 ? (v0 - row) * dy : (row + 1 - v0) * dy);
+        } else {
+            sideX = rx < 0 ? (pu - col) * dx : (col + 1 - pu) * dx;
+            sideY = ry < 0 ? (pv - row) * dy : (row + 1 - pv) * dy;
+        }
+        let runningTop = h;
+        let seenNonZero = curZ !== 0;
+
+        for (let step = 0; step < MAX_STEPS; step++) {
+            let nextSide = 0;
+            let dOut;
+            if (sideX < sideY) {
+                dOut = sideX;
+                sideX += dx;
+                nextSide = 0;
+            } else {
+                dOut = sideY;
+                sideY += dy;
+                nextSide = 1;
+            }
+            const clampedOut = dOut > maxDist ? maxDist : dOut;
+            const dz = eye - curZ;
+            if (seenNonZero && clampedOut > dIn && dz > 1e-4) {
+                const yFar = half + ((dz * focal) / Math.max(1e-4, clampedOut));
+                const yNear = dIn > 1e-4 ? half + ((dz * focal) / dIn) : h;
+                const y0 = Math.max(minFloorY, Math.min(runningTop, Math.floor(yFar)));
+                const y1 = Math.max(minFloorY, Math.min(runningTop, Math.ceil(yNear)));
+                if (y0 < y1) {
+                    let tex = globalFloorTex;
+                    if (allowTex && cellIdx >= 0 && getTex) {
+                        const fVal = (floorGrid && floorGrid[cellIdx]) ||
+                            (curZ !== 0 && main ? main[cellIdx] : 0);
+                        if (fVal > 0) tex = getTex(fVal) || globalFloorTex;
+                    }
+                    const texData = tex ? tex.data : null;
+                    if (!texData && !hasLightBuf) {
+                        for (let y = y0, pixIdx = (y0 * w) + x; y < y1; y++, pixIdx += w) {
+                            pixels[pixIdx] = rowColors[y];
+                        }
+                    } else {
+                        const texW = tex ? (tex.width | 0) : 0;
+                        const texH = tex ? (tex.height | 0) : 0;
+                        const tex64 = texW === 64 && texH === 64;
+                        const lMul = hasLightBuf && cellIdx >= 0 ? lightLevel[cellIdx] : 256;
+                        const cGlowR = hasGlow && cellIdx >= 0 ? glowR[cellIdx] : 0;
+                        const cGlowG = hasGlow && cellIdx >= 0 ? glowG[cellIdx] : 0;
+                        const cGlowB = hasGlow && cellIdx >= 0 ? glowB[cellIdx] : 0;
+                        let pixIdx = (y0 * w) + x;
+                        for (let y = y0; y < y1; y++, pixIdx += w) {
+                            const dist = dz * rowInv[y];
+                            const f = fogFactor(fog, dist);
+                            const kFall = shadeTable ?
+                                shadeTable[dist >= 64 ? SHADE_MAX_BUCKET : ((dist * SHADE_BUCKET_SCALE) | 0)] :
+                                1;
+                            const oneMinusF = 1 - f;
+                            const keep = (((kFall * oneMinusF * lMul) + 0.5) | 0);
+                            const addR = ((fogColorR * f) + (cGlowR * oneMinusF)) | 0;
+                            const addG = ((fogColorG * f) + (cGlowG * oneMinusF)) | 0;
+                            const addB = ((fogColorB * f) + (cGlowB * oneMinusF)) | 0;
+                            let sr = baseR;
+                            let sg = baseG;
+                            let sb = baseB;
+                            if (texData) {
+                                const wu = pu + (dist * rx);
+                                const wv = pv + (dist * ry);
+                                const fu = wu - Math.floor(wu);
+                                const fv = wv - Math.floor(wv);
+                                const tIdx = tex64 ?
+                                    ((((fv * 64) | 0) << 6) | ((fu * 64) | 0)) :
+                                    ((((fv * texH) | 0) * texW) + ((fu * texW) | 0));
+                                const c = texData[tIdx];
+                                sr = c & 255;
+                                sg = (c >>> 8) & 255;
+                                sb = (c >>> 16) & 255;
+                            }
+                            let r = ((sr * keep) >> 8) + addR;
+                            let g = ((sg * keep) >> 8) + addG;
+                            let b = ((sb * keep) >> 8) + addB;
+                            if (r > 255) r = 255;
+                            if (g > 255) g = 255;
+                            if (b > 255) b = 255;
+                            pixels[pixIdx] = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                        }
+                    }
+                }
+                if (y0 < runningTop) runningTop = y0;
+            }
+            if (dOut >= maxDist) break;
+
+            const prevIdx = cellIdx;
+            if (nextSide === 0) col += stepX;
+            else row += stepY;
+            dIn = dOut;
+            const inBounds = col >= 0 && row >= 0 && col < cols && row < rows;
+            cellIdx = inBounds ? ((row * cols) + col) : -1;
+            let nextZ = 0;
+            if (inBounds) {
+                const raw = floorHeights ? floorHeights[cellIdx] : 0;
+                nextZ = raw > 0 ? decodeFloorHeight(raw) :
+                    (map.floorHeight ? map.floorHeight(col, row) : 0);
+            }
+            if (nextZ < curZ) {
+                seenNonZero = true;
+                if (dz > 1e-4) {
+                    const lipY = Math.max(minFloorY, Math.floor(half + ((dz * focal) / Math.max(1e-4, dIn))));
+                    if (lipY < runningTop) runningTop = lipY;
+                }
+            } else if (nextZ > curZ) {
+                seenNonZero = true;
+                const lineH = focal / Math.max(1e-4, dIn);
+                const rTop = half + ((eye - nextZ) * lineH);
+                const rBot = half + ((eye - curZ) * lineH);
+                const visY0 = clamp(Math.floor(rTop), 0, runningTop);
+                const visY1 = clamp(Math.ceil(rBot), 0, runningTop);
+                if (visY0 < visY1) {
+                    let val = 0;
+                    if (nextZ > 0 && cellIdx >= 0) {
+                        val = (main && main[cellIdx]) || (floorGrid && floorGrid[cellIdx]) || 0;
+                    }
+                    if (!val && prevIdx >= 0) {
+                        val = (main && main[prevIdx]) || (floorGrid && floorGrid[prevIdx]) || 0;
+                    }
+                    if (!val && cellIdx >= 0) {
+                        val = (main && main[cellIdx]) || (floorGrid && floorGrid[cellIdx]) || 0;
+                    }
+                    const along = nextSide === 0 ? pv + (dIn * ry) : pu + (dIn * rx);
+                    const wallX = along - Math.floor(along);
+                    sampleColumnSlice(
+                        pixels, w, x, visY0, visY1, rTop, lineH, dIn,
+                        val, col, row, nextSide, wallX, rx, ry,
+                        false, false,
+                        scene, map, getTex, getWallColor, fog, fogColor, falloff, lightBuf
+                    );
+                }
+                if (visY0 < runningTop) runningTop = visY0;
+            }
+            curZ = nextZ;
+            if (runningTop <= 0 || (hasBounds && dIn > tMax && curZ === 0)) break;
+        }
+    }
+};
+
 const place = (frame, count, sprite, tx, depth, left, top, w, h, x0, x1, y0, y1) => {
     let item = frame.placed[count];
     if (!item) {
@@ -2123,6 +2449,13 @@ const render = (frame, scene) => {
     const lightVersion = lightBuf ? lightBuf.version : -1;
     const floorVer = map && map._floor ? (map._floor._version | 0) : 0;
     const ceilVer = map && map._ceiling ? (map._ceiling._version | 0) : 0;
+    const fhInfo = map && map._floorHeights ? floorHeightsInfo(map._floorHeights, cols, rows) : null;
+    const hasFloorHeights = Boolean((fhInfo && fhInfo.hasFloorHeights) || (map && map._hasFloorHeights));
+    const fhHash = fhInfo ? fhInfo.hash : 0;
+    if (frame._rayFloorHeightsHash !== fhHash) {
+        frame._rayFloorHeightsHash = fhHash;
+        frame._rayMap = null;
+    }
     const result = frame.result;
     const timings = frame.timings;
     result.crosshair = '';
@@ -2139,7 +2472,8 @@ const render = (frame, scene) => {
         frame._bgFloorTex === floorTex && frame._bgCeilTex === ceilTex &&
         frame._bgFloorTextures === floorTextures && frame._bgFloorVer === floorVer &&
         frame._bgCeilVer === ceilVer && frame._bgBilinear === bilinear &&
-        frame._bgLightVersion === lightVersion) {
+        frame._bgLightVersion === lightVersion &&
+        frame._bgFloorHeightsHash === fhHash) {
         const t0 = timings ? now() : 0;
         frame.pixels.set(frame.bgPixels);
         frame.zbuffer.set(frame.bgZbuffer);
@@ -2154,6 +2488,9 @@ const render = (frame, scene) => {
         drawSurfaces(frame, scene, view, eye, fog, fogColor, lightBuf);
         const t1 = timings ? now() : 0;
         sampleWalls(frame, scene, view, eye, fog, fogColor, lightBuf);
+        if (hasFloorHeights) {
+            drawFloorElevations(frame, scene, view, eye, fog, fogColor, lightBuf);
+        }
         const t2 = timings ? now() : 0;
         if (timings) {
             timings.surfacesMs = t1 - t0;
@@ -2182,6 +2519,7 @@ const render = (frame, scene) => {
         frame._bgCeilVer = ceilVer;
         frame._bgBilinear = bilinear;
         frame._bgLightVersion = lightVersion;
+        frame._bgFloorHeightsHash = fhHash;
     }
     const tSpr0 = timings ? now() : 0;
     drawSprites(frame, scene, view, eye, fog, fogColor, lightBuf);
@@ -2195,21 +2533,41 @@ const gridMap = (grid, flagsAt, solidBit) => {
     const floor = hasDirect && grid.floor ? grid.floor : null;
     const ceiling = hasDirect && grid.ceiling ? grid.ceiling : null;
     const light = hasDirect && grid.light ? grid.light : null;
+    const floorHeights = hasDirect && grid.floorHeights ? grid.floorHeights : null;
     const hasFloor = layerHasNonZero(floor);
     const hasCeiling = layerHasNonZero(ceiling);
     const hasLight = lightLayerInfo(light).hasLight;
+    const fhInfo = floorHeightsInfo(floorHeights, grid.cols, grid.rows);
     const bit = solidBit | 0;
+    let wallMain = hasDirect ? grid.main : null;
+    if (hasDirect && fhInfo.hasFloorHeights) {
+        wallMain = new Uint8Array(grid.main.length);
+        for (let i = 0; i < grid.main.length; i++) {
+            const fh = floorHeights[i];
+            if (fh !== 0 && fh !== 120 &&
+                (!grid.heights || grid.heights[i] === 0) &&
+                (grid.flags[i] & (bit | FLAGS.seethrough | FLAGS.door)) === 0) {
+                wallMain[i] = 0;
+            } else {
+                wallMain[i] = grid.main[i];
+            }
+        }
+    }
     return {
         cols: grid.cols,
         rows: grid.rows,
         _grid: grid,
-        _main: hasDirect ? grid.main : null,
+        _main: wallMain,
+        _riserMain: hasDirect ? grid.main : null,
         _floor: floor,
         _ceiling: ceiling,
         _light: light,
+        _floorHeights: floorHeights,
         _hasFloor: hasFloor,
         _hasCeiling: hasCeiling,
         _hasLight: hasLight,
+        _hasFloorHeights: fhInfo.hasFloorHeights,
+        _maxFloorHeight: fhInfo.maxFloorHeight,
         _flags: hasDirect ? grid.flags : null,
         _heights: hasDirect && grid.heights ? grid.heights : null,
         _tiles: hasDirect ? grid.tiles : null,
@@ -2220,6 +2578,7 @@ const gridMap = (grid, flagsAt, solidBit) => {
         seethrough: (col, row) => col >= 0 && row >= 0 && col < grid.cols && row < grid.rows &&
             (flagsAt(grid, col, row) & FLAGS.seethrough) !== 0,
         height: (col, row) => renderedHeightAt(grid, col, row),
+        floorHeight: (col, row) => floorHeightAt(grid, col, row),
         solid: (col, row) => col < 0 || row < 0 || col >= grid.cols || row >= grid.rows ||
             (flagsAt(grid, col, row) & (bit | FLAGS.seethrough)) !== 0,
         wallValue: (col, row) => {
@@ -2291,6 +2650,7 @@ export {
     createFrame,
     markCellDirty,
     drawSurfaces,
+    drawFloorElevations,
     sampleWalls,
     drawWalls,
     pickCrosshair,

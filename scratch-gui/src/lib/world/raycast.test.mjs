@@ -1,14 +1,14 @@
 import {ok, near, section, done} from './harness.mjs';
 
-const {FLAGS, HEIGHT_ANIM_MS, addTexture, animateHeightAt, createGrid, flagsAt, heightAt, lightAt,
-    renderedHeightAt, setCell, setHeight} = await import('./tilemap.js');
+const {FLAGS, HEIGHT_ANIM_MS, addTexture, animateHeightAt, createGrid, flagsAt, floorHeightAt, heightAt, lightAt,
+    renderedHeightAt, setCell, setFloorHeight, setHeight} = await import('./tilemap.js');
 const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, setDoorProgress,
     isDoorOpenAt, encodeDoorValues, applyDoorValues} = await import('./doors.js');
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
 const {WIDTH, HEIGHT, MAX_LIGHTS, MAX_SEETHROUGH, DEFAULT_DOOR_TEXTURE, basis, castRay, castRayMulti,
-    createFrame, markCellDirty, createLightBuffer, updateLightBuffer, drawSurfaces, drawWalls,
+    createFrame, markCellDirty, createLightBuffer, updateLightBuffer, drawSurfaces, drawFloorElevations, drawWalls,
     facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
     fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, clampFalloff,
     lightFalloffFactor, horizonOf, wrapDegrees} = ray;
@@ -1229,6 +1229,146 @@ section('bilinear texture filter for walls and floors');
     render(frameBilinear, Object.assign({}, baseScene, {bilinear: false}));
     ok('disabling bilinear invalidates cached background and matches nearest-neighbour bit-for-bit',
         hashPixels(frameBilinear.pixels) === hashPixels(frameNearest.pixels));
+}
+
+section('floor elevation sectors, stairs, pits, and Fast rung cost');
+{
+    const grid = room(16, 16, {texture: true});
+    const cWall = pixel(140, 140, 150);
+    const cStep1 = pixel(220, 120, 40);
+    const cStep2 = pixel(40, 200, 120);
+    const cStep3 = pixel(60, 140, 240);
+    const cPit = pixel(200, 50, 180);
+    const tStep1 = addTexture(grid, 'step1', FLAGS.solid);
+    const tStep2 = addTexture(grid, 'step2', FLAGS.solid);
+    const tStep3 = addTexture(grid, 'step3', FLAGS.solid);
+    const tPit = addTexture(grid, 'pit', FLAGS.solid);
+
+    const frame = createFrame(120, 90);
+    const baseScene = {
+        map: mapOf(grid),
+        player: {u: 8.5, v: 10.5, direction: 0, z: 0},
+        fov: 66,
+        fog: 0,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: v => {
+            if (v === tStep1) return cStep1;
+            if (v === tStep2) return cStep2;
+            if (v === tStep3) return cStep3;
+            if (v === tPit) return cPit;
+            return cWall;
+        }
+    };
+    render(frame, baseScene);
+    const flatHash = hashPixels(frame.pixels);
+    setFloorHeight(grid, 8, 8, 0);
+    baseScene.map = mapOf(grid);
+    render(frame, baseScene);
+    ok('zero floor height keeps flat render bit-identical', hashPixels(frame.pixels) === flatHash);
+    ok('typeof drawFloorElevations is function', typeof drawFloorElevations === 'function');
+
+    setCell(grid, 'main', 8, 4, tStep1);
+    setFloorHeight(grid, 8, 4, 0.25);
+    setCell(grid, 'main', 8, 3, tStep2);
+    setFloorHeight(grid, 8, 3, 0.5);
+    setCell(grid, 'main', 8, 2, tStep3);
+    setFloorHeight(grid, 8, 2, 0.75);
+    baseScene.map = mapOf(grid);
+    baseScene.player = {u: 8.5, v: 6.5, direction: 0, z: 0};
+    ok('gridMap reports floorHeight values',
+        baseScene.map.floorHeight(8, 4) === 0.25 &&
+        baseScene.map.floorHeight(8, 3) === 0.5 &&
+        baseScene.map.floorHeight(8, 2) === 0.75 &&
+        floorHeightAt(grid, 8, 3) === 0.5);
+    render(frame, baseScene);
+    const sStep1 = ray.shade(cStep1, 0.72);
+    const sStep2 = ray.shade(cStep2, 0.72);
+    const sStep3 = ray.shade(cStep3, 0.72);
+    const sBackWall = ray.shade(cWall, 0.72);
+    const col = [];
+    for (let y = 0; y < 90; y++) col.push(frame.pixels[(y * 120) + 60]);
+    const idxBack = col.indexOf(sBackWall);
+    const idx3 = col.indexOf(sStep3);
+    const idx2 = col.indexOf(sStep2);
+    const idx1 = col.indexOf(sStep1);
+    ok('primary ray passes over raised floor stairs to hit back wall', idxBack >= 0 && idxBack < 45, idxBack);
+    ok('consecutive 0.25 stairs render visible riser faces stacked near-to-far',
+        idx3 > idxBack && idx2 > idx3 && idx1 > idx2, [idxBack, idx3, idx2, idx1]);
+
+    const pitGrid = room(16, 16, {texture: true});
+    const tPitWall = addTexture(pitGrid, 'pitwall', FLAGS.solid);
+    setCell(pitGrid, 'main', 8, 8, tPitWall);
+    setFloorHeight(pitGrid, 8, 8, -0.5);
+    const pitScene = Object.assign({}, baseScene, {
+        map: mapOf(pitGrid),
+        player: {u: 8.5, v: 10.5, direction: 0, z: 0},
+        wallColor: v => (v === tPitWall ? cPit : cWall)
+    });
+    render(frame, pitScene);
+    const pitCol = [];
+    for (let y = 0; y < 90; y++) pitCol.push(frame.pixels[(y * 120) + 60]);
+    const sPit = ray.shade(cPit, 0.72);
+    ok('pit cell (-0.5) renders visible back-edge riser face climbing back to 0',
+        pitCol.indexOf(sPit) > 45, pitCol.indexOf(sPit));
+
+    const elevFrame0 = createFrame(120, 90);
+    const elevFrameHigh = createFrame(120, 90);
+    render(elevFrame0, Object.assign({}, baseScene, {player: {u: 8.5, v: 10.5, direction: 0, z: 0}}));
+    render(elevFrameHigh, Object.assign({}, baseScene, {player: {u: 8.5, v: 10.5, direction: 0, z: 0.5}}));
+    const wallTopZ0 = Array.from({length: 90}, (_, y) => elevFrame0.pixels[(y * 120) + 60]).indexOf(sBackWall);
+    const wallTopZ05 = Array.from({length: 90}, (_, y) => elevFrameHigh.pixels[(y * 120) + 60]).indexOf(sBackWall);
+    ok('standing on elevated floor (player.z = 0.5) shifts wall projection down',
+        wallTopZ05 > wallTopZ0, [wallTopZ0, wallTopZ05]);
+
+    const perfFlatGrid = room(32, 32, {texture: true});
+    const perfElevGrid = room(32, 32, {texture: true});
+    for (let c = 4; c < 28; c += 3) {
+        setFloorHeight(perfElevGrid, c, 12, 0.25);
+        setFloorHeight(perfElevGrid, c, 11, 0.5);
+        setFloorHeight(perfElevGrid, c, 10, -0.5);
+    }
+    const wallTex = solidImage(64, 64, pixel(150, 90, 60));
+    const fastFrame = createFrame(320, 180);
+    const flatFastScene = {
+        map: mapOf(perfFlatGrid),
+        player: {u: 16.5, v: 20.5, direction: 0, z: 0},
+        fov: 66,
+        fog: 30,
+        floor: BLUE,
+        ceiling: RED,
+        floorTextures: false,
+        texture: () => wallTex
+    };
+    const elevFastScene = Object.assign({}, flatFastScene, {
+        map: mapOf(perfElevGrid)
+    });
+    for (let i = 0; i < 40; i++) {
+        flatFastScene.player.direction = (i * 7) % 360;
+        render(fastFrame, flatFastScene);
+        elevFastScene.player.direction = (i * 7) % 360;
+        render(fastFrame, elevFastScene);
+    }
+    const flatTimes = [];
+    const elevTimes = [];
+    for (let i = 0; i < 80; i++) {
+        const dir = (i * 5) % 360;
+        flatFastScene.player.direction = dir;
+        const t0 = performance.now();
+        render(fastFrame, flatFastScene);
+        flatTimes.push(performance.now() - t0);
+        elevFastScene.player.direction = dir;
+        const t1 = performance.now();
+        render(fastFrame, elevFastScene);
+        elevTimes.push(performance.now() - t1);
+    }
+    flatTimes.sort((a, b) => a - b);
+    elevTimes.sort((a, b) => a - b);
+    const flatMed = Math.max(0.02, flatTimes[40]);
+    const elevMed = elevTimes[40];
+    const ratio = elevMed / flatMed;
+    ok('Fast rung cost with floor elevations stays under 1.3x flat floor',
+        ratio < 1.3 || (elevMed - flatMed) < 0.05, {flatMed, elevMed, ratio});
 }
 
 done();
