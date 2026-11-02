@@ -1,11 +1,14 @@
 import {ok, near, section, done} from './harness.mjs';
 
-const {FLAGS, addTexture, createGrid, flagsAt, setCell} = await import('./tilemap.js');
+const {FLAGS, addTexture, createGrid, flagsAt, setCell, setHeight} = await import('./tilemap.js');
+const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, isDoorOpenAt,
+    encodeDoorValues, applyDoorValues} = await import('./doors.js');
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
-const {WIDTH, HEIGHT, MAX_LIGHTS, basis, castRay, createFrame, createLightBuffer, updateLightBuffer,
-    drawSurfaces, facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
+const {WIDTH, HEIGHT, MAX_LIGHTS, MAX_SEETHROUGH, DEFAULT_DOOR_TEXTURE, basis, castRay, castRayMulti,
+    createFrame, createLightBuffer, updateLightBuffer, drawSurfaces, drawWalls,
+    facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
     fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, clampFalloff,
     lightFalloffFactor, horizonOf, wrapDegrees} = ray;
 
@@ -472,6 +475,7 @@ section('golden frame hash and column caching');
     const picked = pickCrosshair(frame, aimed);
     ok('pickCrosshair matches full render crosshair at centre column',
         full.crosshair === 'Scout' && picked.crosshair === full.crosshair, [full.crosshair, picked.crosshair]);
+    ok('height-1 level stays on the single-hit fast path', frame._multiHit === false);
 
     const floorTex = {width: 64, height: 64, data: new Uint32Array(64 * 64)};
     for (let i = 0; i < floorTex.data.length; i++) {
@@ -631,6 +635,170 @@ section('floor caster, sky, lighting, and horizon pure functions');
     ok('lightFalloffFactor and clampFalloff behave monotonically',
         clampFalloff(-5) === 0 && clampFalloff(180) === 100 &&
         lightFalloffFactor(0, 10) === 1 && lightFalloffFactor(50, 4) < lightFalloffFactor(50, 2));
+}
+
+section('doors: recessed raycast and pure timing');
+{
+    const grid = room(12, 12);
+    setCell(grid, 'flags', 6, 5, FLAGS.door);
+    const map = mapOf(grid);
+    const closedHit = castRay(map, 6.5, 8.5, 0, -1);
+    ok('a closed door is hit recessed half a tile inside its cell',
+        closedHit && closedHit.door === true && near(closedHit.dist, 3, 1e-6), closedHit);
+    ok('openDoorAt opens over 400 ms and holds for holdMs', OPEN_MS === 400 && HOLD_MS === 3000);
+    openDoorAt(grid, 6, 5, {cell: true, holdMs: 1000});
+    stepDoors(grid, 200);
+    ok('at 200 ms door is 50% open', near(doorOpenAt(grid, 6, 5), 0.5, 1e-6) && !isDoorOpenAt(grid, 6, 5, {cell: true}));
+    const leftRay = castRay(map, 6.25, 8.5, 0, -1);
+    const rightRay = castRay(map, 6.75, 8.5, 0, -1);
+    ok('ray in the open half (u=6.25 < 6.5) passes through to the back wall',
+        leftRay && leftRay.door === false && leftRay.row === 0 && near(leftRay.dist, 7.5, 1e-6), leftRay);
+    ok('ray in the closed half (u=6.75 >= 6.5) hits the door with shifted wallX',
+        rightRay && rightRay.door === true && near(rightRay.dist, 3, 1e-6) && near(rightRay.wallX, 0.25, 1e-6), rightRay);
+    stepDoors(grid, 200);
+    ok('at 400 ms door is 100% open', near(doorOpenAt(grid, 6, 5), 1, 1e-6) && isDoorOpenAt(grid, 6, 5, {cell: true}));
+    const openRay = castRay(map, 6.75, 8.5, 0, -1);
+    ok('ray passes completely through a fully open door', openRay && openRay.door === false && openRay.row === 0);
+    const blocker = [{x: -240 + (6.5 * 32), y: 180 - (5.5 * 32), w: 20, h: 20}];
+    stepDoors(grid, 1500, blocker);
+    ok('door stays open past hold time while blocked by a sprite box', near(doorOpenAt(grid, 6, 5), 1, 1e-6));
+    stepDoors(grid, 1000, []);
+    stepDoors(grid, 200, []);
+    ok('once unblocked, door holds then slides closed over 400 ms', near(doorOpenAt(grid, 6, 5), 0.5, 1e-6));
+    stepDoors(grid, 100, blocker);
+    ok('a blocker entering a closing door reverses it back toward open', doorOpenAt(grid, 6, 5) > 0.5);
+    closeDoorAt(grid, 6, 5, {cell: true});
+    stepDoors(grid, 400, []);
+    ok('door finishes closing to 0 when unblocked', near(doorOpenAt(grid, 6, 5), 0, 1e-6));
+    const frame = createFrame(120, 90);
+    render(frame, {map, player: {u: 6.5, v: 7.5, direction: 0}, fov: 66, floor: BLUE, ceiling: RED});
+    const centerColor = frame.pixels[(45 * 120) + 60];
+    ok('closed door renders with DEFAULT_DOOR_TEXTURE',
+        DEFAULT_DOOR_TEXTURE.data.includes(centerColor) || centerColor !== BLUE);
+    const capGrid = room(24, 24);
+    for (let c = 1; c <= 20; c++) {
+        setCell(capGrid, 'flags', c, 5, FLAGS.door);
+        openDoorAt(capGrid, c, 5, {cell: true});
+    }
+    const encodedDoors = encodeDoorValues(capGrid);
+    ok('multiplayer door values cap at MAX_DOORS (16)', Object.keys(encodedDoors).length === MAX_DOORS);
+    const peerGrid = room(24, 24);
+    for (let c = 1; c <= 20; c++) setCell(peerGrid, 'flags', c, 5, FLAGS.door);
+    const appliedCount = applyDoorValues(peerGrid, encodedDoors);
+    ok('applyDoorValues syncs remote door open targets', appliedCount === MAX_DOORS);
+}
+
+section('see-through tiles and 4-hit cap');
+{
+    const grid = room(16, 16);
+    for (let r = 2; r <= 7; r++) setCell(grid, 'flags', 8, r, FLAGS.seethrough);
+    const map = mapOf(grid);
+    const hits = castRayMulti(map, 8.5, 10.5, 0, -1);
+    const seeHits = hits.filter(h => h.seethrough);
+    const lastHit = hits[hits.length - 1];
+    ok('castRayMulti caps see-through hits at 4 per column and still hits the solid wall behind',
+        MAX_SEETHROUGH === 4 && seeHits.length === 4 && !lastHit.seethrough && lastHit.row === 0, hits);
+    const g2 = room(12, 12, {texture: true});
+    const grateId = addTexture(g2, 'grate', FLAGS.seethrough);
+    setCell(g2, 'main', 6, 5, grateId);
+    const wallTex = solidImage(8, 8, pixel(40, 180, 60));
+    const grateTex = solidImage(8, 8, 0);
+    for (let y = 0; y < 8; y++) {
+        grateTex.data[(y * 8) + 0] = pixel(200, 200, 210);
+        grateTex.data[(y * 8) + 4] = pixel(200, 200, 210);
+    }
+    const frame = createFrame(120, 90);
+    const guard = {name: 'Guard', u: 6.5, v: 3.5, image: solidImage(8, 8, RED), height: 1};
+    render(frame, {
+        map: mapOf(g2),
+        player: {u: 6.5, v: 7.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        texture: v => (v === 1 ? wallTex : (v === grateId ? grateTex : null)),
+        sprites: [guard]
+    });
+    const midRow = 45 * 120;
+    let sawGrateBar = false;
+    let sawBehindWall = false;
+    let sawSpriteThroughGrate = false;
+    for (let x = 20; x < 100; x++) {
+        const c = frame.pixels[midRow + x];
+        if (c === ray.shade(pixel(200, 200, 210), 0.72)) sawGrateBar = true;
+        if (c === ray.shade(pixel(40, 180, 60), 0.72)) sawBehindWall = true;
+        if (c === RED) sawSpriteThroughGrate = true;
+    }
+    ok('see-through texture draws opaque bars and skips transparent texels to show wall and sprite behind',
+        sawGrateBar && sawBehindWall && sawSpriteThroughGrate,
+        [sawGrateBar, sawBehindWall, sawSpriteThroughGrate]);
+}
+
+section('per-tile wall heights (0.25 to 4) and running top edge');
+{
+    const grid = room(16, 16);
+    setCell(grid, 'flags', 8, 6, FLAGS.solid);
+    setHeight(grid, 8, 6, 0.25);
+    setCell(grid, 'flags', 8, 4, FLAGS.solid);
+    setHeight(grid, 8, 4, 0.5);
+    setCell(grid, 'flags', 8, 2, FLAGS.solid);
+    setHeight(grid, 8, 2, 4);
+    const map = mapOf(grid);
+    const hits = castRayMulti(map, 8.5, 8.5, 0, -1);
+    ok('multi-hit ray records 0.25 wall, 0.5 wall, and 4.0 tall wall in near-to-far order',
+        hits.length === 3 && near(hits[0].height, 0.25) && near(hits[1].height, 0.5) && near(hits[2].height, 4),
+        hits);
+    const cLow = pixel(220, 180, 40);
+    const cMid = pixel(40, 180, 220);
+    const cTall = pixel(180, 60, 220);
+    setCell(grid, 'main', 8, 6, addTexture(grid, 'low', FLAGS.solid, 0.25));
+    setCell(grid, 'main', 8, 4, addTexture(grid, 'mid', FLAGS.solid, 0.5));
+    setCell(grid, 'main', 8, 2, addTexture(grid, 'tall', FLAGS.solid, 4));
+    const frame = createFrame(120, 90);
+    render(frame, {
+        map: mapOf(grid),
+        player: {u: 8.5, v: 8.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: v => (v === 1 ? cLow : (v === 2 ? cMid : cTall))
+    });
+    const colPixels = [];
+    for (let y = 0; y < 90; y++) colPixels.push(frame.pixels[(y * 120) + 60]);
+    const sLow = ray.shade(cLow, 0.72);
+    const sMid = ray.shade(cMid, 0.72);
+    const sTall = ray.shade(cTall, 0.72);
+    const tallTop = colPixels.indexOf(sTall);
+    const midTop = colPixels.indexOf(sMid);
+    const lowTop = colPixels.indexOf(sLow);
+    const floorBetween = colPixels.slice(midTop, lowTop).includes(BLUE);
+    ok('taller wall (4.0) extends to the top of the view (y=0)', tallTop === 0, tallTop);
+    ok('running top edge stacks tall wall above mid wall above low wall',
+        tallTop < midTop && midTop < lowTop && lowTop > 45, [tallTop, midTop, lowTop]);
+    ok('floor shows behind the 0.25 low wall', floorBetween);
+}
+
+section('frame.horizon contract');
+{
+    const grid = room(16, 16);
+    const frame = createFrame(120, 90);
+    ok('createFrame defaults frame.horizon to height / 2', frame.horizon === 45 && typeof drawWalls === 'function');
+    const wallColor = pixel(100, 150, 200);
+    const shaded = ray.shade(wallColor, 0.72);
+    const scene = {
+        map: mapOf(grid),
+        player: {u: 8.5, v: 8.5, direction: 0},
+        fov: 66,
+        floor: BLUE,
+        ceiling: RED,
+        wallColor: () => wallColor
+    };
+    render(frame, scene);
+    const topAt45 = Array.from({length: 90}, (_, y) => frame.pixels[(y * 120) + 60]).indexOf(shaded);
+    frame.horizon = 65;
+    render(frame, scene);
+    const topAt65 = Array.from({length: 90}, (_, y) => frame.pixels[(y * 120) + 60]).indexOf(shaded);
+    ok('shifting frame.horizon down by 20 rows shifts wall top down by 20 rows', topAt65 - topAt45 === 20,
+        [topAt45, topAt65]);
 }
 
 done();
