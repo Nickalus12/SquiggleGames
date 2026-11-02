@@ -83,7 +83,7 @@ A game without either sprite is not affected by this choice. Hangar Breach loads
 
 ## One player sessions
 
-Game Rules values such as `hp`, `armor`, `ammo` and `frags` change only on the game server. Pressing Play on a Game Rules project now opens a private one player session on the server, so the HUD reads the same `game.players[mySlot]` path as a full room. Nothing in the HUD needs two players: a board with one row folds into the band, a team of one is scored from its member, and the roster can be just me.
+Game Rules values such as `hp`, `armor`, `ammo` and `frags` change only on the game server. Solo play without a session leaves them at their starting numbers. The play page is gaining a private one player session for Game Rules projects, built on the server side. With it, the HUD reads the same `game.players[mySlot]` path as a full room. Nothing in the HUD needs two players: a board with one row folds into the band, a team of one is scored from its member, and the roster can be just me.
 
 What the editor expects from the server for a private session:
 
