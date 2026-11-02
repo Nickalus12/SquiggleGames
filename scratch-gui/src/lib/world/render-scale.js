@@ -1,5 +1,11 @@
 const LADDER = Object.freeze([1, 0.75, 0.5]);
-const MODES = Object.freeze(['auto', 'crisp', 'fast']);
+const RUNGS = Object.freeze({
+    sharpest: 1.5,
+    crisp: 1,
+    fast: 0.5,
+    fastest: 0.375
+});
+const MODES = Object.freeze(['auto', 'crisp', 'fast', 'fastest', 'sharpest']);
 const PIXEL_BUDGET = 480 * 360;
 const WINDOW = 45;
 const OVER_BUDGET = 0.6;
@@ -15,6 +21,12 @@ const rungFor = scale => {
         if (LADDER[i] <= scale + 1e-9) return i;
     }
     return LADDER.length - 1;
+};
+
+const floorTexturesFor = (mode, scale) => {
+    if (mode === 'fast' || mode === 'fastest') return false;
+    if (mode === 'crisp' || mode === 'sharpest') return true;
+    return (Number(scale) || 0) > 0.5;
 };
 
 const startScale = ({dpr, width, height}) => {
@@ -35,13 +47,22 @@ const createScalePolicy = (options = {}) => {
     const ticks = new Float64Array(WINDOW);
     const renders = new Float64Array(WINDOW);
     const scratch = new Float64Array(WINDOW);
-    const state = {mode: 'auto', rung: 1, ceiling: 1, count: 0, steps: 0, frames: 0, late: 0, downs: 0, hold: 0};
-
-    const fixedRung = mode => (mode === 'crisp' ? 0 : LADDER.length - 1);
+    const state = {
+        mode: 'auto',
+        rung: 1,
+        ceiling: 1,
+        scale: 0.75,
+        count: 0,
+        steps: 0,
+        frames: 0,
+        late: 0,
+        downs: 0,
+        hold: 0
+    };
 
     const policy = {
         get scale () {
-            return LADDER[state.rung];
+            return state.scale;
         },
         get mode () {
             return state.mode;
@@ -50,7 +71,7 @@ const createScalePolicy = (options = {}) => {
             return state.steps;
         },
         get floorTextures () {
-            return state.rung < LADDER.length - 1;
+            return floorTexturesFor(state.mode, state.scale);
         },
         configure ({mode, dpr, width, height}) {
             state.mode = MODES.indexOf(mode) === -1 ? 'auto' : mode;
@@ -62,11 +83,13 @@ const createScalePolicy = (options = {}) => {
             if (state.mode === 'auto') {
                 state.ceiling = rungFor(startScale({dpr, width, height}));
                 state.rung = state.ceiling;
+                state.scale = LADDER[state.rung];
             } else {
-                state.rung = fixedRung(state.mode);
+                state.scale = RUNGS[state.mode];
+                state.rung = rungFor(state.scale);
                 state.ceiling = state.rung;
             }
-            return LADDER[state.rung];
+            return state.scale;
         },
         paced (late) {
             if (state.mode !== 'auto') return;
@@ -91,10 +114,11 @@ const createScalePolicy = (options = {}) => {
             const over = tick > OVER_BUDGET * budget || lateShare > LATE_SHARE_DOWN;
             if (over && state.rung < LADDER.length - 1) {
                 state.rung++;
+                state.scale = LADDER[state.rung];
                 state.steps++;
                 state.downs++;
                 state.hold = Math.min(MAX_HOLD, 2 ** state.downs);
-                return LADDER[state.rung];
+                return state.scale;
             }
             if (state.hold > 0) {
                 state.hold--;
@@ -105,8 +129,9 @@ const createScalePolicy = (options = {}) => {
                 const projected = tick + (render * ((up * up) - 1));
                 if (projected < HEADROOM * budget && lateShare < LATE_SHARE_UP) {
                     state.rung--;
+                    state.scale = LADDER[state.rung];
                     state.steps++;
-                    return LADDER[state.rung];
+                    return state.scale;
                 }
             }
             return null;
@@ -126,7 +151,9 @@ export {
     MODES,
     OVER_BUDGET,
     PIXEL_BUDGET,
+    RUNGS,
     WINDOW,
     createScalePolicy,
+    floorTexturesFor,
     startScale
 };

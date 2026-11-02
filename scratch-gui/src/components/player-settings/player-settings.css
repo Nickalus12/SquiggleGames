@@ -1,0 +1,252 @@
+.root {
+    --ps-deep: #0d1020;
+    --ps-panel: #12121f;
+    --ps-surface: #1b1f36;
+    --ps-edge: #6d4ae0;
+    --ps-edge-hi: #7c5cff;
+    --ps-cyan: #22d3ee;
+    --ps-green: #34d399;
+    --ps-amber: #fbbf24;
+    --ps-ink: #ffffff;
+    --ps-muted: #b8bfd9;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 24;
+    font-family: var(--sq-font, Nunito, system-ui, sans-serif);
+    color: var(--ps-ink);
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    container-type: inline-size;
+    container-name: sqplayer;
+}
+
+.gearButton {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--ps-surface) 0%, var(--ps-panel) 100%);
+    border: 2px solid var(--ps-edge);
+    box-shadow: 0 3px 0 var(--ps-deep), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: var(--ps-ink);
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.gearButton:hover {
+    border-color: var(--ps-edge-hi);
+}
+
+.gearButtonActive {
+    border-color: var(--ps-cyan);
+    background: linear-gradient(180deg, #252b4a 0%, var(--ps-surface) 100%);
+}
+
+.gearButton:focus-visible,
+.actionButton:focus-visible,
+.switchButton:focus-visible,
+.choiceButton:focus-visible,
+.slider:focus-visible {
+    outline: 2px solid var(--ps-cyan);
+    outline-offset: 2px;
+}
+
+.gearIcon {
+    width: 20px;
+    height: 20px;
+}
+
+.panel {
+    position: absolute;
+    top: 52px;
+    left: 8px;
+    width: min(328px, calc(100% - 16px));
+    max-height: calc(100% - 60px);
+    overflow-y: auto;
+    pointer-events: auto;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--ps-surface) 0%, var(--ps-panel) 65%, var(--ps-deep) 100%);
+    border: 2px solid var(--ps-edge-hi);
+    box-shadow: 0 8px 24px rgba(13, 16, 32, 0.78), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(124, 92, 255, 0.32);
+}
+
+.title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--ps-ink);
+}
+
+.headerActions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.actionButton {
+    min-height: 28px;
+    padding: 3px 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: var(--ps-deep);
+    color: var(--ps-muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.actionButtonPrimary {
+    background: var(--ps-edge);
+    border-color: var(--ps-edge-hi);
+    color: var(--ps-ink);
+}
+
+.lockedBanner {
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: rgba(251, 191, 36, 0.14);
+    border: 1px solid var(--ps-amber);
+    color: var(--ps-amber);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rowInline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.label {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ps-ink);
+}
+
+.valueBadge {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--ps-cyan);
+}
+
+.sliderRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.slider {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    accent-color: var(--ps-edge-hi);
+    cursor: pointer;
+}
+
+.switchButton {
+    min-width: 52px;
+    min-height: 28px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: var(--ps-deep);
+    color: var(--ps-muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.switchButtonOn {
+    background: rgba(52, 211, 153, 0.18);
+    border-color: var(--ps-green);
+    color: var(--ps-green);
+}
+
+.choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+    gap: 4px;
+}
+
+.choiceButton {
+    min-height: 28px;
+    padding: 3px 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: var(--ps-deep);
+    color: var(--ps-muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    text-align: center;
+}
+
+.choiceButtonActive {
+    background: var(--ps-edge);
+    border-color: var(--ps-cyan);
+    color: var(--ps-ink);
+}
+
+@container sqplayer (max-width: 440px) {
+    .gearButton {
+        top: 6px;
+        left: 6px;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    .panel {
+        top: 44px;
+        left: 6px;
+        width: calc(100% - 12px);
+        max-height: calc(100% - 50px);
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .label {
+        font-size: 12px;
+    }
+
+    .choiceButton,
+    .switchButton,
+    .actionButton {
+        min-height: 26px;
+        font-size: 11px;
+    }
+}

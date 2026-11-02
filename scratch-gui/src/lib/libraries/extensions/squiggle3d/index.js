@@ -126,6 +126,12 @@ class Squiggle3dBlocks {
                     text: 'turn with the mouse in 3D [ONOFF]',
                     arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
                 },
+                {
+                    opcode: 'usePlayerSettings',
+                    blockType: 'command',
+                    text: 'use the player\'s 3D settings [ONOFF]',
+                    arguments: {ONOFF: {type: 'string', menu: 'onOff', defaultValue: 'on'}}
+                },
                 {opcode: 'spriteInSights', blockType: 'reporter', text: 'sprite in my sights'},
                 '---',
                 {
@@ -263,6 +269,10 @@ class Squiggle3dBlocks {
 
     mouseTurn (args) {
         this.view.setMouseTurn(str(args.ONOFF) !== 'off');
+    }
+
+    usePlayerSettings (args) {
+        this.view.setUsePlayerSettings(str(args.ONOFF) !== 'off');
     }
 
     spriteInSights () {

@@ -3,6 +3,13 @@ import {FLAGS, flagsAt} from './tilemap.js';
 import {browserCanvas, browserImageLoader, costumeByName, costumeFor, defaultSkyTexture} from './textures.js';
 import {chainHook} from './world.js';
 import {createScalePolicy} from './render-scale.js';
+import {
+    PLAYER_SETTINGS_CHANGED,
+    fogForDrawDistance,
+    hasStoredPlayerSettings,
+    normalizePlayerSettings,
+    readPlayerSettings
+} from './player-settings.js';
 import {readGameSettings} from '../game-settings.js';
 import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, MAX_LIGHTS, WIDTH, clampEye, clampFalloff, clampFog, clampFov,
     createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, render} from './raycast.js';
@@ -193,9 +200,13 @@ const createView3d = (runtime, world, options) => {
             return 'auto';
         }
     };
+    const playerStore = opts.storage || null;
+    const initialPlayer = readPlayerSettings(playerStore);
     const policy = createScalePolicy();
     const configure = mode => policy.configure({mode, dpr: pixelRatio(), width: stageW(), height: stageH()});
-    const firstScale = () => (fixedScale === null ? configure(quality()) : fixedScale);
+    const firstScale = () => (fixedScale === null ?
+        configure((initialPlayer && initialPlayer.quality) || quality()) :
+        fixedScale);
     const defaultScale = firstScale();
     let frame = createFrame(Math.round(stageW() * defaultScale), Math.round(stageH() * defaultScale));
     const cameraOwner = {kit: 'squiggle3d'};
@@ -237,9 +248,27 @@ const createView3d = (runtime, world, options) => {
         pendingWork: -1,
         pendingDraw: 0,
         manual: fixedScale !== null,
-        scale: defaultScale
+        scale: defaultScale,
+        usePlayerSettings: true,
+        playerSettings: readPlayerSettings(playerStore),
+        hasPlayerOverride: hasStoredPlayerSettings(playerStore)
     });
     let state = fresh();
+    const effectiveFov = () => (
+        state.usePlayerSettings && state.playerSettings && state.playerSettings.fov !== null ?
+            clampFov(state.playerSettings.fov) :
+            state.fov
+    );
+    const effectiveFog = () => (
+        state.usePlayerSettings && state.playerSettings && state.playerSettings.drawDistance !== 'normal' ?
+            fogForDrawDistance(state.playerSettings.drawDistance, state.fog) :
+            state.fog
+    );
+    const effectiveQuality = () => (
+        state.usePlayerSettings && state.playerSettings && state.playerSettings.quality ?
+            state.playerSettings.quality :
+            quality()
+    );
     const gpu = {drawable: null, skin: null, image: null, scale: defaultScale};
     const link = {seam: null, disposers: [], effect: null, input: null};
     const cache = {
@@ -473,8 +502,8 @@ const createView3d = (runtime, world, options) => {
         h = mix(h, viewer.x);
         h = mix(h, viewer.y);
         h = mix(h, viewer.direction);
-        h = mix(h, state.fov);
-        h = mix(h, state.fog);
+        h = mix(h, effectiveFov());
+        h = mix(h, effectiveFog());
         h = mix(h, state.eye);
         h = mix(h, state.lightFalloff);
         h = mix(h, state.floor);
@@ -570,8 +599,8 @@ const createView3d = (runtime, world, options) => {
         scene.player.u = (viewer.x - space.origin[0]) / space.tileSize;
         scene.player.v = (space.origin[1] - viewer.y) / space.tileSize;
         scene.player.direction = viewer.direction;
-        scene.fov = state.fov;
-        scene.fog = state.fog;
+        scene.fov = effectiveFov();
+        scene.fog = effectiveFog();
         scene.eye = state.eye;
         scene.lightFalloff = state.lightFalloff;
         scene.floor = state.floor;
@@ -870,9 +899,8 @@ const createView3d = (runtime, world, options) => {
     const reset = () => {
         hideView();
         destroy();
-        const scale = firstScale();
         state = fresh();
-        state.scale = scale;
+        state.scale = fixedScale === null ? configure(effectiveQuality()) : fixedScale;
         scene.spriteCount = 0;
         scene.lights.length = 0;
         cache.grid = false;
@@ -888,12 +916,24 @@ const createView3d = (runtime, world, options) => {
 
     const onSettings = settings => {
         if (fixedScale !== null || !settings) return;
+        if (state.usePlayerSettings && state.playerSettings && state.playerSettings.quality) {
+            setQuality(state.playerSettings.quality);
+            return;
+        }
         setQuality(settings.render3d);
+    };
+
+    const onPlayerSettings = next => {
+        state.playerSettings = normalizePlayerSettings(next);
+        state.hasPlayerOverride = true;
+        if (fixedScale === null) setQuality(effectiveQuality());
+        if (state.on && viewerAlive()) refresh();
     };
 
     runtime.on(PROJECT_STOP_ALL, hideView);
     runtime.on(PROJECT_LOADED, reset);
     runtime.on(SETTINGS_CHANGED, onSettings);
+    runtime.on(PLAYER_SETTINGS_CHANGED, onPlayerSettings);
 
     const view = {
         runtime,
@@ -921,6 +961,13 @@ const createView3d = (runtime, world, options) => {
         show: showView,
         hide: hideView,
         settings: () => ({fov: state.fov, fog: state.fog, eye: state.eye}),
+        effectiveSettings: () => ({
+            fov: effectiveFov(),
+            fog: effectiveFog(),
+            eye: state.eye,
+            quality: state.manual ? 'manual' : policy.mode,
+            floorTextures: policy.floorTextures
+        }),
         setSetting (name, value) {
             if (name === 'fov') state.fov = clampFov(value);
             else if (name === 'fog') state.fog = clampFog(value);
@@ -930,6 +977,19 @@ const createView3d = (runtime, world, options) => {
         lightFalloff: () => state.lightFalloff,
         setLightFalloff (value) {
             state.lightFalloff = clampFalloff(value);
+        },
+        usePlayerSettings: () => state.usePlayerSettings,
+        setUsePlayerSettings (on) {
+            state.usePlayerSettings = !!on;
+            if (fixedScale === null) setQuality(effectiveQuality());
+            if (state.on && viewerAlive()) refresh();
+        },
+        playerSettings: () => Object.assign({}, state.playerSettings),
+        setPlayerSettings (patch) {
+            state.playerSettings = normalizePlayerSettings(Object.assign({}, state.playerSettings, patch || {}));
+            state.hasPlayerOverride = true;
+            if (fixedScale === null) setQuality(effectiveQuality());
+            if (state.on && viewerAlive()) refresh();
         },
         colors: () => ({floor: state.floor, ceiling: state.ceiling}),
         setSurfaceColor (surface, color) {
@@ -1011,6 +1071,7 @@ const createView3d = (runtime, world, options) => {
             runtime.removeListener(PROJECT_STOP_ALL, hideView);
             runtime.removeListener(PROJECT_LOADED, reset);
             runtime.removeListener(SETTINGS_CHANGED, onSettings);
+            runtime.removeListener(PLAYER_SETTINGS_CHANGED, onPlayerSettings);
             states.delete(runtime);
         }
     };
@@ -1024,6 +1085,8 @@ const getView3d = (runtime, world, options) => {
     return states.get(runtime);
 };
 
+const peekView3d = runtime => (runtime && states.get(runtime)) || null;
+
 export {
     LAYER,
     LOOKS,
@@ -1035,6 +1098,12 @@ export {
     createPixelCache,
     createView3d,
     getView3d,
+<<<<<<< HEAD
     stepPose,
     wrapAngle
+||||||| parent of c8b2ecc (edit-3d-player: add player 3D settings store, panel, quality rungs, and lock block)
+    getView3d
+=======
+    peekView3d
+>>>>>>> c8b2ecc (edit-3d-player: add player 3D settings store, panel, quality rungs, and lock block)
 };

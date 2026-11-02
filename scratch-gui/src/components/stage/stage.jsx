@@ -11,6 +11,7 @@ import GreenFlagOverlay from '../../containers/green-flag-overlay.jsx';
 import Question from '../../containers/question.jsx';
 import MicIndicator from '../mic-indicator/mic-indicator.jsx';
 import CoreHud from '../core-hud/core-hud.jsx';
+import PlayerSettings from '../player-settings/player-settings.jsx';
 import {STAGE_DISPLAY_SIZES} from '../../lib/layout-constants.js';
 import {getStageDimensions, getMinWidth} from '../../lib/screen-utils.js';
 import styles from './stage.css';
@@ -85,6 +86,7 @@ const StageComponent = props => {
                         />
                     </Box>
                     {vm ? <CoreHud vm={vm} /> : null}
+                    {vm ? <PlayerSettings vm={vm} /> : null}
                     <Box className={styles.frameWrapper}>
                         <TargetHighlight
                             className={styles.frame}

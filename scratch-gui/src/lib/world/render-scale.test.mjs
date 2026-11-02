@@ -31,6 +31,14 @@ const fast = createScalePolicy({mode: 'fast', dpr: 2, width: 480, height: 360});
 ok('Fast is half resolution on any screen and turns floor textures off',
     fast.scale === 0.5 && fast.floorTextures === false);
 ok('Fast never steps up', feed(fast, 0.1, 0.1) === null && fast.scale === 0.5);
+const fastest = createScalePolicy({mode: 'fastest', dpr: 2, width: 480, height: 360});
+ok('Fastest is 0.375 resolution and turns floor textures off',
+    fastest.scale === 0.375 && fastest.floorTextures === false);
+ok('Fastest never steps', feed(fastest, 0.1, 0.1) === null && fastest.scale === 0.375);
+const sharpest = createScalePolicy({mode: 'sharpest', dpr: 1, width: 480, height: 360});
+ok('Sharpest is 1.5x resolution and keeps floor textures on',
+    sharpest.scale === 1.5 && sharpest.floorTextures === true);
+ok('Sharpest never steps', feed(sharpest, 40, 30) === null && sharpest.scale === 1.5);
 ok('an unknown mode is Auto', createScalePolicy({mode: 'ultra', dpr: 2}).mode === 'auto');
 
 section('auto steps');

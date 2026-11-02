@@ -559,4 +559,29 @@ section('per-frame pose interpolation and mouse turn');
     smooth.dispose();
 }
 
+section('player 3D settings and lock');
+const playerView = createView3d(runtime, world, {canvas, document: doc, toBitmap: bitmap, devicePixelRatio: 1});
+playerView.attach(seam);
+playerView.show(hero);
+playerView.setSetting('fov', 60);
+playerView.setSetting('fog', 20);
+ok('player settings are enabled by default', playerView.usePlayerSettings() === true);
+playerView.setPlayerSettings({fov: 95, quality: 'fastest', drawDistance: 'near', mouseSpeed: 24, invertLook: true});
+ok('player fov overrides project fov', playerView.effectiveSettings().fov === 95);
+ok('fastest quality sets 0.375 scale and turns floor textures off',
+    playerView.scale() === 0.375 && playerView.floorTextures() === false);
+ok('near draw distance overrides fog with heavier fog', playerView.effectiveSettings().fog > 20);
+playerView.setPlayerSettings({quality: 'sharpest', drawDistance: 'far'});
+ok('sharpest quality sets 1.5 scale and turns floor textures on',
+    playerView.scale() === 1.5 && playerView.floorTextures() === true);
+ok('far draw distance overrides fog with lighter fog', playerView.effectiveSettings().fog < 20);
+playerView.setUsePlayerSettings(false);
+ok('locking player settings restores project fov and fog',
+    playerView.usePlayerSettings() === false &&
+    playerView.effectiveSettings().fov === 60 &&
+    playerView.effectiveSettings().fog === 20);
+playerView.setUsePlayerSettings(true);
+ok('unlocking player settings re-applies player overrides', playerView.effectiveSettings().fov === 95);
+playerView.dispose();
+
 done();
