@@ -51,6 +51,7 @@ import {patchComments} from '../lib/annotations/comment-chrome';
 import {setOutlineWorkspace} from '../lib/annotations/workspace-ref';
 import {patchJointGlow} from '../lib/workspace/joint-glow';
 import {patchSnapPolicy} from '../lib/workspace/snap-policy';
+import {patchCustomBlocks, scrollNewProcedureIntoPalette} from '../lib/workspace/custom-blocks';
 
 // TW: Strings we add to scratch-blocks are localized here
 const messages = defineMessages({
@@ -150,6 +151,7 @@ class Blocks extends React.Component {
         patchComments(this.ScratchBlocks);
         patchSnapPolicy(this.ScratchBlocks);
         patchJointGlow(this.ScratchBlocks);
+        patchCustomBlocks(this.ScratchBlocks);
 
         this.ScratchBlocks.FieldColourSlider.activateEyedropper_ = this.props.onActivateColorPicker;
         this.ScratchBlocks.Procedures.externalProcedureDefCallback = this.props.onActivateCustomProcedures;
@@ -653,9 +655,7 @@ class Blocks extends React.Component {
     }
     handleCustomProceduresClose (data) {
         this.props.onRequestCloseCustomProcedures(data);
-        const ws = this.workspace;
-        ws.refreshToolboxSelection_();
-        ws.toolbox_.scrollToCategoryById('myBlocks');
+        scrollNewProcedureIntoPalette(this.workspace, data);
     }
     handleDrop (dragInfo) {
         fetch(dragInfo.payload.bodyUrl)

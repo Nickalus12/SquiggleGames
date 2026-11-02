@@ -131,6 +131,11 @@
     animation: none !important;
 }
 
+.blocks :global(.sq-custom-block-landed > .blocklyPath) {
+    stroke: #22d3ee !important;
+    stroke-width: 2.5px !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .blocks :global(.sq-joint-glow-group),
     .blocks :global(.sq-joint-glow-halo),

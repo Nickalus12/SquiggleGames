@@ -2,27 +2,26 @@
 @import "../../css/units.css";
 
 .modal-content {
-    width: 700px;
-    margin: 50px auto; /* This modal is taller than most, reduce top margin */
+    width: 720px;
+    max-width: calc(100vw - 32px);
+    margin: 36px auto;
+    font-family: var(--sq-font, "Nunito", "Helvetica Neue", Helvetica, Arial, sans-serif);
 }
 
 .body {
-    background: $ui-modal-background;
-    padding: 1.5rem 2.25rem;
+    background: #12121f;
+    color: #ffffff;
+    padding: 1.25rem 1.75rem 1.5rem;
 }
 
-.body input[type="checkbox"],
-.body input[type="radio"] {
-    margin: 3px;
-}
-
-/* Blocks workspace for custom procedure declaration editor */
 .workspace {
-    min-height: 200px;
+    min-height: 176px;
     position: relative;
+    background: #0d1020;
+    border-bottom: 1px solid rgba(124, 92, 255, 0.24);
 }
 
-.workspace :global(.injectionDiv){
+.workspace :global(.injectionDiv) {
     position: absolute;
     top: 0;
     right: 0;
@@ -31,77 +30,227 @@
 }
 
 .workspace :global(.blocklySvg) {
-    background-color: $ui-primary;
+    background-color: #0d1020;
 }
 
-/* Row of "card" buttons for modifying custom procedures */
-.options-row {
+.preview-bar {
+    background: #1b1f36;
+    border: 1px solid rgba(124, 92, 255, 0.32);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.preview-header {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-}
-
-.option-card {
-    background: $ui-white;
-    border: 2px solid $ui-black-transparent;
-    border-radius: $space;
-    padding: calc($space * 2);
-    text-align: center;
-    flex-grow: 1;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-basis: 100px;
-}
-
-.option-card:hover {
-    border: 2px solid $looks-secondary;
-    box-shadow: 0px 0px 0px 4px $looks-transparent;
-}
-
-.option-card + .option-card {
-    margin-left: 1rem;
-}
-
-.option-icon {
-    max-height: 48px;
     margin-bottom: 0.5rem;
 }
 
+.preview-heading {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: #22d3ee;
+}
+
+.preview-badges {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.preview-badge-fast,
+.preview-badge-reporter {
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+}
+
+.preview-badge-fast {
+    background: rgba(251, 191, 36, 0.18);
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    color: #fbbf24;
+}
+
+.preview-badge-reporter {
+    background: rgba(52, 211, 153, 0.18);
+    border: 1px solid rgba(52, 211, 153, 0.55);
+    color: #34d399;
+}
+
+.preview-stage {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    overflow-x: auto;
+}
+
+.preview-block {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    background: #ff6680;
+    border: 2px solid #ff3355;
+    border-radius: 8px;
+    padding: 0.42rem 0.75rem;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.preview-block-reporter {
+    border-radius: 999px;
+    padding: 0.42rem 0.9rem;
+    border-color: #22d3ee;
+}
+
+.preview-label-word {
+    color: #ffffff;
+    white-space: pre;
+}
+
+.preview-input-pill {
+    display: inline-flex;
+    align-items: center;
+    background: #ff4d6a;
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 999px;
+    padding: 0.12rem 0.55rem;
+    font-size: 0.8rem;
+    color: #ffffff;
+}
+
+.preview-boolean-pill {
+    display: inline-flex;
+    align-items: center;
+    background: #e64560;
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 4px;
+    padding: 0.12rem 0.65rem;
+    font-size: 0.8rem;
+    color: #ffffff;
+    clip-path: polygon(10px 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0% 50%);
+}
+
+.options-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.85rem;
+}
+
+.option-card {
+    background: #1b1f36;
+    border: 1.5px solid rgba(124, 92, 255, 0.3);
+    border-radius: 12px;
+    padding: 0.9rem 0.85rem;
+    text-align: center;
+    flex: 1 1 0;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    color: #ffffff;
+}
+
+.option-card:hover,
+.option-card:focus {
+    border-color: #22d3ee;
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2);
+    outline: none;
+}
+
+.option-icon {
+    max-height: 42px;
+    margin-bottom: 0.45rem;
+}
+
 .option-title {
-    font-weight: bold;
+    font-weight: 800;
+    font-size: 0.92rem;
+    color: #ffffff;
+    margin-bottom: 0.25rem;
 }
 
-/* "Run without screen refresh" row */
+.option-description {
+    font-size: 0.78rem;
+    line-height: 1.3;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.toggles-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 1rem;
+}
+
 .checkbox-row {
-    margin-top: 1rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    background: #1b1f36;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 0.6rem 0.85rem;
+    cursor: pointer;
 }
 
-/* Confirmation buttons at the bottom of the modal */
+.checkbox-row input[type="checkbox"] {
+    margin-top: 0.2rem;
+    width: 16px;
+    height: 16px;
+    accent-color: #7c5cff;
+    flex-shrink: 0;
+}
+
+.checkbox-text-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.checkbox-title {
+    font-weight: 800;
+    font-size: 0.88rem;
+    color: #ffffff;
+}
+
+.checkbox-help {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.75);
+}
+
 .button-row {
-    margin-top: 1rem;
-    font-weight: bolder;
-    text-align: right;
+    margin-top: 1.15rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
 }
 
 .button-row button {
-    border: 1px solid $ui-black-transparent;
-    border-radius: 0.25rem;
-    padding: 0.75rem 1rem;
-    background: $ui-white;
-    color: $text-primary;
-    font-weight: bold;
-    font-size: 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 0.65rem 1.15rem;
+    background: #1b1f36;
+    color: #ffffff;
+    font-family: inherit;
+    font-weight: 800;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+
+.button-row button:hover {
+    border-color: rgba(255, 255, 255, 0.38);
 }
 
 .button-row button.ok-button {
-    background: $looks-secondary;
-    border: $looks-secondary;
-    color: white;
+    background: #6d4ae0;
+    border-color: #7c5cff;
+    color: #ffffff;
 }
 
-[dir="ltr"] .button-row button + button {
-    margin-left: 0.5rem;
-}
-
-[dir="rtl"] .button-row button + button {
-    margin-right: 0.5rem;
+.button-row button.ok-button:hover {
+    background: #7c5cff;
 }

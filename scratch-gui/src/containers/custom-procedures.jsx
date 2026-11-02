@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import CustomProceduresComponent from '../components/custom-procedures/custom-procedures.jsx';
 import LazyScratchBlocks from '../lib/tw-lazy-scratch-blocks';
+import {describeProcedurePreview} from '../lib/workspace/custom-blocks';
 import {connect} from 'react-redux';
 
 class CustomProcedures extends React.Component {
@@ -14,16 +15,45 @@ class CustomProcedures extends React.Component {
             'handleAddBoolean',
             'handleAddTextNumber',
             'handleToggleWarp',
+            'handleToggleReturnsValue',
+            'handleDocumentInput',
             'handleCancel',
             'handleOk',
-            'setBlocks'
+            'setBlocks',
+            'syncPreview'
         ]);
+        const initialReturns = Boolean(
+            props.mutator &&
+            typeof props.mutator.getAttribute === 'function' &&
+            props.mutator.getAttribute('returnsvalue') === 'true'
+        );
+        const isEditing = Boolean(
+            props.mutator &&
+            typeof props.mutator.getAttribute === 'function' &&
+            props.mutator.getAttribute('isnew') === 'false'
+        );
         this.state = {
             rtlOffset: 0,
-            warp: false
+            warp: false,
+            returnsValue: initialReturns,
+            isEditing,
+            preview: describeProcedurePreview('do something', [], {
+                warp: false,
+                returnsValue: initialReturns
+            })
         };
     }
+    componentDidMount () {
+        if (typeof document !== 'undefined') {
+            document.addEventListener('input', this.handleDocumentInput, true);
+            document.addEventListener('keyup', this.handleDocumentInput, true);
+        }
+    }
     componentWillUnmount () {
+        if (typeof document !== 'undefined') {
+            document.removeEventListener('input', this.handleDocumentInput, true);
+            document.removeEventListener('keyup', this.handleDocumentInput, true);
+        }
         if (this.workspace) {
             this.workspace.dispose();
         }
@@ -38,36 +68,24 @@ class CustomProcedures extends React.Component {
         );
 
         const ScratchBlocks = LazyScratchBlocks.get();
-        // @todo This is a hack to make there be no toolbox.
         const oldDefaultToolbox = ScratchBlocks.Blocks.defaultToolbox;
         ScratchBlocks.Blocks.defaultToolbox = null;
         this.workspace = ScratchBlocks.inject(this.blocks, workspaceConfig);
         ScratchBlocks.Blocks.defaultToolbox = oldDefaultToolbox;
 
-        // Create the procedure declaration block for editing the mutation.
         this.mutationRoot = this.workspace.newBlock('procedures_declaration');
-        // Make the declaration immovable, undeletable and have no context menu
         this.mutationRoot.setMovable(false);
         this.mutationRoot.setDeletable(false);
         this.mutationRoot.contextMenu = false;
 
         this.workspace.addChangeListener(() => {
             this.mutationRoot.onChangeFn();
-            // Keep the block centered on the workspace
+            this.syncPreview();
             const metrics = this.workspace.getMetrics();
             const {x, y} = this.mutationRoot.getRelativeToSurfaceXY();
             const dy = (metrics.viewHeight / 2) - (this.mutationRoot.height / 2) - y;
             let dx;
             if (this.props.isRtl) {
-                // // TODO: https://github.com/LLK/scratch-gui/issues/2838
-                // This is temporary until we can figure out what's going on width
-                // block positioning on the workspace for RTL.
-                // Workspace is always origin top-left, with x increasing to the right
-                // Calculate initial starting offset and save it, every other move
-                // has to take the original offset into account.
-                // Calculate a new left postion based on new width
-                // Convert current x position into LTR (mirror) x position (uses original offset)
-                // Use the difference between ltrX and mirrorX as the amount to move
                 const ltrX = ((metrics.viewWidth / 2) - (this.mutationRoot.width / 2) + 25);
                 const mirrorX = x - ((x - this.state.rtlOffset) * 2);
                 if (mirrorX === ltrX) {
@@ -76,7 +94,6 @@ class CustomProcedures extends React.Component {
                 dx = mirrorX - ltrX;
                 const midPoint = metrics.viewWidth / 2;
                 if (x === 0) {
-                    // if it's the first time positioning, it should always move right
                     if (this.mutationRoot.width < midPoint) {
                         dx = ltrX;
                     } else if (this.mutationRoot.width < metrics.viewWidth) {
@@ -93,8 +110,6 @@ class CustomProcedures extends React.Component {
                 }
             } else {
                 dx = (metrics.viewWidth / 2) - (this.mutationRoot.width / 2) - x;
-                // If the procedure declaration is wider than the view width,
-                // keep the right-hand side of the procedure in view.
                 if (this.mutationRoot.width > metrics.viewWidth) {
                     dx = metrics.viewWidth - this.mutationRoot.width - x;
                 }
@@ -104,32 +119,60 @@ class CustomProcedures extends React.Component {
         this.mutationRoot.domToMutation(this.props.mutator);
         this.mutationRoot.initSvg();
         this.mutationRoot.render();
-        this.setState({warp: this.mutationRoot.getWarp()});
-        // Allow the initial events to run to position this block, then focus.
-        setTimeout(() => {
-            this.mutationRoot.focusLastEditor_();
+        const warp = this.mutationRoot.getWarp();
+        this.setState({warp}, () => {
+            this.syncPreview();
         });
+        setTimeout(() => {
+            if (this.mutationRoot) {
+                this.mutationRoot.focusLastEditor_();
+                this.syncPreview();
+            }
+        });
+    }
+    syncPreview (override = {}) {
+        if (!this.mutationRoot) return;
+        this.mutationRoot.onChangeFn();
+        const warp = typeof override.warp === 'boolean' ? override.warp : this.state.warp;
+        const returnsValue = typeof override.returnsValue === 'boolean' ?
+            override.returnsValue :
+            this.state.returnsValue;
+        const preview = describeProcedurePreview(
+            this.mutationRoot.procCode_,
+            this.mutationRoot.displayNames_,
+            {warp, returnsValue}
+        );
+        this.setState({preview});
+    }
+    handleDocumentInput () {
+        this.syncPreview();
     }
     handleCancel () {
         this.props.onRequestClose();
     }
     handleOk () {
         const newMutation = this.mutationRoot ? this.mutationRoot.mutationToDom(true) : null;
+        if (newMutation) {
+            newMutation.setAttribute('returnsvalue', this.state.returnsValue ? 'true' : 'false');
+        }
         this.props.onRequestClose(newMutation);
     }
     handleAddLabel () {
         if (this.mutationRoot) {
             this.mutationRoot.addLabelExternal();
+            this.syncPreview();
         }
     }
     handleAddBoolean () {
         if (this.mutationRoot) {
             this.mutationRoot.addBooleanExternal();
+            this.syncPreview();
         }
     }
     handleAddTextNumber () {
         if (this.mutationRoot) {
             this.mutationRoot.addStringNumberExternal();
+            this.syncPreview();
         }
     }
     handleToggleWarp () {
@@ -137,18 +180,28 @@ class CustomProcedures extends React.Component {
             const newWarp = !this.mutationRoot.getWarp();
             this.mutationRoot.setWarp(newWarp);
             this.setState({warp: newWarp});
+            this.syncPreview({warp: newWarp});
         }
+    }
+    handleToggleReturnsValue () {
+        const nextReturns = !this.state.returnsValue;
+        this.setState({returnsValue: nextReturns});
+        this.syncPreview({returnsValue: nextReturns});
     }
     render () {
         return (
             <CustomProceduresComponent
                 componentRef={this.setBlocks}
+                isEditing={this.state.isEditing}
+                preview={this.state.preview}
+                returnsValue={this.state.returnsValue}
                 warp={this.state.warp}
                 onAddBoolean={this.handleAddBoolean}
                 onAddLabel={this.handleAddLabel}
                 onAddTextNumber={this.handleAddTextNumber}
                 onCancel={this.handleCancel}
                 onOk={this.handleOk}
+                onToggleReturnsValue={this.handleToggleReturnsValue}
                 onToggleWarp={this.handleToggleWarp}
             />
         );
