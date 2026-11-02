@@ -91,9 +91,32 @@ const clampFalloff = falloff => {
     return clamp(n, 0, 100);
 };
 
+const SHADE_BUCKETS = 1024;
+const SHADE_MAX_BUCKET = SHADE_BUCKETS - 1;
+const SHADE_BUCKET_SCALE = 16;
+const SHADE_TABLES = new Array(101);
+
+const shadeTableFor = falloff => {
+    const idx = Math.round(clampFalloff(falloff)) | 0;
+    if (idx <= 0) return null;
+    let table = SHADE_TABLES[idx];
+    if (!table) {
+        table = new Float32Array(SHADE_BUCKETS);
+        const k = idx * 0.01;
+        for (let b = 0; b < SHADE_BUCKETS; b++) {
+            table[b] = 1 / (1 + ((b / SHADE_BUCKET_SCALE) * k));
+        }
+        SHADE_TABLES[idx] = table;
+    }
+    return table;
+};
+
 const lightFalloffFactor = (falloff, dist) => {
     if (!(falloff > 0) || !(dist > 0)) return 1;
-    return 1 / (1 + (dist * falloff * 0.01));
+    const table = shadeTableFor(falloff);
+    if (!table) return 1;
+    const bucket = (dist * SHADE_BUCKET_SCALE) | 0;
+    return table[bucket > SHADE_MAX_BUCKET ? SHADE_MAX_BUCKET : bucket];
 };
 
 const horizonOf = (frame, scene) => {
@@ -117,6 +140,7 @@ const createLightBuffer = (cols, rows) => {
         glowG: new Uint8Array(size),
         glowB: new Uint8Array(size),
         active: false,
+        hasGlow: false,
         version: 0,
         _lightHash: -1,
         _lightCount: -1,
@@ -156,6 +180,7 @@ const updateLightBuffer = (buf, map, lights) => {
         buf.glowG.fill(0);
         buf.glowB.fill(0);
         buf.active = false;
+        buf.hasGlow = false;
         buf._lightCount = 0;
         buf._lightHash = 0;
         buf.version++;
@@ -234,6 +259,7 @@ const updateLightBuffer = (buf, map, lights) => {
         }
     }
     buf.active = true;
+    buf.hasGlow = count > 0;
     buf.version++;
     return true;
 };
@@ -722,11 +748,13 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const isSky = ceilMode === 'sky';
     const globalCeilTex = !isSky && allowTex && ceilMode !== 'color' ? (scene.ceilingTex || null) : null;
     const falloff = clampFalloff(scene.lightFalloff);
+    const shadeTable = falloff > 0 ? shadeTableFor(falloff) : null;
     const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const hasGlow = Boolean(hasLightBuf && lightBuf.hasGlow);
     const lightLevel = hasLightBuf ? lightBuf.level : null;
-    const glowR = hasLightBuf ? lightBuf.glowR : null;
-    const glowG = hasLightBuf ? lightBuf.glowG : null;
-    const glowB = hasLightBuf ? lightBuf.glowB : null;
+    const glowR = hasGlow ? lightBuf.glowR : null;
+    const glowG = hasGlow ? lightBuf.glowG : null;
+    const glowB = hasGlow ? lightBuf.glowB : null;
 
     if (!floorGrid && !ceilGrid && !globalFloorTex && !globalCeilTex && !isSky && !hasLightBuf && falloff <= 0) {
         if (frame._surfCeiling !== scene.ceiling || frame._surfFloor !== scene.floor ||
@@ -844,7 +872,9 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         }
         const dist = ((isCeil ? (1 - eye) : eye) * view.focal) / denom;
         const f = fogFactor(fog, dist);
-        const kFall = lightFalloffFactor(falloff, dist);
+        const kFall = shadeTable ?
+            shadeTable[dist >= 64 ? SHADE_MAX_BUCKET : ((dist * SHADE_BUCKET_SCALE) | 0)] :
+            1;
         const surfGrid = isCeil ? ceilGrid : floorGrid;
         const surfGlobalTex = isCeil ? globalCeilTex : globalFloorTex;
         if (!surfGrid && !surfGlobalTex && !hasLightBuf) {
@@ -951,9 +981,11 @@ const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             let cellAddB = fogB;
             if (hasLightBuf && cellIdx >= 0) {
                 cellKeep = (baseKeep * lightLevel[cellIdx]) >> 8;
-                cellAddR = fogR + ((glowR[cellIdx] * oneMinusF256) >> 8);
-                cellAddG = fogG + ((glowG[cellIdx] * oneMinusF256) >> 8);
-                cellAddB = fogB + ((glowB[cellIdx] * oneMinusF256) >> 8);
+                if (hasGlow) {
+                    cellAddR = fogR + ((glowR[cellIdx] * oneMinusF256) >> 8);
+                    cellAddG = fogG + ((glowG[cellIdx] * oneMinusF256) >> 8);
+                    cellAddB = fogB + ((glowB[cellIdx] * oneMinusF256) >> 8);
+                }
             }
             if (!cellTexData) {
                 let r = ((baseR * cellKeep) >> 8) + cellAddR;
@@ -1130,7 +1162,11 @@ const sampleColumnSlice = (
 ) => {
     if (y0 >= y1) return;
     const tex = isDoor ? doorTexFor(scene, map, val) : (getTex ? getTex(val) : null);
-    let k = (side === 1 ? SIDE_SHADE : 1) * lightFalloffFactor(falloff, dist);
+    const shadeTable = falloff > 0 ? shadeTableFor(falloff) : null;
+    const kFall = shadeTable ?
+        shadeTable[dist >= 64 ? SHADE_MAX_BUCKET : ((dist * SHADE_BUCKET_SCALE) | 0)] :
+        1;
+    let k = (side === 1 ? SIDE_SHADE : 1) * kFall;
     const f = fogFactor(fog, dist);
     let addR = 0;
     let addG = 0;
@@ -1142,11 +1178,13 @@ const sampleColumnSlice = (
         const adjRow = side === 1 ? (row + (ry > 0 ? -1 : 1)) : row;
         if (adjCol >= 0 && adjRow >= 0 && adjCol < cols && adjRow < rows) {
             const lIdx = (adjRow * cols) + adjCol;
-            k *= lightBuf.level[lIdx] / 256;
-            const oneMinusF = 1 - f;
-            addR = lightBuf.glowR[lIdx] * oneMinusF;
-            addG = lightBuf.glowG[lIdx] * oneMinusF;
-            addB = lightBuf.glowB[lIdx] * oneMinusF;
+            k *= lightBuf.level[lIdx] * (1 / 256);
+            if (lightBuf.hasGlow) {
+                const oneMinusF = 1 - f;
+                addR = lightBuf.glowR[lIdx] * oneMinusF;
+                addG = lightBuf.glowG[lIdx] * oneMinusF;
+                addB = lightBuf.glowB[lIdx] * oneMinusF;
+            }
         }
     }
     if (!tex) {
@@ -1227,14 +1265,16 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const getTex = scene.texture;
     const getWallColor = scene.wallColor;
     const falloff = clampFalloff(scene.lightFalloff);
+    const shadeTable = falloff > 0 ? shadeTableFor(falloff) : null;
     const map = scene.map || null;
     const cols = map && map.cols ? (map.cols | 0) : 0;
     const rows = map && map.rows ? (map.rows | 0) : 0;
     const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const hasGlow = Boolean(hasLightBuf && lightBuf.hasGlow);
     const lightLevel = hasLightBuf ? lightBuf.level : null;
-    const glowR = hasLightBuf ? lightBuf.glowR : null;
-    const glowG = hasLightBuf ? lightBuf.glowG : null;
-    const glowB = hasLightBuf ? lightBuf.glowB : null;
+    const glowR = hasGlow ? lightBuf.glowR : null;
+    const glowG = hasGlow ? lightBuf.glowG : null;
+    const glowB = hasGlow ? lightBuf.glowB : null;
 
     if (!frame._multiHit) {
         for (let x = 0; x < w; x++) {
@@ -1254,7 +1294,10 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             const side = colSide[x];
             const isDoor = colDoor[x] !== 0;
             const tex = isDoor ? doorTexFor(scene, map, val) : (getTex ? getTex(val) : null);
-            let k = (side === 1 ? SIDE_SHADE : 1) * lightFalloffFactor(falloff, dist);
+            const kFall = shadeTable ?
+                shadeTable[dist >= 64 ? SHADE_MAX_BUCKET : ((dist * SHADE_BUCKET_SCALE) | 0)] :
+                1;
+            let k = (side === 1 ? SIDE_SHADE : 1) * kFall;
             const f = fogFactor(fog, dist);
             let addR = 0;
             let addG = 0;
@@ -1266,11 +1309,13 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                 const adjRow = side === 1 ? (colRow[x] + (ry > 0 ? -1 : 1)) : colRow[x];
                 if (adjCol >= 0 && adjRow >= 0 && adjCol < cols && adjRow < rows) {
                     const lIdx = (adjRow * cols) + adjCol;
-                    k *= lightLevel[lIdx] / 256;
-                    const oneMinusF = 1 - f;
-                    addR = glowR[lIdx] * oneMinusF;
-                    addG = glowG[lIdx] * oneMinusF;
-                    addB = glowB[lIdx] * oneMinusF;
+                    k *= lightLevel[lIdx] * (1 / 256);
+                    if (hasGlow) {
+                        const oneMinusF = 1 - f;
+                        addR = glowR[lIdx] * oneMinusF;
+                        addG = glowG[lIdx] * oneMinusF;
+                        addB = glowB[lIdx] * oneMinusF;
+                    }
                 }
             }
             if (!tex) {
@@ -1440,14 +1485,16 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const half = horizonOf(frame, scene);
     const centre = fw >> 1;
     const falloff = clampFalloff(scene.lightFalloff);
+    const shadeTable = falloff > 0 ? shadeTableFor(falloff) : null;
     const map = scene.map || null;
     const cols = map && map.cols ? (map.cols | 0) : 0;
     const rows = map && map.rows ? (map.rows | 0) : 0;
     const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const hasGlow = Boolean(hasLightBuf && lightBuf.hasGlow);
     const lightLevel = hasLightBuf ? lightBuf.level : null;
-    const glowR = hasLightBuf ? lightBuf.glowR : null;
-    const glowG = hasLightBuf ? lightBuf.glowG : null;
-    const glowB = hasLightBuf ? lightBuf.glowB : null;
+    const glowR = hasGlow ? lightBuf.glowR : null;
+    const glowG = hasGlow ? lightBuf.glowG : null;
+    const glowB = hasGlow ? lightBuf.glowB : null;
     const sprites = scene.sprites || [];
     const total = typeof scene.spriteCount === 'number' ? scene.spriteCount : sprites.length;
     let count = 0;
@@ -1499,7 +1546,9 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             syRow[y] = sy * imgW;
         }
         const f = fogFactor(fog, depth);
-        let k = sprite.glow ? 1 : lightFalloffFactor(falloff, depth);
+        let k = (sprite.glow || !shadeTable) ?
+            1 :
+            shadeTable[depth >= 64 ? SHADE_MAX_BUCKET : ((depth * SHADE_BUCKET_SCALE) | 0)];
         let addR = 0;
         let addG = 0;
         let addB = 0;
@@ -1508,11 +1557,13 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
             const sr = Math.floor(sprite.v) | 0;
             if (sc >= 0 && sr >= 0 && sc < cols && sr < rows) {
                 const lIdx = (sr * cols) + sc;
-                k *= lightLevel[lIdx] / 256;
-                const oneMinusF = 1 - f;
-                addR = glowR[lIdx] * oneMinusF;
-                addG = glowG[lIdx] * oneMinusF;
-                addB = glowB[lIdx] * oneMinusF;
+                k *= lightLevel[lIdx] * (1 / 256);
+                if (hasGlow) {
+                    const oneMinusF = 1 - f;
+                    addR = glowR[lIdx] * oneMinusF;
+                    addG = glowG[lIdx] * oneMinusF;
+                    addB = glowB[lIdx] * oneMinusF;
+                }
             }
         }
         const plain = f === 0 && k === 1 && addR === 0 && addG === 0 && addB === 0;
