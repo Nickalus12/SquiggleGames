@@ -49,6 +49,9 @@ const createScalePolicy = (options = {}) => {
         get steps () {
             return state.steps;
         },
+        get floorTextures () {
+            return state.rung < LADDER.length - 1;
+        },
         configure ({mode, dpr, width, height}) {
             state.mode = MODES.indexOf(mode) === -1 ? 'auto' : mode;
             state.count = 0;

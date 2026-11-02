@@ -25,10 +25,11 @@ ok('junk input still gives a rung', startScale({}) === 0.75);
 
 section('fixed modes');
 const crisp = createScalePolicy({mode: 'crisp', dpr: 1, width: 480, height: 360});
-ok('Crisp is full resolution on any screen', crisp.scale === 1);
+ok('Crisp is full resolution on any screen', crisp.scale === 1 && crisp.floorTextures === true);
 ok('Crisp never steps', feed(crisp, 40, 30) === null && crisp.scale === 1);
 const fast = createScalePolicy({mode: 'fast', dpr: 2, width: 480, height: 360});
-ok('Fast is half resolution on any screen', fast.scale === 0.5);
+ok('Fast is half resolution on any screen and turns floor textures off',
+    fast.scale === 0.5 && fast.floorTextures === false);
 ok('Fast never steps up', feed(fast, 0.1, 0.1) === null && fast.scale === 0.5);
 ok('an unknown mode is Auto', createScalePolicy({mode: 'ultra', dpr: 2}).mode === 'auto');
 
@@ -36,8 +37,10 @@ section('auto steps');
 const auto = createScalePolicy({mode: 'auto', dpr: 2, width: 480, height: 360});
 const slow = (OVER_BUDGET * FRAME) + 2;
 ok('nothing changes before a full window', feed(auto, slow, 8, WINDOW - 1) === null && auto.scale === 1);
-ok('a slow window steps 1 down to 0.75', auto.sample(slow, 8, FRAME) === 0.75 && auto.scale === 0.75);
-ok('the next slow window steps to 0.5', feed(auto, slow, 6) === 0.5);
+ok('a slow window steps 1 down to 0.75 and keeps floor textures on',
+    auto.sample(slow, 8, FRAME) === 0.75 && auto.scale === 0.75 && auto.floorTextures === true);
+ok('the next slow window steps to 0.5 and turns floor textures off',
+    feed(auto, slow, 6) === 0.5 && auto.floorTextures === false);
 ok('there is no rung below 0.5', feed(auto, slow, 4) === null && auto.scale === 0.5);
 const between = ((HEADROOM + OVER_BUDGET) / 2) * FRAME;
 ok('a tick between headroom and budget holds still', feed(auto, between, 1) === null && auto.scale === 0.5);

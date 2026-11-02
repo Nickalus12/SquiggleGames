@@ -77,25 +77,32 @@ const blocks = info.blocks.filter(block => typeof block === 'object');
 const opcodes = blocks.map(block => block.opcode);
 ok('id and name', info.id === 'squiggle3d' && info.name === '3D');
 ok('the opcode list is final', opcodes.join() === ['showView', 'hideView', 'viewOn', 'setViewSetting',
-    'setSurfaceColor', 'showMeAs', 'setMyHeight', 'mouseTurn', 'spriteInSights'].join(), opcodes);
+    'setSurfaceColor', 'setSurfaceTexture', 'setLightFalloff', 'showMeAs', 'setMyHeight', 'glowIn3d',
+    'mouseTurn', 'spriteInSights'].join(), opcodes);
 ok('every opcode has a method', opcodes.every(opcode => typeof ext[opcode] === 'function'));
 const byOp = Object.fromEntries(blocks.map(block => [block.opcode, block]));
 ok('block text follows rev 3', byOp.showView.text === 'show 3D view from [VIEWER]' &&
     byOp.hideView.text === 'hide 3D view' && byOp.viewOn.text === '3D view on?' &&
     byOp.setViewSetting.text === 'set 3D [SETTING] to [N]' &&
     byOp.setSurfaceColor.text === 'set 3D [SURFACE] color to [COLOR]' &&
+    byOp.setSurfaceTexture.text === 'set 3D [SURFACE] texture to [TEXTURE]' &&
+    byOp.setLightFalloff.text === 'set 3D light falloff to [N]' &&
     byOp.showMeAs.text === 'show me in 3D as [LOOK]' && byOp.setMyHeight.text === 'set my 3D height to [N]' &&
+    byOp.glowIn3d.text === 'glow in 3D with [COLOR] radius [N]' &&
     byOp.mouseTurn.text === 'turn with the mouse in 3D [ONOFF]' && byOp.spriteInSights.text === 'sprite in my sights');
 ok('block types', byOp.viewOn.blockType === 'Boolean' && byOp.spriteInSights.blockType === 'reporter' &&
-    byOp.showView.blockType === 'command');
+    byOp.showView.blockType === 'command' && byOp.setSurfaceTexture.blockType === 'command' &&
+    byOp.setLightFalloff.blockType === 'command' && byOp.glowIn3d.blockType === 'command');
 ok('sprite-only blocks are filtered', byOp.showMeAs.filter.join() === 'sprite' &&
-    byOp.setMyHeight.filter.join() === 'sprite');
+    byOp.setMyHeight.filter.join() === 'sprite' && byOp.glowIn3d.filter.join() === 'sprite');
 const items = name => info.menus[name].items.map(item => (typeof item === 'object' ? item.text : item)).join('/');
 ok('menus read as rev 3', items('settings') === 'field of view/fog/eye height' &&
     items('surfaces') === 'floor/ceiling' && items('looks') === 'a picture/8 views/nothing' &&
-    items('onOff') === 'on/off');
+    items('onOff') === 'on/off' && info.menus.surfaceTextures.items === 'surfaceTextureMenu');
 ok('the viewer menu lists me and the sprites', JSON.stringify(ext.viewerMenu()) ===
     '[{"text":"me","value":"_myself_"},"Hero","Coin"]');
+ok('the surface texture menu starts with color and sky', JSON.stringify(ext.surfaceTextureMenu()) ===
+    '[{"text":"color","value":"color"},{"text":"sky","value":"sky"}]');
 
 section('opcodes');
 ok('nothing is owned before the view shows', world.ownDrawables().length === 0);
@@ -117,6 +124,22 @@ ext.setSurfaceColor({SURFACE: 'floor', COLOR: '#010203'});
 ext.setSurfaceColor({SURFACE: 'ceiling', COLOR: '#040506'});
 ok('set 3D color sets floor and ceiling', view.colors().floor === pixel(1, 2, 3) &&
     view.colors().ceiling === pixel(4, 5, 6));
+ext.setSurfaceTexture({SURFACE: 'floor', TEXTURE: 'grate'});
+ext.setSurfaceTexture({SURFACE: 'ceiling', TEXTURE: 'sky'});
+ok('set 3D texture sets floor and ceiling modes', view.surfaceTextures().floor === 'grate' &&
+    view.surfaceTextures().ceiling === 'sky');
+ext.setSurfaceTexture({SURFACE: 'floor', TEXTURE: 'color'});
+ext.setSurfaceTexture({SURFACE: 'ceiling', TEXTURE: 'color'});
+ext.setLightFalloff({N: '42'});
+ok('set 3D light falloff casts and clamps', view.lightFalloff() === 42);
+ext.setLightFalloff({N: 0});
+ext.glowIn3d({COLOR: '#ff8800', N: 4}, util(coin));
+ok('glow in 3D sets color and radius on the calling sprite', view.glowOf(coin) &&
+    view.glowOf(coin).color === pixel(0xff, 0x88, 0x00) && view.glowOf(coin).radius === 4);
+ext.glowIn3d({COLOR: '#ff8800', N: 4}, util(runtime.getTargetForStage()));
+ok('stage cannot glow in 3D', view.glowOf(runtime.getTargetForStage()) === null);
+ext.glowIn3d({COLOR: '#ff8800', N: 0}, util(coin));
+ok('glow radius 0 clears the sprite glow', view.glowOf(coin) === null);
 ext.showMeAs({LOOK: 'picture'}, util(coin));
 ok('show me in 3D as a picture', view.lookOf(coin) === 1);
 ext.showMeAs({LOOK: 'views'}, util(coin));

@@ -2,10 +2,12 @@ const FORMAT = 1;
 const MAX_SIZE = 128;
 const MAX_TEXTURES = 48;
 const MAX_LEVELS = 32;
+const DEFAULT_LIGHT = 100;
+const MAX_LIGHT = 100;
 const TILE_SIZES = Object.freeze([16, 32]);
 const DEFAULT_ORIGIN = Object.freeze([-240, 180]);
-const LAYERS = Object.freeze(['back', 'main', 'front']);
-const GRIDS = Object.freeze(['back', 'main', 'front', 'flags']);
+const LAYERS = Object.freeze(['back', 'main', 'front', 'floor', 'ceiling']);
+const GRIDS = Object.freeze(['back', 'main', 'front', 'floor', 'ceiling', 'light', 'flags']);
 
 const FLAGS = Object.freeze({
     solid: 1,
@@ -14,6 +16,14 @@ const FLAGS = Object.freeze({
     goal: 8
 });
 const FLAG_MASK = 15;
+
+const maxForLayer = layer => {
+    if (layer === 'flags') return FLAG_MASK;
+    if (layer === 'light') return MAX_LIGHT;
+    return MAX_TEXTURES;
+};
+
+const defaultForLayer = layer => (layer === 'light' ? DEFAULT_LIGHT : 0);
 
 const int = (value, fallback) => {
     const n = Math.floor(Number(value));
@@ -50,14 +60,15 @@ const encodeRow = (cells, start, length) => {
     return out;
 };
 
-const decodeRow = (row, cells, start, length, max) => {
+const decodeRow = (row, cells, start, length, max, fallback) => {
+    const def = typeof fallback === 'number' ? fallback : 0;
     if (!Array.isArray(row)) return false;
     let at = 0;
     for (let i = 0; i + 1 < row.length && at < length; i += 2) {
-        const value = int(row[i], 0);
+        const value = int(row[i], def);
         const count = int(row[i + 1], 0);
         if (count <= 0) continue;
-        const v = value >= 0 && value <= max ? value : 0;
+        const v = value >= 0 && value <= max ? value : def;
         const end = Math.min(length, at + count);
         cells.fill(v, start + at, start + end);
         at = end;
@@ -71,10 +82,12 @@ const encodeGrid = (cells, cols, rows) => {
     return out;
 };
 
-const decodeGrid = (rowsData, cols, rows, max) => {
+const decodeGrid = (rowsData, cols, rows, max, fallback) => {
+    const def = typeof fallback === 'number' ? fallback : 0;
     const cells = new Uint8Array(cols * rows);
+    if (def) cells.fill(def);
     if (!Array.isArray(rowsData)) return cells;
-    for (let r = 0; r < rows; r++) decodeRow(rowsData[r], cells, r * cols, cols, max);
+    for (let r = 0; r < rows; r++) decodeRow(rowsData[r], cells, r * cols, cols, max, def);
     return cells;
 };
 
@@ -107,8 +120,7 @@ const createGrid = spec => {
     };
     const layers = source.layers || {};
     GRIDS.forEach(name => {
-        const max = name === 'flags' ? FLAG_MASK : MAX_TEXTURES;
-        grid[name] = decodeGrid(layers[name], cols, rows, max);
+        grid[name] = decodeGrid(layers[name], cols, rows, maxForLayer(name), defaultForLayer(name));
     });
     return grid;
 };
@@ -149,14 +161,13 @@ const indexOf = (grid, col, row) => (inside(grid, col, row) ? (row * grid.cols) 
 
 const getCell = (grid, layer, col, row) => {
     const i = indexOf(grid, col, row);
-    return i === -1 ? 0 : grid[layer][i];
+    return i === -1 ? defaultForLayer(layer) : grid[layer][i];
 };
 
 const setCell = (grid, layer, col, row, value) => {
     const i = indexOf(grid, col, row);
     if (i === -1 || GRIDS.indexOf(layer) === -1) return false;
-    const max = layer === 'flags' ? FLAG_MASK : MAX_TEXTURES;
-    const v = clampInt(value, 0, max, 0);
+    const v = clampInt(value, 0, maxForLayer(layer), defaultForLayer(layer));
     if (grid[layer][i] === v) return false;
     grid[layer][i] = v;
     return true;
@@ -264,6 +275,8 @@ export {
     MAX_SIZE,
     MAX_TEXTURES,
     MAX_LEVELS,
+    DEFAULT_LIGHT,
+    MAX_LIGHT,
     TILE_SIZES,
     DEFAULT_ORIGIN,
     LAYERS,

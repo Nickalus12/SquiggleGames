@@ -43,6 +43,15 @@ setCell(grid, 'main', 4, 4, lava);
 setCell(grid, 'flags', 7, 2, FLAGS.goal);
 setCell(grid, 'back', 1, 1, 2);
 setCell(grid, 'front', 2, 3, 1);
+setCell(grid, 'floor', 3, 2, 1);
+setCell(grid, 'ceiling', 4, 1, 2);
+setCell(grid, 'light', 5, 2, 45);
+ok('light defaults to 100 and clamps 0..100', getCell(grid, 'light', 0, 0) === 100 &&
+    getCell(grid, 'light', 5, 2) === 45 &&
+    (setCell(grid, 'light', 6, 2, 250), getCell(grid, 'light', 6, 2) === 100) &&
+    getCell(grid, 'light', -1, 0) === 100);
+ok('floor and ceiling default to 0 and store tile ids', getCell(grid, 'floor', 0, 0) === 0 &&
+    getCell(grid, 'floor', 3, 2) === 1 && getCell(grid, 'ceiling', 4, 1) === 2);
 ok('setCell reports no change for the same value', setCell(grid, 'main', 0, 5, wall) === false);
 ok('setCell refuses cells outside', setCell(grid, 'main', 10, 0, 1) === false);
 ok('tile flags come from the texture', (flagsAt(grid, 3, 5) & FLAGS.solid) !== 0);
@@ -53,8 +62,17 @@ const stored = encodeLevel(grid);
 const json = JSON.stringify(stored);
 const again = createGrid(JSON.parse(json));
 ok('level round trips through JSON', JSON.stringify(encodeLevel(again)) === json);
-ok('every layer survives', ['back', 'main', 'front', 'flags'].every(name =>
+ok('every layer survives', ['back', 'main', 'front', 'floor', 'ceiling', 'light', 'flags'].every(name =>
     again[name].every((v, i) => v === grid[name][i])));
+const legacyRaw = JSON.parse(json);
+delete legacyRaw.layers.floor;
+delete legacyRaw.layers.ceiling;
+delete legacyRaw.layers.light;
+const legacyGrid = createGrid(legacyRaw);
+ok('legacy level without floor, ceiling, or light loads with flat defaults',
+    legacyGrid.floor.every(v => v === 0) &&
+    legacyGrid.ceiling.every(v => v === 0) &&
+    legacyGrid.light.every(v => v === 100));
 ok('stored rows are RLE', stored.layers.main[5].length === 2 && stored.layers.main[5][1] === 10);
 const big = createGrid({cols: 128, rows: 128, tileSize: 16});
 for (let i = 0; i < 128; i++) setCell(big, 'main', i, i, 1);

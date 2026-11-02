@@ -1,11 +1,11 @@
 import log from '../log.js';
 import {FLAGS, flagsAt} from './tilemap.js';
-import {browserCanvas, browserImageLoader, costumeFor} from './textures.js';
+import {browserCanvas, browserImageLoader, costumeByName, costumeFor, defaultSkyTexture} from './textures.js';
 import {chainHook} from './world.js';
 import {createScalePolicy} from './render-scale.js';
 import {readGameSettings} from '../game-settings.js';
-import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, WIDTH, clampEye, clampFog, clampFov, createFrame, facingIndex, gridMap,
-    parseColor, pickCrosshair, pixel, render} from './raycast.js';
+import {DEFAULT_EYE, DEFAULT_FOV, HEIGHT, MAX_LIGHTS, WIDTH, clampEye, clampFalloff, clampFog, clampFov,
+    createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, render} from './raycast.js';
 
 const PROJECT_LOADED = 'PROJECT_LOADED';
 const PROJECT_STOP_ALL = 'PROJECT_STOP_ALL';
@@ -41,6 +41,13 @@ const num = (value, fallback) => {
 const clamp01 = value => Math.min(1, Math.max(0, num(value, 1)));
 
 const mix = (h, value) => Math.imul(h ^ (Math.round(value * 1024) | 0), 16777619) >>> 0;
+
+const mixStr = (h, text) => {
+    const s = String(text || '');
+    let out = mix(h, s.length);
+    for (let i = 0; i < s.length; i++) out = mix(out, s.charCodeAt(i));
+    return out;
+};
 
 const wrapAngle = angle => {
     let a = ((((angle + 180) % 360) + 360) % 360) - 180;
@@ -199,10 +206,15 @@ const createView3d = (runtime, world, options) => {
         fov: DEFAULT_FOV,
         fog: 0,
         eye: DEFAULT_EYE,
+        lightFalloff: 0,
         floor: DEFAULT_FLOOR,
         ceiling: DEFAULT_CEILING,
+        floorTexture: 'color',
+        ceilingTexture: 'color',
+        floorTextures: null,
         looks: new WeakMap(),
         elevations: new WeakMap(),
+        glows: new WeakMap(),
         ghosted: new WeakSet(),
         views: new WeakMap(),
         mouseTurn: false,
@@ -237,6 +249,7 @@ const createView3d = (runtime, world, options) => {
         tileset: '',
         count: -1,
         textures: [],
+        named: Object.create(null),
         serial: 0,
         wallKey: 0,
         holder: null
@@ -257,13 +270,21 @@ const createView3d = (runtime, world, options) => {
         fov: DEFAULT_FOV,
         fog: 0,
         eye: DEFAULT_EYE,
+        lightFalloff: 0,
         floor: DEFAULT_FLOOR,
         ceiling: DEFAULT_CEILING,
+        floorMode: 'color',
+        ceilingMode: 'color',
+        floorTex: null,
+        ceilingTex: null,
+        skyTex: defaultSkyTexture(),
+        floorTextures: true,
         wallColor: () => WALL_COLOR,
         texture: value => cache.textures[value] || null,
         wallKey: 0,
         sprites: [],
-        spriteCount: 0
+        spriteCount: 0,
+        lights: []
     };
 
     const grid = () => (world && world.current() ? world.current() : null);
@@ -292,18 +313,31 @@ const createView3d = (runtime, world, options) => {
         const count = tilesetCount(level);
         if (level === cache.grid && revision() === cache.revision && pixels.loaded() === cache.loads &&
             tileset === cache.tileset && count === cache.count) return;
-        if (level !== cache.grid) scene.map = level ? gridMap(level, flagsAt, FLAGS.solid) : FREE_MAP;
+        if (level !== cache.grid || revision() !== cache.revision) {
+            scene.map = level ? gridMap(level, flagsAt, FLAGS.solid) : FREE_MAP;
+        }
         cache.grid = level;
         cache.revision = revision();
         cache.loads = pixels.loaded();
         cache.tileset = tileset;
         cache.count = count;
         cache.textures.length = 0;
+        cache.named = Object.create(null);
         scene.wallKey = ++cache.wallKey;
         if (!level) return;
         for (let value = 1; value <= level.tiles.length; value++) {
             cache.textures[value] = pixels.get(costumeFor(runtime, level, value), 'wall');
         }
+    };
+
+    const textureByName = (level, name) => {
+        if (!name || name === 'color' || name === 'sky') return null;
+        const key = String(name);
+        if (key in cache.named) return cache.named[key];
+        const costume = costumeByName(runtime, level, key);
+        const tex = costume ? pixels.get(costume, 'wall') : null;
+        if (tex) cache.named[key] = tex;
+        return tex;
     };
 
     const ownerOf = target => (!target.isOriginal && target.sprite ? target.sprite.clones[0] : null);
@@ -319,6 +353,15 @@ const createView3d = (runtime, world, options) => {
         const owner = ownerOf(target);
         return owner && state.elevations.has(owner) ? state.elevations.get(owner) : 0;
     };
+
+    const glowOf = target => {
+        if (!target) return null;
+        if (state.glows.has(target)) return state.glows.get(target);
+        const owner = ownerOf(target);
+        return owner && state.glows.has(owner) ? state.glows.get(owner) : null;
+    };
+
+    const floorTexturesOn = () => (state.floorTextures === null ? policy.floorTextures : Boolean(state.floorTextures));
 
     const shows = target => !target.isStage && target !== state.viewer && target.visible !== false &&
         lookOf(target) !== LOOKS.nothing;
@@ -426,18 +469,31 @@ const createView3d = (runtime, world, options) => {
         let h = 2166136261;
         h = mix(h, frame.width);
         h = mix(h, frame.height);
+        h = mix(h, frame.horizon);
         h = mix(h, viewer.x);
         h = mix(h, viewer.y);
         h = mix(h, viewer.direction);
         h = mix(h, state.fov);
         h = mix(h, state.fog);
         h = mix(h, state.eye);
+        h = mix(h, state.lightFalloff);
         h = mix(h, state.floor);
         h = mix(h, state.ceiling);
+        h = mixStr(h, state.floorTexture);
+        h = mixStr(h, state.ceilingTexture);
+        h = mix(h, floorTexturesOn() ? 1 : 0);
         h = mix(h, serialOf(grid()));
         h = mix(h, revision());
         h = mix(h, pixels.loaded());
         for (const target of runtime.targets) {
+            if (target.isStage || target.visible === false) continue;
+            const glow = glowOf(target);
+            if (glow && glow.radius > 0) {
+                h = mix(h, target.x);
+                h = mix(h, target.y);
+                h = mix(h, glow.color);
+                h = mix(h, glow.radius);
+            }
             if (!shows(target)) continue;
             h = mix(h, target.x);
             h = mix(h, target.y);
@@ -453,8 +509,28 @@ const createView3d = (runtime, world, options) => {
     const collect = space => {
         const viewer = poseOf();
         const pool = scene.sprites;
+        const lights = scene.lights;
         let n = 0;
+        let lightCount = 0;
         for (const target of runtime.targets) {
+            if (target.isStage || target.visible === false) continue;
+            const u = (target.x - space.origin[0]) / space.tileSize;
+            const v = (space.origin[1] - target.y) / space.tileSize;
+            const glow = glowOf(target);
+            if (glow && glow.radius > 0 && lightCount < MAX_LIGHTS) {
+                const rawR = glow.radius;
+                const tileR = Math.min(16, Math.max(0.5, rawR > 16 ? rawR / space.tileSize : rawR));
+                let lEntry = lights[lightCount];
+                if (!lEntry) {
+                    lEntry = {u: 0, v: 0, color: 0, radius: 0};
+                    lights[lightCount] = lEntry;
+                }
+                lEntry.u = u;
+                lEntry.v = v;
+                lEntry.color = glow.color;
+                lEntry.radius = tileR;
+                lightCount++;
+            }
             if (!shows(target)) continue;
             const costumes = target.getCostumes();
             const costume = lookOf(target) === LOOKS.views ? facingCostume(target, viewer, state.views) :
@@ -463,24 +539,27 @@ const createView3d = (runtime, world, options) => {
             if (!image) continue;
             let entry = pool[n];
             if (!entry) {
-                entry = {name: '', target: null, u: 0, v: 0, image: null, height: 1, elevation: 0};
+                entry = {name: '', target: null, u: 0, v: 0, image: null, height: 1, elevation: 0, glow: false};
                 pool[n] = entry;
             }
             const tall = costume.size ? costume.size[1] : image.height;
             entry.name = target.getName();
             entry.target = target;
-            entry.u = (target.x - space.origin[0]) / space.tileSize;
-            entry.v = (space.origin[1] - target.y) / space.tileSize;
+            entry.u = u;
+            entry.v = v;
             entry.image = image;
             entry.height = Math.max(0.05, Math.min(8, (tall * (num(target.size, 100) / 100)) / space.tileSize));
             entry.elevation = elevationOf(target) / 100;
+            entry.glow = Boolean(glow && glow.radius > 0);
             n++;
         }
         for (let i = n; i < scene.spriteCount; i++) {
             pool[i].image = null;
             pool[i].target = null;
+            pool[i].glow = false;
         }
         scene.spriteCount = n;
+        lights.length = lightCount;
     };
 
     const prepareScene = () => {
@@ -494,8 +573,14 @@ const createView3d = (runtime, world, options) => {
         scene.fov = state.fov;
         scene.fog = state.fog;
         scene.eye = state.eye;
+        scene.lightFalloff = state.lightFalloff;
         scene.floor = state.floor;
         scene.ceiling = state.ceiling;
+        scene.floorMode = state.floorTexture || 'color';
+        scene.ceilingMode = state.ceilingTexture || 'color';
+        scene.floorTex = textureByName(level, scene.floorMode);
+        scene.ceilingTex = textureByName(level, scene.ceilingMode);
+        scene.floorTextures = floorTexturesOn();
         collect(space);
     };
 
@@ -789,7 +874,9 @@ const createView3d = (runtime, world, options) => {
         state = fresh();
         state.scale = scale;
         scene.spriteCount = 0;
+        scene.lights.length = 0;
         cache.grid = false;
+        cache.named = Object.create(null);
         pixels.clear();
     };
 
@@ -838,11 +925,26 @@ const createView3d = (runtime, world, options) => {
             if (name === 'fov') state.fov = clampFov(value);
             else if (name === 'fog') state.fog = clampFog(value);
             else if (name === 'eye') state.eye = clampEye(value);
+            else if (name === 'falloff' || name === 'lightFalloff') state.lightFalloff = clampFalloff(value);
+        },
+        lightFalloff: () => state.lightFalloff,
+        setLightFalloff (value) {
+            state.lightFalloff = clampFalloff(value);
         },
         colors: () => ({floor: state.floor, ceiling: state.ceiling}),
         setSurfaceColor (surface, color) {
             if (surface === 'floor') state.floor = parseColor(color, state.floor);
             else if (surface === 'ceiling') state.ceiling = parseColor(color, state.ceiling);
+        },
+        surfaceTextures: () => ({floor: state.floorTexture, ceiling: state.ceilingTexture}),
+        setSurfaceTexture (surface, texture) {
+            const val = String(texture || '').trim() || 'color';
+            if (surface === 'floor') state.floorTexture = val;
+            else if (surface === 'ceiling') state.ceilingTexture = val;
+        },
+        floorTextures: floorTexturesOn,
+        setFloorTextures (on) {
+            state.floorTextures = on === null || typeof on === 'undefined' ? null : Boolean(on);
         },
         setLook (target, look) {
             if (!target || target.isStage || !(look in LOOKS)) return;
@@ -854,6 +956,17 @@ const createView3d = (runtime, world, options) => {
             state.elevations.set(target, Math.max(MIN_ELEVATION, Math.min(MAX_ELEVATION, num(percent, 0))));
         },
         elevationOf,
+        setGlow (target, color, radius) {
+            if (!target || target.isStage) return;
+            const r = num(radius, 0);
+            if (r <= 0) {
+                state.glows.delete(target);
+                return;
+            }
+            const c = parseColor(color, pixel(0x22, 0xd3, 0xee));
+            state.glows.set(target, {color: c, radius: r});
+        },
+        glowOf,
         mouseTurn: () => state.mouseTurn,
         setMouseTurn (on) {
             state.mouseTurn = !!on;

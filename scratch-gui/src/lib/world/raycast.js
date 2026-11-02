@@ -1,3 +1,5 @@
+import {defaultSkyTexture} from './textures.js';
+
 const WIDTH = 240;
 const HEIGHT = 180;
 const DEFAULT_FOV = 66;
@@ -7,6 +9,7 @@ const DEFAULT_EYE = 50;
 const MIN_EYE = 5;
 const MAX_EYE = 95;
 const MAX_STEPS = 512;
+const MAX_LIGHTS = 16;
 const SIDE_SHADE = 0.72;
 const ALPHA_MIN = 128;
 const OPAQUE = 0xff000000;
@@ -75,6 +78,156 @@ const clampFog = fog => {
 const fogEnd = fog => FOG_FAR - (FOG_SLOPE * fog);
 
 const fogFactor = (fog, dist) => (fog > 0 ? Math.min(1, dist / fogEnd(fog)) : 0);
+
+const clampFalloff = falloff => {
+    const n = Number(falloff);
+    if (!Number.isFinite(n)) return 0;
+    return clamp(n, 0, 100);
+};
+
+const lightFalloffFactor = (falloff, dist) => {
+    if (!(falloff > 0) || !(dist > 0)) return 1;
+    return 1 / (1 + (dist * falloff * 0.01));
+};
+
+const horizonOf = (frame, scene) => {
+    const h = frame.height || HEIGHT;
+    if (scene && typeof scene.horizon === 'number' && Number.isFinite(scene.horizon)) return scene.horizon;
+    if (typeof frame.horizon === 'number' && Number.isFinite(frame.horizon)) return frame.horizon;
+    return h / 2;
+};
+
+const createLightBuffer = (cols, rows) => {
+    const c = Math.max(1, cols | 0);
+    const r = Math.max(1, rows | 0);
+    const size = c * r;
+    const level = new Uint16Array(size);
+    level.fill(256);
+    return {
+        cols: c,
+        rows: r,
+        level,
+        glowR: new Uint8Array(size),
+        glowG: new Uint8Array(size),
+        glowB: new Uint8Array(size),
+        active: false,
+        version: 0,
+        _lightHash: -1,
+        _lightCount: -1,
+        _prevU: new Float64Array(MAX_LIGHTS),
+        _prevV: new Float64Array(MAX_LIGHTS),
+        _prevR: new Float64Array(MAX_LIGHTS),
+        _prevC: new Uint32Array(MAX_LIGHTS)
+    };
+};
+
+const hashBytes = bytes => {
+    if (!bytes) return 0;
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < bytes.length; i++) {
+        h = Math.imul(h ^ bytes[i], 16777619) >>> 0;
+    }
+    return h >>> 0;
+};
+
+const updateLightBuffer = (buf, map, lights) => {
+    if (!buf) return false;
+    const cols = buf.cols | 0;
+    const rows = buf.rows | 0;
+    const mapLight = map && map._light && map._light.length === (cols * rows) ? map._light : null;
+    const hasMapLight = Boolean(mapLight && (map._hasLight || mapLight.some(v => v !== 100)));
+    const raw = Array.isArray(lights) ? lights : [];
+    let count = 0;
+    for (let i = 0; i < raw.length && count < MAX_LIGHTS; i++) {
+        const item = raw[i];
+        if (!item || !(item.radius > 0)) continue;
+        count++;
+    }
+    if (!hasMapLight && count === 0) {
+        if (buf._lightCount === 0 && !buf.active) return false;
+        buf.level.fill(256);
+        buf.glowR.fill(0);
+        buf.glowG.fill(0);
+        buf.glowB.fill(0);
+        buf.active = false;
+        buf._lightCount = 0;
+        buf._lightHash = 0;
+        buf.version++;
+        return true;
+    }
+    const mapHash = hasMapLight ? hashBytes(mapLight) : 0;
+    let same = count === buf._lightCount && mapHash === buf._lightHash;
+    let slot = 0;
+    for (let i = 0; i < raw.length && slot < MAX_LIGHTS; i++) {
+        const item = raw[i];
+        if (!item || !(item.radius > 0)) continue;
+        const u = Number(item.u) || 0;
+        const v = Number(item.v) || 0;
+        const r = Number(item.radius) || 0;
+        const c = (item.color >>> 0);
+        if (same && (u !== buf._prevU[slot] || v !== buf._prevV[slot] ||
+            r !== buf._prevR[slot] || c !== buf._prevC[slot])) {
+            same = false;
+        }
+        buf._prevU[slot] = u;
+        buf._prevV[slot] = v;
+        buf._prevR[slot] = r;
+        buf._prevC[slot] = c;
+        slot++;
+    }
+    if (same) return false;
+    buf._lightCount = count;
+    buf._lightHash = mapHash;
+    const {level, glowR, glowG, glowB} = buf;
+    const size = cols * rows;
+    if (mapLight) {
+        for (let i = 0; i < size; i++) {
+            level[i] = (((mapLight[i] * 256) / 100) + 0.5) | 0;
+        }
+    } else {
+        level.fill(256);
+    }
+    glowR.fill(0);
+    glowG.fill(0);
+    glowB.fill(0);
+    for (let i = 0; i < count; i++) {
+        const lu = buf._prevU[i];
+        const lv = buf._prevV[i];
+        const lightRad = buf._prevR[i];
+        const col = buf._prevC[i];
+        const lr = col & 255;
+        const lg = (col >>> 8) & 255;
+        const lb = (col >>> 16) & 255;
+        const lum = Math.max(lr, lg, lb);
+        const c0 = Math.max(0, Math.floor(lu - lightRad) | 0);
+        const c1 = Math.min(cols - 1, Math.floor(lu + lightRad) | 0);
+        const r0 = Math.max(0, Math.floor(lv - lightRad) | 0);
+        const r1 = Math.min(rows - 1, Math.floor(lv + lightRad) | 0);
+        const invRad = 1 / lightRad;
+        for (let row = r0; row <= r1; row++) {
+            const dv = (row + 0.5) - lv;
+            const rowOff = row * cols;
+            for (let c = c0; c <= c1; c++) {
+                const du = (c + 0.5) - lu;
+                const dist = Math.hypot(du, dv);
+                if (dist >= lightRad) continue;
+                const atten = 1 - (dist * invRad);
+                const idx = rowOff + c;
+                const nextLvl = level[idx] + ((atten * lum) | 0);
+                level[idx] = nextLvl > 320 ? 320 : nextLvl;
+                const gr = glowR[idx] + ((atten * lr * 0.45) | 0);
+                const gg = glowG[idx] + ((atten * lg * 0.45) | 0);
+                const gb = glowB[idx] + ((atten * lb * 0.45) | 0);
+                glowR[idx] = gr > 255 ? 255 : gr;
+                glowG[idx] = gg > 255 ? 255 : gg;
+                glowB[idx] = gb > 255 ? 255 : gb;
+            }
+        }
+    }
+    buf.active = true;
+    buf.version++;
+    return true;
+};
 
 const basis = (direction, fov, out, width) => {
     const a = rad(direction);
@@ -180,6 +333,7 @@ const createFrame = (width, height) => {
     return {
         width: w,
         height: h,
+        horizon: h / 2,
         pixels: new Uint32Array(w * h),
         zbuffer: new Float32Array(w),
         heights: new Float32Array(w),
@@ -191,10 +345,14 @@ const createFrame = (width, height) => {
         colOk: new Uint8Array(w),
         colSide: new Uint8Array(w),
         colVal: new Int32Array(w),
+        colCol: new Int32Array(w),
+        colRow: new Int32Array(w),
         colDist: new Float64Array(w),
         colWallX: new Float64Array(w),
         colRx: new Float64Array(w),
         colRy: new Float64Array(w),
+        skyTx: new Int32Array(w),
+        lightBuffer: null,
         hit: {dist: 0, side: 0, col: 0, row: 0, wallX: 0, value: 0},
         view: {dir: {x: 0, y: 0}, plane: {x: 0, y: 0}, focal: 0},
         placed: [],
@@ -205,6 +363,7 @@ const createFrame = (width, height) => {
         _surfFog: -1,
         _surfEye: -1,
         _surfFocal: -1,
+        _surfHorizon: NaN,
         _rayMap: null,
         _rayWallKey: -1,
         _rayU: NaN,
@@ -217,38 +376,283 @@ const createFrame = (width, height) => {
         _bgFloor: -1,
         _bgCeiling: -1,
         _bgTex: null,
-        _bgWallColor: null
+        _bgWallColor: null,
+        _bgHorizon: NaN,
+        _bgFalloff: NaN,
+        _bgFloorMode: '',
+        _bgCeilingMode: '',
+        _bgFloorTex: null,
+        _bgCeilTex: null,
+        _bgFloorTextures: true,
+        _bgLightVersion: -1
     };
 };
 
 const eyeOf = scene => clampEye(typeof scene.eye === 'number' ? scene.eye : DEFAULT_EYE) / 100;
 
-const drawSurfaces = (frame, scene, view, eye, fog, fogColor) => {
-    const {pixels, rowColors} = frame;
+const drawSurfaces = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
+    const {pixels, rowColors, skyTx} = frame;
     const w = frame.width || WIDTH;
     const h = frame.height || HEIGHT;
-    if (frame._surfCeiling !== scene.ceiling || frame._surfFloor !== scene.floor ||
-        frame._surfFog !== fog || frame._surfEye !== eye || frame._surfFocal !== view.focal) {
-        frame._surfCeiling = scene.ceiling;
-        frame._surfFloor = scene.floor;
-        frame._surfFog = fog;
-        frame._surfEye = eye;
-        frame._surfFocal = view.focal;
-        const half = h / 2;
-        for (let y = 0; y < h; y++) {
-            let color;
-            if (fog <= 0) {
-                color = y < half ? scene.ceiling : scene.floor;
-            } else if (y < half) {
-                color = tint(scene.ceiling, 1, fogFactor(fog, ((1 - eye) * view.focal) / (half - y - 0.5)), fogColor);
-            } else {
-                color = tint(scene.floor, 1, fogFactor(fog, (eye * view.focal) / (y + 0.5 - half)), fogColor);
+    const half = horizonOf(frame, scene);
+    const allowTex = scene.floorTextures !== false;
+    const map = scene.map || null;
+    const cols = map && map.cols ? (map.cols | 0) : 0;
+    const rows = map && map.rows ? (map.rows | 0) : 0;
+    const floorGrid = allowTex && map && map._hasFloor ? map._floor : null;
+    const ceilGrid = allowTex && map && map._hasCeiling ? map._ceiling : null;
+    const getTex = scene.texture || null;
+    const floorMode = scene.floorMode || 'color';
+    const ceilMode = scene.ceilingMode || 'color';
+    const globalFloorTex = allowTex && floorMode !== 'color' ? (scene.floorTex || null) : null;
+    const isSky = ceilMode === 'sky';
+    const globalCeilTex = !isSky && allowTex && ceilMode !== 'color' ? (scene.ceilingTex || null) : null;
+    const falloff = clampFalloff(scene.lightFalloff);
+    const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const lightLevel = hasLightBuf ? lightBuf.level : null;
+    const glowR = hasLightBuf ? lightBuf.glowR : null;
+    const glowG = hasLightBuf ? lightBuf.glowG : null;
+    const glowB = hasLightBuf ? lightBuf.glowB : null;
+
+    if (!floorGrid && !ceilGrid && !globalFloorTex && !globalCeilTex && !isSky && !hasLightBuf && falloff <= 0) {
+        if (frame._surfCeiling !== scene.ceiling || frame._surfFloor !== scene.floor ||
+            frame._surfFog !== fog || frame._surfEye !== eye ||
+            frame._surfFocal !== view.focal || frame._surfHorizon !== half) {
+            frame._surfCeiling = scene.ceiling;
+            frame._surfFloor = scene.floor;
+            frame._surfFog = fog;
+            frame._surfEye = eye;
+            frame._surfFocal = view.focal;
+            frame._surfHorizon = half;
+            for (let y = 0; y < h; y++) {
+                let color;
+                if (fog <= 0) {
+                    color = y < half ? scene.ceiling : scene.floor;
+                } else if (y < half) {
+                    const dist = ((1 - eye) * view.focal) / Math.max(0.25, (half - y) - 0.5);
+                    color = tint(scene.ceiling, 1, fogFactor(fog, dist), fogColor);
+                } else {
+                    const dist = (eye * view.focal) / Math.max(0.25, (y + 0.5) - half);
+                    color = tint(scene.floor, 1, fogFactor(fog, dist), fogColor);
+                }
+                rowColors[y] = color;
             }
-            rowColors[y] = color;
+        }
+        for (let y = 0, rowStart = 0; y < h; y++, rowStart += w) {
+            pixels.fill(rowColors[y], rowStart, rowStart + w);
+        }
+        return;
+    }
+
+    frame._surfHorizon = NaN;
+    const pu = scene.player ? scene.player.u : 0;
+    const pv = scene.player ? scene.player.v : 0;
+    const {dir: vDir, plane} = view;
+    const rx0 = vDir.x - plane.x;
+    const ry0 = vDir.y - plane.y;
+    const rx1 = vDir.x + plane.x;
+    const ry1 = vDir.y + plane.y;
+    const invW = 1 / w;
+
+    let skyTex = null;
+    let skyData = null;
+    let skyW = 0;
+    let skyH = 0;
+    if (isSky) {
+        skyTex = scene.skyTex || defaultSkyTexture();
+        skyData = skyTex.data;
+        skyW = skyTex.width | 0;
+        skyH = skyTex.height | 0;
+        const dirDeg = scene.player ? Number(scene.player.direction) || 0 : 0;
+        const yawOffset = (((dirDeg % 360) + 360) % 360) / 360;
+        const fovTurn = clampFov(scene.fov) / 360;
+        for (let x = 0; x < w; x++) {
+            const u = yawOffset + (((x / w) - 0.5) * fovTurn);
+            const wrapped = u - Math.floor(u);
+            skyTx[x] = ((wrapped * skyW) | 0) % skyW;
         }
     }
-    for (let y = 0, rowStart = 0; y < h; y++, rowStart += w) {
-        pixels.fill(rowColors[y], rowStart, rowStart + w);
+
+    const skyEnd = Math.max(0, Math.min(h, Math.floor(half)));
+    if (isSky && skyData) {
+        const denomH = Math.max(1, half);
+        for (let y = 0; y < skyEnd; y++) {
+            let ty = Math.floor((y / denomH) * skyH) | 0;
+            if (ty < 0) ty = 0;
+            else if (ty >= skyH) ty = skyH - 1;
+            const skyRow = ty * skyW;
+            const rowStart = y * w;
+            for (let x = 0; x < w; x++) {
+                pixels[rowStart + x] = (skyData[skyRow + skyTx[x]] | OPAQUE) >>> 0;
+            }
+        }
+    }
+
+    const startY = isSky ? skyEnd : 0;
+    for (let y = startY; y < h; y++) {
+        const isCeil = y < half;
+        const denom = isCeil ? ((half - y) - 0.5) : ((y + 0.5) - half);
+        const rowStart = y * w;
+        const baseColor = isCeil ? scene.ceiling : scene.floor;
+        if (denom <= 0.25) {
+            pixels.fill(fog > 0 ? fogColor : baseColor, rowStart, rowStart + w);
+            continue;
+        }
+        const dist = ((isCeil ? (1 - eye) : eye) * view.focal) / denom;
+        const f = fogFactor(fog, dist);
+        const kFall = lightFalloffFactor(falloff, dist);
+        const surfGrid = isCeil ? ceilGrid : floorGrid;
+        const surfGlobalTex = isCeil ? globalCeilTex : globalFloorTex;
+        if (!surfGrid && !surfGlobalTex && !hasLightBuf) {
+            const flat = (f <= 0 && kFall >= 0.999) ? baseColor : tint(baseColor, kFall, f, fogColor);
+            pixels.fill(flat, rowStart, rowStart + w);
+            continue;
+        }
+        if (f >= 0.999) {
+            pixels.fill(fogColor, rowStart, rowStart + w);
+            continue;
+        }
+        const stepU = (dist * (rx1 - rx0)) * invW;
+        const stepV = (dist * (ry1 - ry0)) * invW;
+        const u0 = pu + (dist * rx0) + (0.5 * stepU);
+        const v0 = pv + (dist * ry0) + (0.5 * stepV);
+        let fu = Math.floor(u0 * 65536) | 0;
+        let fv = Math.floor(v0 * 65536) | 0;
+        const dfu = Math.round(stepU * 65536) | 0;
+        const dfv = Math.round(stepV * 65536) | 0;
+
+        const baseKeep = ((kFall * (1 - f) * 256) + 0.5) | 0;
+        const oneMinusF256 = (((1 - f) * 256) + 0.5) | 0;
+        const fogR = ((fogColor & 255) * f) | 0;
+        const fogG = (((fogColor >>> 8) & 255) * f) | 0;
+        const fogB = (((fogColor >>> 16) & 255) * f) | 0;
+
+        let prevCol = -999999;
+        let prevRow = -999999;
+        let cellTexData = surfGlobalTex ? surfGlobalTex.data : null;
+        let cellTexW = surfGlobalTex ? (surfGlobalTex.width | 0) : 0;
+        let cellTexH = surfGlobalTex ? (surfGlobalTex.height | 0) : 0;
+        let cellTex64 = cellTexW === 64 && cellTexH === 64;
+        let cellKeep = baseKeep;
+        let cellAddR = fogR;
+        let cellAddG = fogG;
+        let cellAddB = fogB;
+        let cellFlatColor = 0;
+        let prevC = -1;
+        let prevOut = 0;
+
+        if (!surfGrid && !hasLightBuf && cellTexData) {
+            if (cellKeep >= 255 && f <= 0) {
+                if (cellTex64) {
+                    for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                        const tIdx = ((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63);
+                        pixels[rowStart + x] = (cellTexData[tIdx] | OPAQUE) >>> 0;
+                    }
+                } else {
+                    for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                        const tx = ((fu & 0xffff) * cellTexW) >>> 16;
+                        const ty = ((fv & 0xffff) * cellTexH) >>> 16;
+                        pixels[rowStart + x] = (cellTexData[(ty * cellTexW) + tx] | OPAQUE) >>> 0;
+                    }
+                }
+            } else if (cellTex64) {
+                for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                    const tIdx = ((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63);
+                    const c = cellTexData[tIdx];
+                    if (c !== prevC) {
+                        prevC = c;
+                        const r = ((((c & 255) * cellKeep) >> 8) + fogR) & 255;
+                        const g = (((((c >>> 8) & 255) * cellKeep) >> 8) + fogG) & 255;
+                        const b = (((((c >>> 16) & 255) * cellKeep) >> 8) + fogB) & 255;
+                        prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                    }
+                    pixels[rowStart + x] = prevOut;
+                }
+            } else {
+                for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+                    const tx = ((fu & 0xffff) * cellTexW) >>> 16;
+                    const ty = ((fv & 0xffff) * cellTexH) >>> 16;
+                    const c = cellTexData[(ty * cellTexW) + tx];
+                    if (c !== prevC) {
+                        prevC = c;
+                        const r = ((((c & 255) * cellKeep) >> 8) + fogR) & 255;
+                        const g = (((((c >>> 8) & 255) * cellKeep) >> 8) + fogG) & 255;
+                        const b = (((((c >>> 16) & 255) * cellKeep) >> 8) + fogB) & 255;
+                        prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                    }
+                    pixels[rowStart + x] = prevOut;
+                }
+            }
+            continue;
+        }
+
+        const baseR = baseColor & 255;
+        const baseG = (baseColor >>> 8) & 255;
+        const baseB = (baseColor >>> 16) & 255;
+
+        for (let x = 0; x < w; x++, fu = (fu + dfu) | 0, fv = (fv + dfv) | 0) {
+            const col = fu >> 16;
+            const row = fv >> 16;
+            if (col !== prevCol || row !== prevRow) {
+                prevCol = col;
+                prevRow = row;
+                prevC = -1;
+                const inBounds = col >= 0 && row >= 0 && col < cols && row < rows;
+                const cellIdx = inBounds ? ((row * cols) + col) : -1;
+                let tex = surfGlobalTex;
+                if (surfGrid && cellIdx >= 0) {
+                    const val = surfGrid[cellIdx];
+                    if (val > 0 && getTex) tex = getTex(val) || surfGlobalTex;
+                }
+                if (tex) {
+                    cellTexData = tex.data;
+                    cellTexW = tex.width | 0;
+                    cellTexH = tex.height | 0;
+                    cellTex64 = cellTexW === 64 && cellTexH === 64;
+                } else {
+                    cellTexData = null;
+                }
+                if (hasLightBuf && cellIdx >= 0) {
+                    cellKeep = (baseKeep * lightLevel[cellIdx]) >> 8;
+                    cellAddR = fogR + ((glowR[cellIdx] * oneMinusF256) >> 8);
+                    cellAddG = fogG + ((glowG[cellIdx] * oneMinusF256) >> 8);
+                    cellAddB = fogB + ((glowB[cellIdx] * oneMinusF256) >> 8);
+                } else {
+                    cellKeep = baseKeep;
+                    cellAddR = fogR;
+                    cellAddG = fogG;
+                    cellAddB = fogB;
+                }
+                if (!cellTexData) {
+                    let r = ((baseR * cellKeep) >> 8) + cellAddR;
+                    let g = ((baseG * cellKeep) >> 8) + cellAddG;
+                    let b = ((baseB * cellKeep) >> 8) + cellAddB;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+                    if (b > 255) b = 255;
+                    cellFlatColor = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+                }
+            }
+            if (!cellTexData) {
+                pixels[rowStart + x] = cellFlatColor;
+                continue;
+            }
+            const tIdx = cellTex64 ?
+                (((fv >>> 4) & 0xfc0) | ((fu >>> 10) & 63)) :
+                (((((fv & 0xffff) * cellTexH) >>> 16) * cellTexW) + ((((fu & 0xffff) * cellTexW) >>> 16)));
+            const c = cellTexData[tIdx];
+            if (c !== prevC) {
+                prevC = c;
+                let r = (((c & 255) * cellKeep) >> 8) + cellAddR;
+                let g = ((((c >>> 8) & 255) * cellKeep) >> 8) + cellAddG;
+                let b = ((((c >>> 16) & 255) * cellKeep) >> 8) + cellAddB;
+                if (r > 255) r = 255;
+                if (g > 255) g = 255;
+                if (b > 255) b = 255;
+                prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
+            }
+            pixels[rowStart + x] = prevOut;
+        }
     }
 };
 
@@ -263,7 +667,7 @@ const castColumns = (frame, scene, view) => {
         frame._rayU === u && frame._rayV === v && frame._rayDir === dir && frame._rayFov === fov) {
         return true;
     }
-    const {colOk, colSide, colVal, colDist, colWallX, colRx, colRy, hit} = frame;
+    const {colOk, colSide, colVal, colCol, colRow, colDist, colWallX, colRx, colRy, hit} = frame;
     const {dir: vDir, plane} = view;
     const map = scene.map;
     for (let x = 0; x < w; x++) {
@@ -280,6 +684,8 @@ const castColumns = (frame, scene, view) => {
         colOk[x] = 1;
         colSide[x] = h.side;
         colVal[x] = h.value;
+        colCol[x] = h.col;
+        colRow[x] = h.row;
         colDist[x] = h.dist;
         colWallX[x] = h.wallX;
     }
@@ -293,14 +699,24 @@ const castColumns = (frame, scene, view) => {
     return false;
 };
 
-const sampleWalls = (frame, scene, view, eye, fog, fogColor) => {
-    const {pixels, zbuffer, heights, colOk, colSide, colVal, colDist, colWallX, colRx, colRy} = frame;
+const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
+    const {pixels, zbuffer, heights, colOk, colSide, colVal, colCol, colRow, colDist, colWallX, colRx, colRy} = frame;
     const {focal} = view;
     const w = frame.width || WIDTH;
     const h = frame.height || HEIGHT;
-    const half = h / 2;
+    const half = horizonOf(frame, scene);
     const getTex = scene.texture;
     const getWallColor = scene.wallColor;
+    const falloff = clampFalloff(scene.lightFalloff);
+    const map = scene.map || null;
+    const cols = map && map.cols ? (map.cols | 0) : 0;
+    const rows = map && map.rows ? (map.rows | 0) : 0;
+    const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const lightLevel = hasLightBuf ? lightBuf.level : null;
+    const glowR = hasLightBuf ? lightBuf.glowR : null;
+    const glowG = hasLightBuf ? lightBuf.glowG : null;
+    const glowB = hasLightBuf ? lightBuf.glowB : null;
+
     for (let x = 0; x < w; x++) {
         if (!colOk[x]) {
             zbuffer[x] = Infinity;
@@ -317,10 +733,32 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor) => {
         const val = colVal[x];
         const side = colSide[x];
         const tex = getTex ? getTex(val) : null;
-        const k = side === 1 ? SIDE_SHADE : 1;
+        let k = (side === 1 ? SIDE_SHADE : 1) * lightFalloffFactor(falloff, dist);
         const f = fogFactor(fog, dist);
+        let addR = 0;
+        let addG = 0;
+        let addB = 0;
+        if (hasLightBuf) {
+            const rx = colRx[x];
+            const ry = colRy[x];
+            const adjCol = side === 0 ? (colCol[x] + (rx > 0 ? -1 : 1)) : colCol[x];
+            const adjRow = side === 1 ? (colRow[x] + (ry > 0 ? -1 : 1)) : colRow[x];
+            if (adjCol >= 0 && adjRow >= 0 && adjCol < cols && adjRow < rows) {
+                const lIdx = (adjRow * cols) + adjCol;
+                k *= lightLevel[lIdx] / 256;
+                const oneMinusF = 1 - f;
+                addR = glowR[lIdx] * oneMinusF;
+                addG = glowG[lIdx] * oneMinusF;
+                addB = glowB[lIdx] * oneMinusF;
+            }
+        }
         if (!tex) {
-            const flat = tint(getWallColor ? getWallColor(val) : pixel(160, 160, 170), k, f, fogColor);
+            const base = getWallColor ? getWallColor(val) : pixel(160, 160, 170);
+            const keep = k * (1 - f);
+            const r = Math.min(255, ((base & 255) * keep) + ((fogColor & 255) * f) + addR);
+            const g = Math.min(255, (((base >>> 8) & 255) * keep) + (((fogColor >>> 8) & 255) * f) + addG);
+            const b = Math.min(255, (((base >>> 16) & 255) * keep) + (((fogColor >>> 16) & 255) * f) + addB);
+            const flat = pixel(r, g, b);
             for (let y = y0, pixIdx = (y0 * w) + x; y < y1; y++, pixIdx += w) pixels[pixIdx] = flat;
             continue;
         }
@@ -335,7 +773,7 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor) => {
         else if (tx >= texW) tx = texW - 1;
         const step = texH / lineH;
         let ty = (y0 - top) * step;
-        const plain = k === 1 && f === 0;
+        const plain = k === 1 && f === 0 && addR === 0 && addG === 0 && addB === 0;
         const texData = tex.data;
         let pixIdx = (y0 * w) + x;
         if (plain) {
@@ -350,9 +788,9 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor) => {
             }
         } else {
             const keep = k * (1 - f);
-            const fogR = (fogColor & 255) * f;
-            const fogG = ((fogColor >>> 8) & 255) * f;
-            const fogB = ((fogColor >>> 16) & 255) * f;
+            const fogR = ((fogColor & 255) * f) + addR;
+            const fogG = (((fogColor >>> 8) & 255) * f) + addG;
+            const fogB = (((fogColor >>> 16) & 255) * f) + addB;
             let prevC = -1;
             let prevOut = 0;
             for (let y = y0; y < y1; y++, pixIdx += w) {
@@ -364,9 +802,12 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor) => {
                 if ((c >>> 24) < ALPHA_MIN) continue;
                 if (c !== prevC) {
                     prevC = c;
-                    const r = (((c & 255) * keep) + fogR) & 255;
-                    const g = ((((c >>> 8) & 255) * keep) + fogG) & 255;
-                    const b = ((((c >>> 16) & 255) * keep) + fogB) & 255;
+                    let r = (((c & 255) * keep) + fogR) | 0;
+                    let g = ((((c >>> 8) & 255) * keep) + fogG) | 0;
+                    let b = ((((c >>> 16) & 255) * keep) + fogB) | 0;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+                    if (b > 255) b = 255;
                     prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
                 }
                 pixels[pixIdx] = prevOut;
@@ -406,15 +847,24 @@ const sortFarToNear = (placed, count) => {
     }
 };
 
-const drawSprites = (frame, scene, view, eye, fog, fogColor) => {
+const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
     const {pixels, zbuffer, placed, result, syRow} = frame;
     const {dir, plane, focal} = view;
     const fw = frame.width || WIDTH;
     const fh = frame.height || HEIGHT;
     const det = (plane.x * dir.y) - (dir.x * plane.y);
     const inv = 1 / det;
-    const half = fh / 2;
+    const half = horizonOf(frame, scene);
     const centre = fw >> 1;
+    const falloff = clampFalloff(scene.lightFalloff);
+    const map = scene.map || null;
+    const cols = map && map.cols ? (map.cols | 0) : 0;
+    const rows = map && map.rows ? (map.rows | 0) : 0;
+    const hasLightBuf = Boolean(lightBuf && lightBuf.active && cols > 0 && rows > 0);
+    const lightLevel = hasLightBuf ? lightBuf.level : null;
+    const glowR = hasLightBuf ? lightBuf.glowR : null;
+    const glowG = hasLightBuf ? lightBuf.glowG : null;
+    const glowB = hasLightBuf ? lightBuf.glowB : null;
     const sprites = scene.sprites || [];
     const total = typeof scene.spriteCount === 'number' ? scene.spriteCount : sprites.length;
     let count = 0;
@@ -453,20 +903,36 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor) => {
         const imgHMax = imgH - 1;
         const imgData = img.data;
         for (let y = y0; y < y1; y++) {
-            let sy = Math.floor(((y + 0.5 - top) / h) * imgH) | 0;
+            let sy = Math.floor((((y + 0.5) - top) / h) * imgH) | 0;
             if (sy < 0) sy = 0;
             else if (sy > imgHMax) sy = imgHMax;
             syRow[y] = sy * imgW;
         }
         const f = fogFactor(fog, depth);
-        const plain = f === 0;
-        const keep = 1 - f;
-        const fogR = (fogColor & 255) * f;
-        const fogG = ((fogColor >>> 8) & 255) * f;
-        const fogB = ((fogColor >>> 16) & 255) * f;
+        let k = sprite.glow ? 1 : lightFalloffFactor(falloff, depth);
+        let addR = 0;
+        let addG = 0;
+        let addB = 0;
+        if (hasLightBuf && !sprite.glow) {
+            const sc = Math.floor(sprite.u) | 0;
+            const sr = Math.floor(sprite.v) | 0;
+            if (sc >= 0 && sr >= 0 && sc < cols && sr < rows) {
+                const lIdx = (sr * cols) + sc;
+                k *= lightLevel[lIdx] / 256;
+                const oneMinusF = 1 - f;
+                addR = glowR[lIdx] * oneMinusF;
+                addG = glowG[lIdx] * oneMinusF;
+                addB = glowB[lIdx] * oneMinusF;
+            }
+        }
+        const plain = f === 0 && k === 1 && addR === 0 && addG === 0 && addB === 0;
+        const keep = k * (1 - f);
+        const fogR = ((fogColor & 255) * f) + addR;
+        const fogG = (((fogColor >>> 8) & 255) * f) + addG;
+        const fogB = (((fogColor >>> 16) & 255) * f) + addB;
         for (let x = x0; x < x1; x++) {
             if (depth >= zbuffer[x]) continue;
-            let sx = Math.floor(((x + 0.5 - left) / w) * imgW) | 0;
+            let sx = Math.floor((((x + 0.5) - left) / w) * imgW) | 0;
             if (sx < 0) sx = 0;
             else if (sx > imgWMax) sx = imgWMax;
             let drew = false;
@@ -486,9 +952,12 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor) => {
                     if ((c >>> 24) < ALPHA_MIN) continue;
                     if (c !== prevC) {
                         prevC = c;
-                        const r = (((c & 255) * keep) + fogR) & 255;
-                        const g = ((((c >>> 8) & 255) * keep) + fogG) & 255;
-                        const b = ((((c >>> 16) & 255) * keep) + fogB) & 255;
+                        let r = (((c & 255) * keep) + fogR) | 0;
+                        let g = ((((c >>> 8) & 255) * keep) + fogG) | 0;
+                        let b = ((((c >>> 16) & 255) * keep) + fogB) | 0;
+                        if (r > 255) r = 255;
+                        if (g > 255) g = 255;
+                        if (b > 255) b = 255;
                         prevOut = (OPAQUE | (b << 16) | (g << 8) | r) >>> 0;
                     }
                     pixels[pixIdx] = prevOut;
@@ -510,7 +979,7 @@ const pickCrosshair = (frame, scene) => {
     const fh = frame.height || HEIGHT;
     const view = basis(scene.player.direction, scene.fov, frame.view, fw);
     const eye = eyeOf(scene);
-    const half = fh / 2;
+    const half = horizonOf(frame, scene);
     const centre = fw >> 1;
     const camX = ((2 * (centre + 0.5)) / fw) - 1;
     const rx0 = view.dir.x + (view.plane.x * camX);
@@ -547,10 +1016,10 @@ const pickCrosshair = (frame, scene) => {
         if (y0 >= y1) continue;
         const imgW = img.width | 0;
         const imgH = img.height | 0;
-        const sx = clamp(Math.floor(((centre + 0.5 - left) / w) * imgW) | 0, 0, imgW - 1);
+        const sx = clamp(Math.floor((((centre + 0.5) - left) / w) * imgW) | 0, 0, imgW - 1);
         const imgData = img.data;
         for (let y = y0; y < y1; y++) {
-            const sy = clamp(Math.floor(((y + 0.5 - top) / h) * imgH) | 0, 0, imgH - 1);
+            const sy = clamp(Math.floor((((y + 0.5) - top) / h) * imgH) | 0, 0, imgH - 1);
             if ((imgData[(sy * imgW) + sx] >>> 24) >= ALPHA_MIN) {
                 crosshair = sprite.name;
                 target = sprite.target || null;
@@ -567,7 +1036,28 @@ const render = (frame, scene) => {
     const view = basis(scene.player.direction, scene.fov, frame.view, fw);
     const eye = eyeOf(scene);
     const fog = clampFog(scene.fog);
+    const falloff = clampFalloff(scene.lightFalloff);
+    const horizon = horizonOf(frame, scene);
     const fogColor = mixColors(scene.floor, scene.ceiling);
+    const floorMode = scene.floorMode || 'color';
+    const ceilingMode = scene.ceilingMode || 'color';
+    const floorTex = scene.floorTex || null;
+    const ceilTex = scene.ceilingTex || null;
+    const floorTextures = scene.floorTextures !== false;
+    const map = scene.map || null;
+    const cols = map && map.cols ? (map.cols | 0) : 0;
+    const rows = map && map.rows ? (map.rows | 0) : 0;
+    let lightBuf = frame.lightBuffer;
+    if (cols > 0 && rows > 0) {
+        if (!lightBuf || lightBuf.cols !== cols || lightBuf.rows !== rows) {
+            lightBuf = createLightBuffer(cols, rows);
+            frame.lightBuffer = lightBuf;
+        }
+        updateLightBuffer(lightBuf, map, scene.lights);
+    } else {
+        lightBuf = null;
+    }
+    const lightVersion = lightBuf ? lightBuf.version : -1;
     const result = frame.result;
     const timings = frame.timings;
     result.crosshair = '';
@@ -578,7 +1068,11 @@ const render = (frame, scene) => {
     if (rayCached && frame._bgValid &&
         frame._bgEye === eye && frame._bgFog === fog &&
         frame._bgFloor === scene.floor && frame._bgCeiling === scene.ceiling &&
-        frame._bgTex === scene.texture && frame._bgWallColor === scene.wallColor) {
+        frame._bgTex === scene.texture && frame._bgWallColor === scene.wallColor &&
+        frame._bgHorizon === horizon && frame._bgFalloff === falloff &&
+        frame._bgFloorMode === floorMode && frame._bgCeilingMode === ceilingMode &&
+        frame._bgFloorTex === floorTex && frame._bgCeilTex === ceilTex &&
+        frame._bgFloorTextures === floorTextures && frame._bgLightVersion === lightVersion) {
         const t0 = timings ? now() : 0;
         frame.pixels.set(frame.bgPixels);
         frame.zbuffer.set(frame.bgZbuffer);
@@ -590,9 +1084,9 @@ const render = (frame, scene) => {
         }
     } else {
         const t0 = timings ? now() : 0;
-        drawSurfaces(frame, scene, view, eye, fog, fogColor);
+        drawSurfaces(frame, scene, view, eye, fog, fogColor, lightBuf);
         const t1 = timings ? now() : 0;
-        sampleWalls(frame, scene, view, eye, fog, fogColor);
+        sampleWalls(frame, scene, view, eye, fog, fogColor, lightBuf);
         const t2 = timings ? now() : 0;
         if (timings) {
             timings.surfacesMs = t1 - t0;
@@ -609,9 +1103,17 @@ const render = (frame, scene) => {
         frame._bgCeiling = scene.ceiling;
         frame._bgTex = scene.texture;
         frame._bgWallColor = scene.wallColor;
+        frame._bgHorizon = horizon;
+        frame._bgFalloff = falloff;
+        frame._bgFloorMode = floorMode;
+        frame._bgCeilingMode = ceilingMode;
+        frame._bgFloorTex = floorTex;
+        frame._bgCeilTex = ceilTex;
+        frame._bgFloorTextures = floorTextures;
+        frame._bgLightVersion = lightVersion;
     }
     const tSpr0 = timings ? now() : 0;
-    drawSprites(frame, scene, view, eye, fog, fogColor);
+    drawSprites(frame, scene, view, eye, fog, fogColor, lightBuf);
     if (timings) timings.spritesMs = now() - tSpr0;
     result.ahead = frame.zbuffer[fw >> 1];
     return result;
@@ -619,10 +1121,22 @@ const render = (frame, scene) => {
 
 const gridMap = (grid, flagsAt, solidBit) => {
     const hasDirect = Boolean(grid && grid.main && grid.flags && Array.isArray(grid.tiles));
+    const floor = hasDirect && grid.floor ? grid.floor : null;
+    const ceiling = hasDirect && grid.ceiling ? grid.ceiling : null;
+    const light = hasDirect && grid.light ? grid.light : null;
+    const hasFloor = Boolean(floor && floor.some(v => v > 0));
+    const hasCeiling = Boolean(ceiling && ceiling.some(v => v > 0));
+    const hasLight = Boolean(light && light.some(v => v !== 100));
     return {
         cols: grid.cols,
         rows: grid.rows,
         _main: hasDirect ? grid.main : null,
+        _floor: floor,
+        _ceiling: ceiling,
+        _light: light,
+        _hasFloor: hasFloor,
+        _hasCeiling: hasCeiling,
+        _hasLight: hasLight,
         _flags: hasDirect ? grid.flags : null,
         _tiles: hasDirect ? grid.tiles : null,
         _bit: solidBit | 0,
@@ -631,6 +1145,18 @@ const gridMap = (grid, flagsAt, solidBit) => {
         wallValue: (col, row) => {
             if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return 0;
             return grid.main[(row * grid.cols) + col];
+        },
+        floorValue: (col, row) => {
+            if (!floor || col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return 0;
+            return floor[(row * grid.cols) + col];
+        },
+        ceilingValue: (col, row) => {
+            if (!ceiling || col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return 0;
+            return ceiling[(row * grid.cols) + col];
+        },
+        lightValue: (col, row) => {
+            if (!light || col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return 100;
+            return light[(row * grid.cols) + col];
         }
     };
 };
@@ -654,6 +1180,7 @@ export {
     DEFAULT_EYE,
     MIN_EYE,
     MAX_EYE,
+    MAX_LIGHTS,
     FACINGS,
     pixel,
     shade,
@@ -663,6 +1190,11 @@ export {
     clampFov,
     clampEye,
     clampFog,
+    clampFalloff,
+    lightFalloffFactor,
+    horizonOf,
+    createLightBuffer,
+    updateLightBuffer,
     fogEnd,
     fogFactor,
     wrapDegrees,
@@ -670,6 +1202,7 @@ export {
     castRay,
     facingIndex,
     createFrame,
+    drawSurfaces,
     pickCrosshair,
     render,
     gridMap,

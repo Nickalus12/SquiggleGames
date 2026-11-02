@@ -1,4 +1,4 @@
-import {FLAG_MASK, GRIDS, LAYERS, MAX_SIZE, MAX_TEXTURES} from './tilemap.js';
+import {FLAG_MASK, GRIDS, LAYERS, MAX_LIGHT, MAX_SIZE, MAX_TEXTURES} from './tilemap.js';
 
 const PATCH_TYPE = 'tilemap-patch';
 const DELAY = 50;
@@ -91,7 +91,8 @@ const readPatch = patch => {
     const layers = {};
     for (const layer of Object.keys(patch.layers)) {
         if (GRIDS.indexOf(layer) === -1) return null;
-        const cells = decodeSegments(patch.layers[layer], layer === 'flags' ? FLAG_MASK : palette.length);
+        const maxVal = layer === 'flags' ? FLAG_MASK : (layer === 'light' ? MAX_LIGHT : palette.length);
+        const cells = decodeSegments(patch.layers[layer], maxVal);
         if (!cells) return null;
         layers[layer] = cells;
     }
@@ -242,7 +243,7 @@ const createTilemapSync = options => {
                     continue;
                 }
                 let value = cell.value;
-                if (layer !== 'flags' && value > 0) {
+                if (LAYERS.indexOf(layer) !== -1 && value > 0) {
                     value = local[value - 1];
                     if (!value) continue;
                 }

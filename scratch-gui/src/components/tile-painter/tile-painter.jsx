@@ -68,6 +68,8 @@ const messages = defineMessages({
     back: {id: 'sq.painter.layer.back', defaultMessage: 'Back', description: 'Tile layer behind sprites'},
     main: {id: 'sq.painter.layer.main', defaultMessage: 'Main', description: 'Tile layer sprites stand on'},
     front: {id: 'sq.painter.layer.front', defaultMessage: 'Front', description: 'Tile layer in front of sprites'},
+    floor: {id: 'sq.painter.layer.floor', defaultMessage: 'Floor', description: 'Tile layer for 3D floors'},
+    ceiling: {id: 'sq.painter.layer.ceiling', defaultMessage: 'Ceiling', description: 'Tile layer for 3D ceilings'},
     layer: {id: 'sq.painter.layer', defaultMessage: 'Layer', description: 'Label for the tile layer choice'},
     tiles: {id: 'sq.painter.tiles', defaultMessage: 'Tiles', description: 'Label for the tile palette'},
     flagKind: {

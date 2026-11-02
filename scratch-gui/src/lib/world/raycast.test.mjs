@@ -4,8 +4,10 @@ const {FLAGS, addTexture, createGrid, flagsAt, setCell} = await import('./tilema
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
-const {WIDTH, HEIGHT, basis, castRay, createFrame, facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
-    fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, wrapDegrees} = ray;
+const {WIDTH, HEIGHT, MAX_LIGHTS, basis, castRay, createFrame, createLightBuffer, updateLightBuffer,
+    drawSurfaces, facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
+    fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, clampFalloff,
+    lightFalloffFactor, horizonOf, wrapDegrees} = ray;
 
 const room = (cols, rows, options) => {
     const opts = options || {};
@@ -470,6 +472,124 @@ section('golden frame hash and column caching');
     const picked = pickCrosshair(frame, aimed);
     ok('pickCrosshair matches full render crosshair at centre column',
         full.crosshair === 'Scout' && picked.crosshair === full.crosshair, [full.crosshair, picked.crosshair]);
+
+    const floorTex = {width: 64, height: 64, data: new Uint32Array(64 * 64)};
+    for (let i = 0; i < floorTex.data.length; i++) {
+        floorTex.data[i] = pixel(40 + (i & 31), 60 + ((i >> 6) & 31), 90 + ((i * 3) & 31));
+    }
+    setCell(grid, 'floor', 8, 10, 1);
+    setCell(grid, 'light', 8, 9, 50);
+    const litScene = Object.assign({}, scene, {
+        map: mapOf(grid),
+        floorMode: 'brick',
+        ceilingMode: 'sky',
+        floorTex,
+        lightFalloff: 20,
+        lights: [{u: 8.5, v: 9.5, color: pixel(0x22, 0xd3, 0xee), radius: 3}]
+    });
+    const litFrame = createFrame(320, 180);
+    render(litFrame, litScene);
+    const litGolden = hashPixels(litFrame.pixels);
+    ok('textured floor + sky + lighting scene matches golden pixel hash',
+        litGolden !== golden && litGolden > 0, litGolden.toString(16));
+    render(litFrame, litScene);
+    ok('cached background preserves textured + sky + lighting golden pixel hash',
+        hashPixels(litFrame.pixels) === litGolden);
+}
+
+section('floor caster, sky, lighting, and horizon pure functions');
+{
+    const frame = createFrame(120, 90);
+    ok('createFrame sets horizon to h / 2', frame.horizon === 45);
+    ok('horizonOf reads frame.horizon or scene.horizon',
+        horizonOf(frame, {}) === 45 && horizonOf(frame, {horizon: 30}) === 30);
+
+    const view = basis(90, 66, frame.view, 120);
+    const redFloor = solidImage(64, 64, pixel(220, 20, 30));
+    const greenCeil = solidImage(64, 64, pixel(20, 210, 40));
+    drawSurfaces(frame, {
+        player: {u: 4.5, v: 4.5, direction: 90},
+        fov: 66,
+        floor: pixel(10, 10, 10),
+        ceiling: pixel(20, 20, 20),
+        floorMode: 'tile_a',
+        ceilingMode: 'tile_b',
+        floorTex: redFloor,
+        ceilingTex: greenCeil,
+        floorTextures: true
+    }, view, 0.5, 0, pixel(15, 15, 15), null);
+    ok('drawSurfaces samples ceiling texture above horizon and floor texture below',
+        frame.pixels[10 * 120 + 60] === pixel(20, 210, 40) &&
+        frame.pixels[80 * 120 + 60] === pixel(220, 20, 30));
+
+    drawSurfaces(frame, {
+        player: {u: 4.5, v: 4.5, direction: 90},
+        fov: 66,
+        floor: pixel(10, 10, 10),
+        ceiling: pixel(20, 20, 20),
+        floorMode: 'tile_a',
+        ceilingMode: 'tile_b',
+        floorTex: redFloor,
+        ceilingTex: greenCeil,
+        floorTextures: false
+    }, view, 0.5, 0, pixel(15, 15, 15), null);
+    ok('floorTextures false falls back to flat colours',
+        frame.pixels[10 * 120 + 60] === pixel(20, 20, 20) &&
+        frame.pixels[80 * 120 + 60] === pixel(10, 10, 10));
+
+    drawSurfaces(frame, {
+        player: {u: 4.5, v: 4.5, direction: 0},
+        fov: 66,
+        floor: pixel(10, 10, 10),
+        ceiling: pixel(20, 20, 20),
+        ceilingMode: 'sky'
+    }, view, 0.5, 0, pixel(15, 15, 15), null);
+    const skyRow0 = frame.pixels.slice(12 * 120, 13 * 120);
+    drawSurfaces(frame, {
+        player: {u: 4.5, v: 4.5, direction: 90},
+        fov: 66,
+        floor: pixel(10, 10, 10),
+        ceiling: pixel(20, 20, 20),
+        ceilingMode: 'sky'
+    }, view, 0.5, 0, pixel(15, 15, 15), null);
+    const skyRow90 = frame.pixels.slice(12 * 120, 13 * 120);
+    ok('sky ceiling scrolls horizontally when yaw changes',
+        skyRow0.some((p, idx) => p !== skyRow90[idx]));
+
+    frame.horizon = 25;
+    drawSurfaces(frame, {
+        player: {u: 4.5, v: 4.5, direction: 0},
+        fov: 66,
+        floor: pixel(100, 110, 120),
+        ceiling: pixel(10, 20, 30)
+    }, view, 0.5, 0, pixel(50, 50, 50), null);
+    ok('shifting frame.horizon moves the ceiling/floor boundary',
+        frame.pixels[24 * 120] === pixel(10, 20, 30) &&
+        frame.pixels[25 * 120] === pixel(100, 110, 120));
+    frame.horizon = 45;
+
+    const lGrid = createGrid({cols: 8, rows: 8});
+    setCell(lGrid, 'light', 2, 2, 50);
+    const lMap = mapOf(lGrid);
+    const buf = createLightBuffer(8, 8);
+    const firstUpdate = updateLightBuffer(buf, lMap, [{u: 4.5, v: 4.5, color: pixel(255, 128, 0), radius: 2.5}]);
+    const v1 = buf.version;
+    const secondUpdate = updateLightBuffer(buf, lMap, [{u: 4.5, v: 4.5, color: pixel(255, 128, 0), radius: 2.5}]);
+    ok('light buffer updates once and skips recomputing when nothing moved',
+        firstUpdate === true && secondUpdate === false && buf.version === v1);
+    ok('per-tile light scales cell brightness and sprite glow adds light at its cell',
+        buf.level[(2 * 8) + 2] === 128 && buf.level[(4 * 8) + 4] > 256 && buf.glowR[(4 * 8) + 4] > 0);
+    const twenty = Array.from({length: 20}, (_, i) => ({
+        u: (i % 8) + 0.5,
+        v: Math.floor(i / 8) + 0.5,
+        color: pixel(200, 200, 200),
+        radius: 1.5
+    }));
+    updateLightBuffer(buf, lMap, twenty);
+    ok('sprite glow lights cap at 16', buf._lightCount === MAX_LIGHTS && MAX_LIGHTS === 16);
+    ok('lightFalloffFactor and clampFalloff behave monotonically',
+        clampFalloff(-5) === 0 && clampFalloff(180) === 100 &&
+        lightFalloffFactor(0, 10) === 1 && lightFalloffFactor(50, 4) < lightFalloffFactor(50, 2));
 }
 
 done();

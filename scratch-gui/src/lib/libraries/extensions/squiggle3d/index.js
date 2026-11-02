@@ -70,6 +70,23 @@ class Squiggle3dBlocks {
                         COLOR: {type: 'color', defaultValue: '#5b4b3d'}
                     }
                 },
+                {
+                    opcode: 'setSurfaceTexture',
+                    blockType: 'command',
+                    text: 'set 3D [SURFACE] texture to [TEXTURE]',
+                    arguments: {
+                        SURFACE: {type: 'string', menu: 'surfaces', defaultValue: 'floor'},
+                        TEXTURE: {type: 'string', menu: 'surfaceTextures', defaultValue: 'color'}
+                    }
+                },
+                {
+                    opcode: 'setLightFalloff',
+                    blockType: 'command',
+                    text: 'set 3D light falloff to [N]',
+                    arguments: {
+                        N: {type: 'number', defaultValue: 0}
+                    }
+                },
                 '---',
                 {
                     opcode: 'showMeAs',
@@ -84,6 +101,16 @@ class Squiggle3dBlocks {
                     text: 'set my 3D height to [N]',
                     filter: ['sprite'],
                     arguments: {N: {type: 'number', defaultValue: 0}}
+                },
+                {
+                    opcode: 'glowIn3d',
+                    blockType: 'command',
+                    text: 'glow in 3D with [COLOR] radius [N]',
+                    filter: ['sprite'],
+                    arguments: {
+                        COLOR: {type: 'color', defaultValue: '#22d3ee'},
+                        N: {type: 'number', defaultValue: 3}
+                    }
                 },
                 '---',
                 {
@@ -108,6 +135,10 @@ class Squiggle3dBlocks {
                     acceptReporters: false,
                     items: [{text: 'floor', value: 'floor'}, {text: 'ceiling', value: 'ceiling'}]
                 },
+                surfaceTextures: {
+                    acceptReporters: true,
+                    items: 'surfaceTextureMenu'
+                },
                 looks: {
                     acceptReporters: false,
                     items: [
@@ -126,6 +157,23 @@ class Squiggle3dBlocks {
             .filter(target => target.isOriginal && !target.isStage)
             .map(target => target.getName());
         return [{text: 'me', value: MYSELF}].concat(names);
+    }
+
+    surfaceTextureMenu () {
+        const base = [
+            {text: 'color', value: 'color'},
+            {text: 'sky', value: 'sky'}
+        ];
+        const level = this.world && typeof this.world.current === 'function' ? this.world.current() : null;
+        if (!level || !Array.isArray(level.tiles)) return base;
+        const seen = new Set(['color', 'sky']);
+        for (const tile of level.tiles) {
+            const name = tile && tile.name ? String(tile.name) : '';
+            if (!name || seen.has(name)) continue;
+            seen.add(name);
+            base.push({text: name, value: name});
+        }
+        return base;
     }
 
     showView (args, util) {
@@ -151,12 +199,24 @@ class Squiggle3dBlocks {
         this.view.setSurfaceColor(str(args.SURFACE), str(args.COLOR));
     }
 
+    setSurfaceTexture (args) {
+        this.view.setSurfaceTexture(str(args.SURFACE), str(args.TEXTURE));
+    }
+
+    setLightFalloff (args) {
+        this.view.setLightFalloff(args.N);
+    }
+
     showMeAs (args, util) {
         this.view.setLook(util.target, str(args.LOOK));
     }
 
     setMyHeight (args, util) {
         this.view.setElevation(util.target, args.N);
+    }
+
+    glowIn3d (args, util) {
+        this.view.setGlow(util.target, str(args.COLOR), args.N);
     }
 
     mouseTurn (args) {

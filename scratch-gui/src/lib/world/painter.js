@@ -1,9 +1,9 @@
-import {FLAGS, cellAt, cellCenter, getCell, inside} from './tilemap.js';
+import {DEFAULT_LIGHT, FLAGS, cellAt, cellCenter, getCell, inside} from './tilemap.js';
 
 const BOXED = Object.freeze(['rect', 'bounds']);
 
 const TOOLS = Object.freeze(['paint', 'erase', 'fill', 'rect', 'pick', 'flag', 'spawn', 'bounds']);
-const PAINT_LAYERS = Object.freeze(['back', 'main', 'front']);
+const PAINT_LAYERS = Object.freeze(['back', 'main', 'front', 'floor', 'ceiling']);
 const FLAG_NAMES = Object.freeze(Object.keys(FLAGS));
 const ORIGIN = 'painter';
 const MAX_UNDO = 100;
@@ -172,12 +172,12 @@ const createPainter = options => {
     };
 
     const valueFor = (tool, settings, current) => {
-        if (tool === 'erase') return 0;
+        if (tool === 'erase') return settings.layer === 'light' ? DEFAULT_LIGHT : 0;
         if (tool === 'flag') {
             const bit = FLAGS[settings.flag] || FLAGS.solid;
             return settings.flagOn ? (current | bit) : (current & ~bit);
         }
-        return settings.tile;
+        return settings.layer === 'light' && typeof settings.light === 'number' ? settings.light : settings.tile;
     };
 
     const layerFor = (tool, settings) => (tool === 'flag' ? 'flags' : settings.layer);

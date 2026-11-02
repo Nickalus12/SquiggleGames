@@ -61,13 +61,14 @@ const cellsOf = (world, layer) => {
     for (let row = 0; row < grid.rows; row++) {
         for (let col = 0; col < grid.cols; col++) {
             const v = getCell(grid, layer, col, row);
-            out.push(layer === 'flags' || !v ? v : grid.tiles[v - 1].name);
+            out.push(layer === 'flags' || layer === 'light' || !v ? v : grid.tiles[v - 1].name);
         }
     }
     return out.join();
 };
 
-const same = (a, b) => ['back', 'main', 'front', 'flags'].every(layer => cellsOf(a.world, layer) === cellsOf(b.world, layer));
+const same = (a, b) => ['back', 'main', 'front', 'floor', 'ceiling', 'light', 'flags']
+    .every(layer => cellsOf(a.world, layer) === cellsOf(b.world, layer));
 
 section('rle segments');
 const segs = encodeSegments([
@@ -94,6 +95,9 @@ ok('a missing base is rejected', readPatch(Object.assign({}, good, {base: '1'}))
 ok('a palette entry without a name is rejected', readPatch(Object.assign({}, good, {palette: [{flags: 1}]})) === null);
 ok('flags values go up to the flag mask', readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, 15, 1]]}})) &&
     readPatch(Object.assign({}, good, {layers: {flags: [[0, 0, 16, 1]]}})) === null);
+ok('floor, ceiling, and light layers validate properly',
+    readPatch(Object.assign({}, good, {layers: {floor: [[0, 0, 1, 2]], ceiling: [[0, 0, 1, 2]], light: [[0, 0, 80, 2]]}})) !== null &&
+    readPatch(Object.assign({}, good, {layers: {light: [[0, 0, 101, 1]]}})) === null);
 
 section('local edits coalesce at 50 ms');
 const a = await peer('alice');

@@ -290,6 +290,19 @@ view.setSurfaceColor('ceiling', 'bad');
 runtime._step();
 ok('a floor colour applies, a bad ceiling keeps the old one',
     view.frame.pixels[(HEIGHT - 1) * WIDTH] === pixel(17, 34, 51) && view.frame.pixels[0] === pixel(0x8f, 0xb4, 0xd6));
+view.setSurfaceTexture('floor', 'brick');
+view.setSurfaceTexture('ceiling', 'sky');
+view.setLightFalloff(35);
+view.setGlow(guard, '#22d3ee', 96);
+runtime._step();
+ok('surface textures, light falloff, and sprite glow apply cleanly',
+    view.surfaceTextures().floor === 'brick' && view.surfaceTextures().ceiling === 'sky' &&
+    view.lightFalloff() === 35 && view.glowOf(guard).radius === 96);
+view.setSurfaceTexture('floor', 'color');
+view.setSurfaceTexture('ceiling', 'color');
+view.setLightFalloff(0);
+view.setGlow(guard, '#22d3ee', 0);
+runtime._step();
 
 section('dynamic widescreen and resolution scale');
 runtime.stageWidth = 640;
