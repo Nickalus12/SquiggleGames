@@ -5,7 +5,14 @@ import bindAll from 'lodash.bindall';
 import {connect} from 'react-redux';
 import {closeSettingsModal} from '../reducers/modals';
 import SettingsModalComponent from '../components/tw-settings-modal/settings-modal.jsx';
-import {STAGE_PRESETS, presetFor, clampFramerate, storeGameSettings} from '../lib/game-settings.js';
+import {
+    STAGE_PRESETS,
+    presetFor,
+    clampFramerate,
+    storeGameSettings,
+    readGameSettings,
+    updateGameSettings
+} from '../lib/game-settings.js';
 
 class GameSettingsModal extends React.Component {
     constructor (props) {
@@ -22,8 +29,14 @@ class GameSettingsModal extends React.Component {
             'handleStagePreset',
             'handleStageWidthChange',
             'handleStageHeightChange',
-            'handleDisableCompilerChange'
+            'handleDisableCompilerChange',
+            'handleTouchModeChange',
+            'handleActionLabelChange',
+            'handleHudToggle'
         ]);
+        this.state = {
+            squiggle: readGameSettings(props.vm)
+        };
     }
     store () {
         if (this.props.isEmbedded) return;
@@ -94,18 +107,38 @@ class GameSettingsModal extends React.Component {
             enabled: !e.target.checked
         });
     }
+    handleTouchModeChange (e) {
+        const mode = e.currentTarget.getAttribute('data-touch-mode');
+        if (!mode) return;
+        const next = updateGameSettings(this.props.vm, {touchMode: mode});
+        this.setState({squiggle: next});
+    }
+    handleActionLabelChange (key, value) {
+        const current = readGameSettings(this.props.vm);
+        const labels = Object.assign({}, current.actionLabels);
+        const trimmed = String(value || '').trim()
+            .slice(0, 16);
+        if (trimmed) labels[key] = trimmed;
+        else delete labels[key];
+        const next = updateGameSettings(this.props.vm, {actionLabels: labels});
+        this.setState({squiggle: next});
+    }
+    handleHudToggle (section, checked) {
+        const current = readGameSettings(this.props.vm);
+        const hud = Object.assign({}, current.hud, {[section]: !!checked});
+        const next = updateGameSettings(this.props.vm, {hud});
+        this.setState({squiggle: next});
+    }
     render () {
         const {
-            /* eslint-disable no-unused-vars */
             onClose,
             vm,
             customStageSize,
-            /* eslint-enable no-unused-vars */
             ...props
         } = this.props;
         return (
             <SettingsModalComponent
-                onClose={this.props.onClose}
+                onClose={onClose}
                 onFramerateChange={this.handleFramerateChange}
                 onFramerateValue={this.handleFramerateValue}
                 onHighQualityPenChange={this.handleHighQualityPenChange}
@@ -118,9 +151,15 @@ class GameSettingsModal extends React.Component {
                 onStageWidthChange={this.handleStageWidthChange}
                 onStageHeightChange={this.handleStageHeightChange}
                 onDisableCompilerChange={this.handleDisableCompilerChange}
-                stageWidth={this.props.customStageSize.width}
-                stageHeight={this.props.customStageSize.height}
-                stagePreset={presetFor(this.props.customStageSize.width, this.props.customStageSize.height)}
+                onTouchModeChange={this.handleTouchModeChange}
+                onActionLabelChange={this.handleActionLabelChange}
+                onHudToggle={this.handleHudToggle}
+                touchMode={this.state.squiggle.touchMode}
+                actionLabels={this.state.squiggle.actionLabels}
+                hudSettings={this.state.squiggle.hud}
+                stageWidth={customStageSize.width}
+                stageHeight={customStageSize.height}
+                stagePreset={presetFor(customStageSize.width, customStageSize.height)}
                 {...props}
             />
         );

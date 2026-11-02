@@ -11,6 +11,7 @@ import ToggleButtons from '../toggle-buttons/toggle-buttons.jsx';
 import Controls from '../../containers/controls.jsx';
 import SqIcon from '../sq-icon';
 import {LAYOUT_MODES} from '../../lib/layout-mode';
+import {setTouchControls, touchControlsVisible} from '../../reducers/layout-mode.js';
 import {toggleFocusMode} from '../../reducers/focus-mode.js';
 import {getStageDimensions, getMinWidth} from '../../lib/screen-utils';
 import {STAGE_DISPLAY_SIZES, STAGE_SIZE_MODES} from '../../lib/layout-constants';
@@ -68,6 +69,21 @@ const messages = defineMessages({
         defaultMessage: 'Focus mode',
         description: 'Stage header button that hides the stage and sprite list and floats a small stage over the code',
         id: 'sq.stageHeader.focus'
+    },
+    playTestMessage: {
+        defaultMessage: 'Play Test',
+        description: 'Button to launch full screen Play Test mode from the editor',
+        id: 'sq.stageHeader.playTest'
+    },
+    backToEditorMessage: {
+        defaultMessage: 'Back to Editor',
+        description: 'Button to exit Play Test mode and return to the editor',
+        id: 'sq.stageHeader.backToEditor'
+    },
+    touchPadMessage: {
+        defaultMessage: 'Touch Pad',
+        description: 'Button to toggle on-screen touch controls preview in Play Test mode',
+        id: 'sq.stageHeader.touchPad'
     }
 });
 
@@ -89,6 +105,8 @@ const StageHeaderComponent = function (props) {
         onSetStageFull,
         onOpenSettings,
         onToggleFocus,
+        onToggleTouchControls,
+        touchControlsShown,
         isEmbedded,
         stageSize,
         stageSizeMode,
@@ -100,7 +118,50 @@ const StageHeaderComponent = function (props) {
 
     const stageDimensions = getStageDimensions(stageSize, customStageSize, isFullScreen || isEmbedded);
 
+    const handlePlayTest = () => {
+        if (vm) {
+            if (typeof vm.start === 'function') vm.start();
+            if (typeof vm.greenFlag === 'function') vm.greenFlag();
+        }
+        onSetStageFullScreen();
+    };
+
+    const handleToggleTouchPad = () => {
+        if (onToggleTouchControls) {
+            onToggleTouchControls(!touchControlsShown);
+        }
+    };
+
     if (isFullScreen || isEmbedded) {
+        const playTestToolbar = isFullScreen && !isEmbedded && !isPlayerOnly ? (
+            <div className={styles.playTestUnibar}>
+                <button
+                    type="button"
+                    className={styles.playTestPill}
+                    data-testid="play-test-touch-toggle"
+                    aria-pressed={!!touchControlsShown}
+                    onClick={handleToggleTouchPad}
+                >
+                    {props.intl.formatMessage(messages.touchPadMessage)}
+                </button>
+                <button
+                    type="button"
+                    className={styles.playTestPill}
+                    data-testid="play-test-settings-button"
+                    onClick={onOpenSettings}
+                >
+                    {'Game Settings'}
+                </button>
+                <button
+                    type="button"
+                    className={classNames(styles.playTestPill, styles.playTestBackPill)}
+                    data-testid="play-test-back-button"
+                    onClick={onSetStageUnFullScreen}
+                >
+                    {props.intl.formatMessage(messages.backToEditorMessage)}
+                </button>
+            </div>
+        ) : null;
         const settingsButton = isEmbedded && enableSettingsButton ? (
             <div className={classNames(styles.settingsButton, styles.unselectWrapper)}>
                 <Button
@@ -167,6 +228,7 @@ const StageHeaderComponent = function (props) {
                         className={styles.fullscreenButtonsRow}
                         key="fullscreen" // addons require the HTML element to be not be re-used by in-editor buttons
                     >
+                        {playTestToolbar}
                         {settingsButton}
                         {fullscreenButton}
                     </div>
@@ -252,6 +314,16 @@ const StageHeaderComponent = function (props) {
                     >
                         {stageControls}
                         {focusButton}
+                        {!isPlayerOnly && (
+                            <button
+                                type="button"
+                                className={styles.playTestButton}
+                                data-testid="play-test-button"
+                                onClick={handlePlayTest}
+                            >
+                                {props.intl.formatMessage(messages.playTestMessage)}
+                            </button>
+                        )}
                         <div>
                             <Button
                                 className={styles.stageButton}
@@ -280,11 +352,13 @@ const mapStateToProps = state => ({
     stageSizeMode: state.scratchGui.stageSize.stageSize,
     focusActive: !!(state.scratchGui.focusMode && state.scratchGui.focusMode.active),
     focusAvailable: !!state.scratchGui.focusMode &&
-        state.scratchGui.layoutMode.mode !== LAYOUT_MODES.phone
+        state.scratchGui.layoutMode.mode !== LAYOUT_MODES.phone,
+    touchControlsShown: touchControlsVisible(state.scratchGui.layoutMode)
 });
 
 const mapDispatchToProps = dispatch => ({
-    onToggleFocus: () => dispatch(toggleFocusMode())
+    onToggleFocus: () => dispatch(toggleFocusMode()),
+    onToggleTouchControls: show => dispatch(setTouchControls(show))
 });
 
 StageHeaderComponent.propTypes = {
@@ -306,6 +380,8 @@ StageHeaderComponent.propTypes = {
     onSetStageFull: PropTypes.func.isRequired,
     onOpenSettings: PropTypes.func.isRequired,
     onToggleFocus: PropTypes.func.isRequired,
+    onToggleTouchControls: PropTypes.func,
+    touchControlsShown: PropTypes.bool,
     isEmbedded: PropTypes.bool.isRequired,
     stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)),
     stageSizeMode: PropTypes.oneOf(Object.keys(STAGE_SIZE_MODES)),

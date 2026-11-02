@@ -4,13 +4,15 @@
 
 .monitor-container {
     position: absolute;
-    background: $ui-primary-default;
+    background: var(--sq-scrim, $ui-primary-default);
+    color: var(--sq-text, $text-primary-default);
     z-index: $z-index-monitor;
-    border: 1px solid $ui-black-transparent-default;
-    border-radius: calc($space / 2);
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    font-size: 0.75rem;
-    transition: box-shadow 0.2s;
+    border: 1px solid var(--sq-tint-line-hi, $ui-black-transparent-default);
+    border-radius: var(--sq-radius-pill, 999px);
+    box-shadow: var(--sq-elevation-1);
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-variant-numeric: tabular-nums;
     pointer-events: all;
     overflow: hidden;
 }
@@ -21,19 +23,21 @@
 
 .dragging {
     z-index: $z-index-monitor-dragging;
-    box-shadow: 3px 3px 5px #888888;
+    box-shadow: var(--sq-elevation-3);
 }
 
 .default-monitor {
     display: flex;
     flex-direction: column;
-    padding: 3px;
+    padding: 3px 6px;
 }
 
 .label {
-    font-weight: bold;
+    font-weight: var(--sq-weight-bold, 700);
     text-align: center;
-    margin: 0 5px;
+    margin: 0 6px;
+    color: var(--sq-text-muted, $text-primary-default);
+    font-size: var(--sq-text-sm, 0.875rem);
 }
 
 .value {
@@ -42,51 +46,58 @@
     align-items: center;
     min-width: 40px;
     text-align: center;
-    margin: 0 5px;
-    border-radius: calc($space / 2);
-    padding: 0 2px;
+    margin: 0 4px;
+    border-radius: var(--sq-radius-pill, 999px);
+    padding: 1px 8px;
+    font-weight: var(--sq-weight-heavy, 800);
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-variant-numeric: tabular-nums;
     white-space: pre-wrap;
-    transform: translateZ(0); /* Fixes flickering in Safari */
+    transform: translateZ(0);
 }
 
 .large-value {
-    min-height: 1.4rem;
+    min-height: 1.5rem;
     min-width: 3rem;
-    padding: 0.1rem 0.25rem;
+    padding: 0.15rem 0.5rem;
     text-align: center;
-    font-size: 1rem;
+    font-size: var(--sq-text-md, 1rem);
+    font-weight: var(--sq-weight-heavy, 800);
+    font-variant-numeric: tabular-nums;
     white-space: pre-wrap;
-    transform: translateZ(0); /* Fixes flickering in Safari */
+    transform: translateZ(0);
 }
 
 .row {
     display: flex;
     flex-direction: row;
+    align-items: center;
 }
 
 .slider {
     width: 100%;
-    transform: translateZ(0); /* Fixes flickering in Safari */
+    transform: translateZ(0);
 }
 
 .list-monitor {
     display: flex;
     flex-direction: column;
+    border-radius: var(--sq-radius-panel, 10px);
 }
 
 .list-header {
-    background: $ui-white-default;
-    border-bottom: 1px solid $ui-black-transparent-default;
+    background: var(--sq-panel, $ui-white-default);
+    border-bottom: 1px solid var(--sq-tint-line, $ui-black-transparent-default);
     text-align: center;
-    padding: 3px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: $text-primary-default;
+    padding: 4px 8px;
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-weight: var(--sq-weight-bold, 700);
+    color: var(--sq-text, $text-primary-default);
     width: 100%;
 }
 
 .list-body {
-    background: $ui-primary-default;
+    background: var(--sq-bg, $ui-primary-default);
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -99,43 +110,44 @@
     flex-direction: row;
     justify-content: space-around;
     align-items: center;
-    padding: 2px;
+    padding: 2px 4px;
     flex-shrink: 0;
-    transform: translateZ(0); /* Keep sharp when scaled */
+    transform: translateZ(0);
 }
 
 .list-index {
-    font-weight: bold;
-    color: $text-primary-default;
-    margin: 0 3px;
+    font-weight: var(--sq-weight-bold, 700);
+    color: var(--sq-text-muted, $text-primary-default);
+    margin: 0 4px;
+    font-size: var(--sq-text-sm, 0.875rem);
 }
 
 .list-value {
     min-width: 40px;
     text-align: left;
     margin: 0 3px;
-    border-radius: calc($space / 2);
-    border: 1px solid $ui-black-transparent-default;
+    border-radius: var(--sq-radius-chip, 4px);
+    border: 1px solid var(--sq-tint-line, $ui-black-transparent-default);
     flex-grow: 1;
-    height: 22px;
+    height: 24px;
 }
 
 .list-footer {
-    background: $ui-white-default;
+    background: var(--sq-panel, $ui-white-default);
     display: flex;
     flex-direction: row;
     justify-content: space-between;
-    padding: 3px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    border-top: 1px solid $ui-black-transparent-default;
-    color: $text-primary-default;
+    padding: 4px 8px;
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-weight: var(--sq-weight-bold, 700);
+    border-top: 1px solid var(--sq-tint-line, $ui-black-transparent-default);
+    color: var(--sq-text, $text-primary-default);
 }
 
 .list-empty {
     text-align: center;
     width: 100%;
-    padding: 5px;
+    padding: 6px;
 }
 
 .input-wrapper {
@@ -143,26 +155,26 @@
     overflow: hidden;
     display: flex;
     align-items: center;
-    background: rgba(0, 0, 0, 0.1);
+    background: var(--sq-tint-well);
 }
 
 .value-inner {
-    padding: 3px 5px;
+    padding: 3px 6px;
     min-height: 22px;
-    overflow: hidden; /* Don't let long values escape container */
+    overflow: hidden;
     text-overflow: ellipsis;
-    user-select: text; /* Allow selecting list values for 2.0 compatibility, only relevant in player */
+    user-select: text;
     white-space: pre;
 }
 
 .list-input {
-    padding: 3px 5px;
+    padding: 3px 6px;
     border: 0;
     background: none;
     outline: none;
-    font-size: 0.75rem;
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    /* Workaround for Firefox */
+    font-size: var(--sq-text-sm, 0.875rem);
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    color: var(--sq-text, $text-primary-default);
     width: 0;
     flex: 1 1 auto;
 }

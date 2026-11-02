@@ -88,12 +88,37 @@ const touchLayoutFor = scratchKeys => {
     return {pad, actions: prioritised.concat(rest).slice(0, MAX_ACTIONS)};
 };
 
+const THUMBSTICK_DEADZONE = 0.18;
+
+const thumbstickDirections = (dx, dy, radius, deadzone = THUMBSTICK_DEADZONE) => {
+    const r = Math.max(1, Number(radius) || 56);
+    const dist = Math.hypot(dx, dy);
+    const mag = dist / r;
+    const maxTravel = r * 0.58;
+    const scale = dist > maxTravel && dist > 0 ? maxTravel / dist : 1;
+    const knobX = Math.round(dx * scale * 10) / 10;
+    const knobY = Math.round(dy * scale * 10) / 10;
+    if (mag < deadzone) {
+        return {active: false, directions: [], knobX: 0, knobY: 0};
+    }
+    const nx = dx / Math.max(1e-5, dist);
+    const ny = dy / Math.max(1e-5, dist);
+    const directions = [];
+    if (ny < -0.38) directions.push('up');
+    if (nx < -0.38) directions.push('left');
+    if (nx > 0.38) directions.push('right');
+    if (ny > 0.38) directions.push('down');
+    return {active: true, directions, knobX, knobY};
+};
+
 export {
     MAX_ACTIONS,
+    THUMBSTICK_DEADZONE,
     TOUCH_KEYS,
     keyboardData,
     listenedTouchKeys,
     projectWantsTouchKeys,
+    thumbstickDirections,
     touchKeyByName,
     touchLayoutFor
 };

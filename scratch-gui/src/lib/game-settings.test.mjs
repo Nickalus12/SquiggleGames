@@ -1,7 +1,16 @@
 process.removeAllListeners('warning');
 
 const {
-    STAGE_PRESETS, presetFor, clampFramerate, squiggleSettingsText, storeGameSettings, SETTINGS_NOTE, CONFIG_MAGIC
+    STAGE_PRESETS,
+    presetFor,
+    clampFramerate,
+    squiggleSettingsText,
+    storeGameSettings,
+    readGameSettings,
+    updateGameSettings,
+    normalizeSquiggleSettings,
+    SETTINGS_NOTE,
+    CONFIG_MAGIC
 } = await import('./game-settings.js');
 
 let pass = 0;
@@ -37,6 +46,28 @@ const vm = {
 };
 ok('storeGameSettings stores then rewrites the note', storeGameSettings(vm) === true && calls.length === 1 && comment.text.startsWith(SETTINGS_NOTE));
 ok('storeGameSettings is safe without a vm', storeGameSettings(null) === false && storeGameSettings({}) === false);
+
+const defaults = readGameSettings(vm);
+ok('default touchMode is thumbstick and hud is enabled',
+    defaults.touchMode === 'thumbstick' && defaults.hud.enabled === true && defaults.hud.scores === true);
+const updated = updateGameSettings(vm, {
+    touchMode: 'dpad',
+    actionLabels: {Space: '  Jump ', e: 'Use'},
+    hud: {teams: false}
+});
+ok('updateGameSettings normalizes and persists into _twconfig_',
+    updated.touchMode === 'dpad' &&
+    updated.actionLabels.space === 'Jump' &&
+    updated.hud.teams === false &&
+    updated.hud.scores === true &&
+    comment.text.includes('"touchMode":"dpad"'));
+const reloaded = readGameSettings({runtime: {findProjectOptionsComment: () => comment}});
+ok('readGameSettings round-trips custom controls and HUD from _twconfig_',
+    reloaded.touchMode === 'dpad' &&
+    reloaded.actionLabels.e === 'Use' &&
+    reloaded.hud.teams === false);
+ok('normalizeSquiggleSettings handles invalid input safely',
+    normalizeSquiggleSettings({touchMode: 'invalid'}).touchMode === 'thumbstick');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

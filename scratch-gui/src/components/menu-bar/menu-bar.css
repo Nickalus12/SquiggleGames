@@ -382,3 +382,36 @@
 .phone-sheet .feedback-link {
     display: flex;
 }
+
+.sq-menu-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    padding: 0 var(--sq-space-3, 12px);
+    margin: 0 var(--sq-space-1, 4px);
+    border-radius: var(--sq-radius-pill, 999px);
+    border: 1px solid var(--sq-tint-line-hi, rgba(255, 255, 255, 0.22));
+    background: var(--sq-surface-2, rgba(255, 255, 255, 0.12));
+    color: var(--sq-on-accent, #ffffff);
+    font-family: var(--sq-font, "Nunito", sans-serif);
+    font-size: var(--sq-type-body, 14px);
+    font-weight: var(--sq-weight-bold, 800);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.sq-menu-pill:hover {
+    background: var(--sq-surface-3, rgba(255, 255, 255, 0.2));
+}
+
+.sq-menu-pill-primary {
+    background: var(--sq-accent, #8b5cf6);
+    border-color: var(--sq-accent, #8b5cf6);
+    color: var(--sq-on-accent, #ffffff);
+}
+
+.sq-menu-pill-primary:hover {
+    background: var(--sq-accent-hover, #7c3aed);
+}

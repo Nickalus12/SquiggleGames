@@ -104,4 +104,17 @@ ok('the camera resumes after the last release', held.isActive() && !held.isHeld(
 release();
 ok('releasing twice is harmless', held.isActive());
 
+section('dynamic stage dimensions (16:9 widescreen)');
+let stageDims = [640, 360];
+const wideCam = createCamera({getStageSize: () => stageDims});
+wideCam.set(0, 0);
+ok('640x360 camera reports left -320 and right 320',
+    wideCam.report('left') === -320 && wideCam.report('right') === 320 && wideCam.report('top') === 180);
+wideCam.setBounds({left: 0, right: 1280, bottom: -360, top: 0});
+wideCam.keepInside(true);
+ok('640x360 keepInside clamps left edge at x=320', wideCam.report('x') === 320 && wideCam.report('left') === 0);
+stageDims = [360, 640];
+wideCam.set(0, 0);
+ok('360x640 tall camera clamps with tall half-width 180', wideCam.report('x') === 180 && wideCam.report('left') === 0);
+
 done();

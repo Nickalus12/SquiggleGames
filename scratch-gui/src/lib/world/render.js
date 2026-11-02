@@ -129,9 +129,9 @@ const createTileRenderer = options => {
         spare.slice(0, spare.length - limit).forEach(destroyChunk);
     };
 
-    const update = view => {
+    const update = (view, width, height) => {
         if (!grid || hidden) return 0;
-        const rect = viewRect(view);
+        const rect = viewRect(view, width, height);
         const maxX = Math.ceil((grid.cols * grid.tileSize) / CHUNK) - 1;
         const maxY = Math.ceil((grid.rows * grid.tileSize) / CHUNK) - 1;
         const x0 = Math.max(0, Math.floor((rect.left - grid.origin[0]) / CHUNK) - MARGIN);

@@ -278,6 +278,23 @@ runtime._step();
 ok('a floor colour applies, a bad ceiling keeps the old one',
     view.frame.pixels[(HEIGHT - 1) * WIDTH] === pixel(17, 34, 51) && view.frame.pixels[0] === pixel(0x8f, 0xb4, 0xd6));
 
+section('dynamic widescreen and resolution scale');
+runtime.stageWidth = 640;
+runtime.stageHeight = 360;
+runtime._step();
+ok('640x360 stage resizes 3D frame to 320x180 at 0.5 scale',
+    view.frame.width === 320 && view.frame.height === 180);
+view.setScale(1);
+runtime._step();
+ok('setScale(1) renders crisp 640x360 full resolution',
+    view.scale() === 1 && view.frame.width === 640 && view.frame.height === 360);
+view.setScale(RESOLUTION);
+runtime.stageWidth = 480;
+runtime.stageHeight = 360;
+runtime._step();
+ok('restoring 480x360 and 0.5 scale returns frame to 240x180',
+    view.frame.width === WIDTH && view.frame.height === HEIGHT);
+
 section('mouse turning');
 view.setMouseTurn(true);
 ok('mouse turning listens on the stage canvas', listeners.canvas.has('click') && listeners.doc.has('mousemove'));

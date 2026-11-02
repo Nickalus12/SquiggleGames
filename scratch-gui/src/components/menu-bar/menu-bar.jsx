@@ -37,6 +37,9 @@ import MessagesButton from '../collab-chat/messages-button.jsx';
 import OutlinePanel from './outline-panel.jsx';
 import HistoryPanel from './history-panel.jsx';
 import TWNews from './tw-news.jsx';
+import TemplatePickerModal from '../template-picker-modal/template-picker-modal.jsx';
+import PublishModal from '../publish-modal/publish-modal.jsx';
+import {applyStarterTemplate} from '../../lib/starter-templates.js';
 
 import {openTipsLibrary, openSettingsModal, openRestorePointModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -218,6 +221,10 @@ MenuItemLink.propTypes = {
 class MenuBar extends React.Component {
     constructor (props) {
         super(props);
+        this.state = {
+            templateModalOpen: false,
+            publishModalOpen: false
+        };
         bindAll(this, [
             'handleClickSeeInside',
             'handleClickNew',
@@ -230,6 +237,10 @@ class MenuBar extends React.Component {
             'handleClickRestorePoints',
             'handleClickSeeCommunity',
             'handleClickShare',
+            'handleOpenTemplates',
+            'handleCloseTemplates',
+            'handleOpenPublish',
+            'handleClosePublish',
             'handleSetMode',
             'handleKeyPress',
             'handleRestoreOption',
@@ -239,9 +250,31 @@ class MenuBar extends React.Component {
     }
     componentDidMount () {
         document.addEventListener('keydown', this.handleKeyPress);
+        if (typeof window !== 'undefined' && window.location) {
+            const params = new URLSearchParams(window.location.search);
+            const tpl = params.get('template');
+            if (tpl) {
+                applyStarterTemplate(this.props.vm, tpl);
+            } else if (params.get('templates') === '1') {
+                this.setState({templateModalOpen: true});
+            }
+        }
     }
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyPress);
+    }
+    handleOpenTemplates () {
+        this.props.onRequestCloseFile();
+        this.setState({templateModalOpen: true});
+    }
+    handleCloseTemplates () {
+        this.setState({templateModalOpen: false});
+    }
+    handleOpenPublish () {
+        this.setState({publishModalOpen: true});
+    }
+    handleClosePublish () {
+        this.setState({publishModalOpen: false});
     }
     handleClickNew () {
         if (!mayReplaceProject()) {
@@ -614,6 +647,12 @@ class MenuBar extends React.Component {
                                         onClick={this.handleClickNew}
                                     >
                                         {newProjectMessage}
+                                    </MenuItem>
+                                    <MenuItem
+                                        isRtl={this.props.isRtl}
+                                        onClick={this.handleOpenTemplates}
+                                    >
+                                        {'Starter Templates…'}
                                     </MenuItem>
                                     {this.props.onClickNewWindow && (
                                         <MenuItem
@@ -1036,6 +1075,26 @@ class MenuBar extends React.Component {
                 </div>
 
                 <div className={styles.accountInfoGroup}>
+                    {!this.props.isPlayerOnly && (
+                        <React.Fragment>
+                            <button
+                                type="button"
+                                className={styles.sqMenuPill}
+                                data-testid="menu-bar-templates"
+                                onClick={this.handleOpenTemplates}
+                            >
+                                {'Templates'}
+                            </button>
+                            <button
+                                type="button"
+                                className={classNames(styles.sqMenuPill, styles.sqMenuPillPrimary)}
+                                data-testid="menu-bar-publish"
+                                onClick={this.handleOpenPublish}
+                            >
+                                {'Publish'}
+                            </button>
+                        </React.Fragment>
+                    )}
                     {this.props.rightSlot}
                     <OutlinePanel />
                     <HistoryPanel />
@@ -1053,6 +1112,18 @@ class MenuBar extends React.Component {
         return (
             <React.Fragment>
                 {menuBar}
+                <TemplatePickerModal
+                    isOpen={this.state.templateModalOpen}
+                    vm={this.props.vm}
+                    onNewProject={() => this.props.onClickNew(this.props.canSave && this.props.canCreateNew)}
+                    onRequestClose={this.handleCloseTemplates}
+                />
+                <PublishModal
+                    isOpen={this.state.publishModalOpen}
+                    projectId={this.props.projectId}
+                    projectTitle={this.props.projectTitle}
+                    onRequestClose={this.handleClosePublish}
+                />
                 <TWNews />
             </React.Fragment>
         );

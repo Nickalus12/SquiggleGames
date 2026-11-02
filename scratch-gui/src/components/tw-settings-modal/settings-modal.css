@@ -142,6 +142,48 @@
     font-size: 0.95rem;
 }
 
+.action-labels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem 0.5rem;
+}
+
+.action-label-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: $text-primary;
+}
+
+.text-input {
+    width: 100%;
+    min-height: 40px;
+}
+
+.hud-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.35rem 0 0.25rem 2.1rem;
+}
+
+.hud-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid $ui-black-transparent;
+    background: $ui-white-transparent;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
 .warning {
     padding: 0.5rem 0.75rem;
     margin: 0.25rem 0.75rem;

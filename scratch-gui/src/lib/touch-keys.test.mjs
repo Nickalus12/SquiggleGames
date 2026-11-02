@@ -6,6 +6,7 @@ const {
     keyboardData,
     listenedTouchKeys,
     projectWantsTouchKeys,
+    thumbstickDirections,
     touchKeyByName,
     touchLayoutFor
 } = await import('./touch-keys.js');
@@ -83,6 +84,13 @@ const empty = touchLayoutFor([]);
 ok('no listened keys falls back to arrows and space',
     empty.pad.length === 4 && same(empty.actions, ['space']));
 ok('a Set works as input', same(touchLayoutFor(new Set(['space'])).actions, ['space']));
+
+const idleStick = thumbstickDirections(3, -2, 60);
+ok('thumbstick inside deadzone stays inactive', !idleStick.active && idleStick.directions.length === 0);
+const rightStick = thumbstickDirections(40, 0, 60);
+ok('thumbstick right activates right direction', rightStick.active && same(rightStick.directions, ['right']));
+const diagStick = thumbstickDirections(35, -35, 60);
+ok('thumbstick up-right activates up and right', diagStick.active && same(diagStick.directions, ['up', 'right']));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

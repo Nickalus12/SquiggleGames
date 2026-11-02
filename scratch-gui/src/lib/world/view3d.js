@@ -121,7 +121,17 @@ const createView3d = (runtime, world, options) => {
     const now = opts.now || (() => (typeof performance === 'undefined' ? Date.now() : performance.now()));
     const toBitmap = opts.toBitmap ||
         ((pixels, width, height) => new ImageData(new Uint8ClampedArray(pixels.buffer), width, height));
-    const frame = createFrame();
+    const defaultScale = Number.isFinite(Number(opts.resolution)) ?
+        Math.max(0.25, Math.min(2, Number(opts.resolution))) :
+        (!opts.toBitmap && typeof ImageData !== 'undefined' ? 1 : RESOLUTION);
+    const stageDims = () => [
+        Math.max(120, Number(runtime && runtime.stageWidth) || (WIDTH / RESOLUTION)),
+        Math.max(90, Number(runtime && runtime.stageHeight) || (HEIGHT / RESOLUTION))
+    ];
+    let frame = createFrame(
+        Math.round(stageDims()[0] * defaultScale),
+        Math.round(stageDims()[1] * defaultScale)
+    );
     const cameraOwner = {kit: 'squiggle3d'};
     const serials = new WeakMap();
     const fresh = () => ({
@@ -144,10 +154,11 @@ const createView3d = (runtime, world, options) => {
         release: null,
         crosshair: '',
         target: null,
-        samples: []
+        samples: [],
+        scale: defaultScale
     });
     let state = fresh();
-    const gpu = {drawable: null, skin: null, image: null};
+    const gpu = {drawable: null, skin: null, image: null, scale: defaultScale};
     const link = {seam: null, disposers: [], effect: null, input: null};
     const cache = {grid: false, revision: -1, loads: -1, tileset: '', count: -1, textures: [], serial: 0};
 
@@ -226,9 +237,25 @@ const createView3d = (runtime, world, options) => {
 
     const viewerAlive = () => !!state.viewer && runtime.targets.indexOf(state.viewer) !== -1;
 
+    const ensureFrame = () => {
+        const [sw, sh] = stageDims();
+        const wantW = Math.max(60, Math.round(sw * state.scale));
+        const wantH = Math.max(45, Math.round(sh * state.scale));
+        if (frame.width === wantW && frame.height === wantH) return false;
+        frame = createFrame(wantW, wantH);
+        if (view) view.frame = frame;
+        gpu.image = null;
+        state.rendered = -1;
+        state.uploaded = -1;
+        return true;
+    };
+
     const frameHash = () => {
+        ensureFrame();
         const viewer = state.viewer;
         let h = 2166136261;
+        h = mix(h, frame.width);
+        h = mix(h, frame.height);
         h = mix(h, viewer.x);
         h = mix(h, viewer.y);
         h = mix(h, viewer.direction);
@@ -305,22 +332,32 @@ const createView3d = (runtime, world, options) => {
         state.crosshair = result.crosshair;
         state.target = result.target;
         state.rendered = hash;
-        state.samples.push(now() - started);
+        const elapsed = now() - started;
+        state.samples.push(elapsed);
         if (state.samples.length > SAMPLES) state.samples.shift();
+        if (opts.adaptive !== false && state.scale > RESOLUTION && state.samples.length >= 20) {
+            const recent = state.samples.slice(-20).sort((a, b) => a - b);
+            if (percentile(recent, 0.5) > 18) {
+                state.scale = RESOLUTION;
+            }
+        }
     };
 
     const present = () => {
         const renderer = runtime.renderer;
         if (!renderer) return;
-        if (!gpu.image) gpu.image = toBitmap(frame.pixels, WIDTH, HEIGHT);
+        if (!gpu.image || gpu.scale !== state.scale) {
+            gpu.image = toBitmap(frame.pixels, frame.width, frame.height);
+            gpu.scale = state.scale;
+        }
         if (gpu.skin === null) {
-            gpu.skin = renderer.createBitmapSkin(gpu.image, RESOLUTION);
+            gpu.skin = renderer.createBitmapSkin(gpu.image, state.scale);
             gpu.drawable = renderer.createDrawable(LAYER);
             renderer.updateDrawableSkinId(gpu.drawable, gpu.skin);
             renderer.updateDrawablePosition(gpu.drawable, [0, 0]);
             renderer.updateDrawableDirectionScale(gpu.drawable, 90, [100, 100]);
         } else {
-            renderer.updateBitmapSkin(gpu.skin, gpu.image, RESOLUTION);
+            renderer.updateBitmapSkin(gpu.skin, gpu.image, state.scale);
         }
         renderer.updateDrawableVisible(gpu.drawable, true);
         state.uploaded = state.rendered;
@@ -537,6 +574,13 @@ const createView3d = (runtime, world, options) => {
             state.mouseTurn = !!on;
             if (state.mouseTurn && state.on) attachInput();
             if (!state.mouseTurn) detachInput();
+        },
+        scale: () => state.scale,
+        setScale (nextScale) {
+            const clamped = Math.max(0.25, Math.min(2, num(nextScale, state.scale)));
+            if (clamped === state.scale) return;
+            state.scale = clamped;
+            ensureFrame();
         },
         crosshair () {
             if (!state.on || !viewerAlive()) return '';

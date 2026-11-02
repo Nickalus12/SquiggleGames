@@ -1,0 +1,172 @@
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sq-space-4, 16px);
+    background: var(--sq-scrim, rgba(10, 9, 16, 0.72));
+    font-family: var(--sq-font, "Nunito", sans-serif);
+}
+
+.sheet {
+    width: 100%;
+    max-width: 760px;
+    max-height: 90dvh;
+    overflow-y: auto;
+    padding: var(--sq-space-5, 24px);
+    border-radius: var(--sq-radius-lg, 16px);
+    background: var(--sq-surface-1, #191622);
+    border: 1px solid var(--sq-tint-line-hi, rgba(255, 255, 255, 0.14));
+    box-shadow: var(--sq-shadow-3, 0 20px 48px rgba(0, 0, 0, 0.48));
+    color: var(--sq-ink, #f5f3ff);
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sq-space-3, 12px);
+    margin-bottom: var(--sq-space-4, 16px);
+}
+
+.title {
+    margin: 0;
+    font-size: var(--sq-type-title, 20px);
+    font-weight: var(--sq-weight-bold, 800);
+    line-height: 1.2;
+}
+
+.subtitle {
+    margin: var(--sq-space-1, 4px) 0 0;
+    font-size: var(--sq-type-body, 14px);
+    color: var(--sq-ink-muted, #b5aed0);
+    line-height: 1.45;
+}
+
+.closeBtn {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: var(--sq-radius-md, 10px);
+    border: 1px solid var(--sq-tint-line, rgba(255, 255, 255, 0.1));
+    background: var(--sq-surface-2, #231f30);
+    color: var(--sq-ink, #f5f3ff);
+    font-size: var(--sq-type-title, 20px);
+    font-weight: var(--sq-weight-bold, 800);
+    cursor: pointer;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sq-space-3, 12px);
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sq-space-1, 4px);
+    padding: var(--sq-space-3, 12px) var(--sq-space-4, 16px);
+    border-radius: var(--sq-radius-md, 12px);
+    border: 1.5px solid var(--sq-tint-line, rgba(255, 255, 255, 0.1));
+    background: var(--sq-surface-2, #231f30);
+    color: var(--sq-ink, #f5f3ff);
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.card:hover {
+    border-color: var(--sq-tint-line-hi, rgba(255, 255, 255, 0.24));
+    transform: translateY(-1px);
+}
+
+.cardActive {
+    border-color: var(--sq-accent, #8b5cf6);
+    background: var(--sq-accent-soft, rgba(139, 92, 246, 0.18));
+}
+
+.cardTop {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sq-space-2, 8px);
+}
+
+.cardTitle {
+    font-size: var(--sq-type-sub, 16px);
+    font-weight: var(--sq-weight-bold, 800);
+}
+
+.cardBadge {
+    padding: 2px var(--sq-space-2, 8px);
+    border-radius: var(--sq-radius-pill, 999px);
+    background: var(--sq-surface-1, #191622);
+    border: 1px solid var(--sq-tint-line-hi, rgba(255, 255, 255, 0.14));
+    font-size: var(--sq-type-body, 14px);
+    font-weight: var(--sq-weight-bold, 800);
+    color: var(--sq-ink-muted, #b5aed0);
+}
+
+.cardGenre {
+    font-size: var(--sq-type-body, 14px);
+    font-weight: var(--sq-weight-bold, 800);
+    color: var(--sq-accent, #8b5cf6);
+}
+
+.cardSummary {
+    margin: var(--sq-space-1, 4px) 0 0;
+    font-size: var(--sq-type-body, 14px);
+    color: var(--sq-ink-muted, #b5aed0);
+    line-height: 1.4;
+}
+
+.footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sq-space-2, 8px);
+    margin-top: var(--sq-space-4, 16px);
+}
+
+.primaryBtn,
+.secondaryBtn {
+    min-height: 44px;
+    padding: 0 var(--sq-space-4, 16px);
+    border-radius: var(--sq-radius-pill, 999px);
+    font-family: inherit;
+    font-size: var(--sq-type-body, 14px);
+    font-weight: var(--sq-weight-bold, 800);
+    cursor: pointer;
+}
+
+.primaryBtn {
+    border: 1px solid var(--sq-accent, #8b5cf6);
+    background: var(--sq-accent, #8b5cf6);
+    color: var(--sq-on-accent, #ffffff);
+}
+
+.secondaryBtn {
+    border: 1px solid var(--sq-tint-line-hi, rgba(255, 255, 255, 0.14));
+    background: var(--sq-surface-2, #231f30);
+    color: var(--sq-ink, #f5f3ff);
+}
+
+@media (max-width: 640px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card {
+        transition: none;
+    }
+    .card:hover {
+        transform: none;
+    }
+}

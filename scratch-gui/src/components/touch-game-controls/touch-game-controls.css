@@ -40,7 +40,17 @@
 .overlay .pad,
 .overlay .actions {
     pointer-events: auto;
-    opacity: 0.85;
+    opacity: 0.45;
+    transition: opacity var(--sq-motion-fast, 140ms) var(--sq-ease, ease);
+}
+
+.overlay .pad:hover,
+.overlay .pad:active,
+.overlay .pad.pad-active,
+.overlay .actions:hover,
+.overlay .actions:active,
+.overlay .actions.pad-active {
+    opacity: 0.94;
 }
 
 @media (orientation: landscape) {
@@ -89,11 +99,68 @@
 }
 
 .pad {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(3, 52px);
     grid-template-rows: repeat(3, 52px);
     flex-shrink: 0;
     touch-action: none;
+}
+
+.pad-thumbstick {
+    border-radius: 50%;
+    background: var(--sq-scrim, $ui-black-transparent);
+    border: 2px solid var(--sq-tint-line-hi, $ui-black-transparent);
+    box-shadow: var(--sq-elevation-2);
+}
+
+.pad-thumbstick .key {
+    background-color: transparent;
+    border-color: transparent;
+    opacity: 0.72;
+}
+
+.pad-thumbstick .key.is-down {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--sq-focus, $looks-secondary);
+    opacity: 1;
+}
+
+.thumbstick-knob {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    justify-self: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--sq-brand-500, $looks-secondary);
+    border: 2px solid var(--sq-on-brand, $menu-bar-foreground);
+    box-shadow: var(--sq-elevation-2);
+    pointer-events: none;
+}
+
+.desktop-hint {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: calc($z-index-stage-wrapper-overlay + 2);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 36px;
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: var(--sq-scrim, $ui-black-transparent);
+    border: 1px solid var(--sq-tint-line-hi, $ui-black-transparent);
+    color: var(--sq-text, $menu-bar-foreground);
+    font-family: var(--sq-font, "Helvetica Neue", Helvetica, Arial, sans-serif);
+    font-size: var(--sq-text-sm, 14px);
+    font-weight: var(--sq-weight-bold, 700);
+    pointer-events: none;
+    box-shadow: var(--sq-elevation-2);
 }
 
 .sides .pad {

@@ -11,6 +11,12 @@ import Loader from '../loader/loader.jsx';
 
 import styles from './stage-wrapper.css';
 
+const hasEmbeddedSettingsButton = () => (
+    typeof window !== 'undefined' &&
+    window.location &&
+    new URLSearchParams(window.location.search).has('settings-button')
+);
+
 const StageWrapperComponent = function (props) {
     const {
         fixedWidth,
@@ -22,6 +28,8 @@ const StageWrapperComponent = function (props) {
         stageSize,
         vm
     } = props;
+
+    const hideEmbeddedHeader = isEmbedded && !hasEmbeddedSettingsButton();
 
     return (
         <Box
@@ -36,7 +44,7 @@ const StageWrapperComponent = function (props) {
             )}
             dir={isRtl ? 'rtl' : 'ltr'}
         >
-            {fixedWidth && !isFullScreen ? null : (
+            {(fixedWidth && !isFullScreen) || hideEmbeddedHeader ? null : (
                 <Box className={styles.stageMenuWrapper}>
                     <StageHeader
                         stageSize={stageSize}

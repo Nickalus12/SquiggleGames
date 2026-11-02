@@ -47,6 +47,13 @@ const resolveStageSize = (stageSizeMode, isUnconstrained) => {
  * @param {number} [fixedWidth] - a width chosen by the phone layout, used in place of the stage size mode.
  * @return {StageDimensions} - an object describing the dimensions of the stage.
  */
+const isChromelessEmbedded = () => (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.pathname.includes('embed') &&
+    !new URLSearchParams(window.location.search).has('settings-button')
+);
+
 const getStageDimensions = (stageSize, customStageSize, isFullScreen, fixedWidth) => {
     const stageDimensions = {
         heightDefault: customStageSize.height,
@@ -57,9 +64,10 @@ const getStageDimensions = (stageSize, customStageSize, isFullScreen, fixedWidth
     };
 
     if (isFullScreen) {
-        stageDimensions.height = window.innerHeight -
-            STAGE_DIMENSION_DEFAULTS.menuHeightAdjustment -
-            STAGE_DIMENSION_DEFAULTS.fullScreenSpacingBorderAdjustment;
+        const chromeless = isChromelessEmbedded();
+        const menuAdj = chromeless ? 0 : STAGE_DIMENSION_DEFAULTS.menuHeightAdjustment;
+        const borderAdj = chromeless ? 0 : STAGE_DIMENSION_DEFAULTS.fullScreenSpacingBorderAdjustment;
+        stageDimensions.height = window.innerHeight - menuAdj - borderAdj;
 
         stageDimensions.width = stageDimensions.height * (customStageSize.width / customStageSize.height);
 

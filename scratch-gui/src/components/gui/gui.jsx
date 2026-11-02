@@ -211,11 +211,18 @@ const GUIComponent = props => {
                                 <Alerts className={styles.alertsContainer} />
                             ) : null}
                         </StageWrapper>
-                        <TouchGameControls
-                            player
-                            layout={isFullScreen || isEmbedded ? 'overlay' : 'stage'}
-                            vm={vm}
-                        />
+                        {(
+                            !isEmbedded ||
+                            typeof window === 'undefined' ||
+                            window.parent === window ||
+                            new URLSearchParams(window.location.search).has('controls')
+                        ) ? (
+                            <TouchGameControls
+                                player
+                                layout={isFullScreen || isEmbedded ? 'overlay' : 'stage'}
+                                vm={vm}
+                            />
+                        ) : null}
                     </div>
                     {alwaysEnabledModals}
                 </React.Fragment>

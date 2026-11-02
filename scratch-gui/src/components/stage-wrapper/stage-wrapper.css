@@ -44,3 +44,9 @@
 .stage-wrapper.embedded {
     background-color: transparent;
 }
+
+.stage-wrapper.full-screen.embedded {
+    top: 0;
+    padding: 0;
+    justify-content: center;
+}

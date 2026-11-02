@@ -449,11 +449,11 @@ const GUIEditor = props => {
                                 vm={vm}
                             />
                             {isPhone ? <PhoneSpriteRow /> : null}
-                            {isPhone ? (
+                            {isPhone || (isFullScreen && touchControlsShown) ? (
                                 <TouchGameControls
                                     className={styles.phoneTouchControls}
                                     layout={touchControlsLayout}
-                                    show={isFullScreen || phoneTab === PHONE_TABS.stage}
+                                    show={isFullScreen ? touchControlsShown : phoneTab === PHONE_TABS.stage}
                                     vm={vm}
                                 />
                             ) : null}

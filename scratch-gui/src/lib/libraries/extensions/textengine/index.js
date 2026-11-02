@@ -120,8 +120,14 @@ class ThunderboltText {
         let shown = false;
         const world = this.overlay.projector(false);
         const pinned = this.overlay.projector(true);
+        const targets = this.runtime && Array.isArray(this.runtime.targets) ? this.runtime.targets : [];
+        const hideLegacyHudText = targets.some(t => {
+            const name = t && ((t.getName && t.getName()) || (t.sprite && t.sprite.name));
+            return (name === 'StatusHUD' || name === 'TimerHUD') && t.visible === false;
+        });
         for (const obj of this.objects.values()) {
             if (!obj.visible) continue;
+            if (hideLegacyHudText && String(obj.id || '').startsWith('hud_')) continue;
             shown = true;
             obj.elapsed += dt;
             if (obj.animation !== 'none') animating = true;

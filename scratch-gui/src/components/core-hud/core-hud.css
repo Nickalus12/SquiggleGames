@@ -1,0 +1,286 @@
+.hudRoot {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 18;
+    font-family: var(--sq-font);
+    color: var(--sq-text);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--sq-space-2) var(--sq-space-3);
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.topRow {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: var(--sq-space-2);
+    width: 100%;
+}
+
+.topLeftSpacer {
+    min-height: 1px;
+}
+
+.topCenter {
+    grid-column: 2;
+    justify-self: center;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sq-space-2);
+    pointer-events: auto;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sq-space-2);
+    min-height: 36px;
+    padding: var(--sq-space-1) var(--sq-space-3);
+    border-radius: var(--sq-radius-pill);
+    background: var(--sq-scrim);
+    border: 1px solid var(--sq-tint-line-hi);
+    box-shadow: var(--sq-elevation-1);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-bold);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.timerValue {
+    font-size: var(--sq-text-md);
+    font-weight: var(--sq-weight-heavy);
+    color: var(--sq-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.timerLabel {
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-bold);
+}
+
+.teamChip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sq-space-1);
+    padding: 2px var(--sq-space-2);
+    border-radius: var(--sq-radius-pill);
+    background: var(--sq-tint-card);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-heavy);
+    font-variant-numeric: tabular-nums;
+}
+
+.teamDot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--sq-radius-pill);
+    background: var(--sq-brand-500);
+}
+
+.toneRed .teamDot {
+    background: var(--sq-danger);
+}
+
+.toneBlue .teamDot {
+    background: var(--sq-info);
+}
+
+.toneGold .teamDot {
+    background: var(--sq-warn);
+}
+
+.toneGreen .teamDot {
+    background: var(--sq-success);
+}
+
+.teamScore {
+    font-size: var(--sq-text-md);
+    font-weight: var(--sq-weight-heavy);
+    color: var(--sq-text);
+}
+
+.statusBadge {
+    color: var(--sq-rules-edge);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-heavy);
+}
+
+.topRight {
+    grid-column: 3;
+    justify-self: end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    pointer-events: auto;
+}
+
+.boardCard {
+    min-width: 164px;
+    max-width: 220px;
+    border-radius: var(--sq-radius-panel);
+    background: var(--sq-scrim);
+    border: 1px solid var(--sq-tint-line-hi);
+    box-shadow: var(--sq-elevation-2);
+    overflow: hidden;
+}
+
+.boardToggle {
+    width: 100%;
+    min-height: var(--sq-target-touch);
+    padding: var(--sq-space-1) var(--sq-space-3);
+    background: transparent;
+    border: 0;
+    color: var(--sq-text);
+    font-family: var(--sq-font);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-heavy);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sq-space-2);
+    cursor: pointer;
+    text-align: left;
+}
+
+.boardToggle:focus-visible {
+    outline: 2px solid var(--sq-focus);
+    outline-offset: -2px;
+}
+
+.boardList {
+    list-style: none;
+    margin: 0;
+    padding: 0 var(--sq-space-2) var(--sq-space-2);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.boardRow {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    align-items: center;
+    gap: var(--sq-space-1);
+    padding: 2px var(--sq-space-2);
+    border-radius: var(--sq-radius-chip);
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-bold);
+    font-variant-numeric: tabular-nums;
+}
+
+.boardRowMe {
+    background: var(--sq-tint-card);
+    border: 1px solid var(--sq-tint-line);
+}
+
+.boardRank {
+    color: var(--sq-text-muted);
+    font-size: var(--sq-text-sm);
+}
+
+.boardName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.boardScore {
+    font-weight: var(--sq-weight-heavy);
+    color: var(--sq-text);
+}
+
+.bottomRow {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    width: 100%;
+}
+
+.vitalsBar {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sq-space-3);
+    padding: var(--sq-space-2) var(--sq-space-4);
+    border-radius: var(--sq-radius-pill);
+    background: var(--sq-scrim);
+    border: 1px solid var(--sq-tint-line-hi);
+    box-shadow: var(--sq-elevation-2);
+    pointer-events: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+.vitalGroup {
+    display: flex;
+    align-items: center;
+    gap: var(--sq-space-2);
+}
+
+.vitalLabel {
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-bold);
+    color: var(--sq-text-muted);
+}
+
+.vitalTrack {
+    width: 96px;
+    height: 10px;
+    border-radius: var(--sq-radius-pill);
+    background: var(--sq-tint-well);
+    border: 1px solid var(--sq-tint-line);
+    overflow: hidden;
+    position: relative;
+}
+
+.vitalFill {
+    width: 100%;
+    height: 100%;
+    transform-origin: left center;
+    transition: transform var(--sq-motion-fast) var(--sq-ease);
+}
+
+.fillHp {
+    background: var(--sq-success);
+}
+
+.fillHpLow {
+    background: var(--sq-danger);
+}
+
+.fillShield {
+    background: var(--sq-info);
+}
+
+.vitalNumber {
+    font-size: var(--sq-text-sm);
+    font-weight: var(--sq-weight-heavy);
+    color: var(--sq-text);
+    min-width: 28px;
+    text-align: right;
+}
+
+@media (max-width: 640px) {
+    .boardCard {
+        min-width: 132px;
+        max-width: 168px;
+    }
+
+    .vitalTrack {
+        width: 68px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vitalFill {
+        transition: none;
+    }
+}

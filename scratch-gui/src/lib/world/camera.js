@@ -39,6 +39,21 @@ const clampAxis = (value, low, high, half) => {
 const createCamera = options => {
     const opts = options || {};
     const random = opts.random || Math.random;
+    const stageSize = () => {
+        if (typeof opts.getStageSize === 'function') {
+            const pair = opts.getStageSize();
+            if (Array.isArray(pair)) {
+                return [
+                    Math.max(120, num(pair[0], STAGE_WIDTH)),
+                    Math.max(90, num(pair[1], STAGE_HEIGHT))
+                ];
+            }
+        }
+        return [
+            Math.max(120, num(opts.width, STAGE_WIDTH)),
+            Math.max(90, num(opts.height, STAGE_HEIGHT))
+        ];
+    };
     const state = {
         active: false,
         x: 0,
@@ -56,8 +71,9 @@ const createCamera = options => {
     const constrain = () => {
         if (!state.keepInside || !state.bounds) return;
         const b = state.bounds;
-        state.x = clampAxis(state.x, b.left, b.right, STAGE_WIDTH / 2 / state.zoom);
-        state.y = clampAxis(state.y, b.bottom, b.top, STAGE_HEIGHT / 2 / state.zoom);
+        const [sw, sh] = stageSize();
+        state.x = clampAxis(state.x, b.left, b.right, sw / 2 / state.zoom);
+        state.y = clampAxis(state.y, b.bottom, b.top, sh / 2 / state.zoom);
     };
 
     const settle = () => {
@@ -169,7 +185,8 @@ const createCamera = options => {
         },
         report (name) {
             const view = camera.view(1);
-            const rect = viewRect(view);
+            const [sw, sh] = stageSize();
+            const rect = viewRect(view, sw, sh);
             switch (String(name).toLowerCase()) {
             case 'x': return view.x;
             case 'y': return view.y;
@@ -184,7 +201,8 @@ const createCamera = options => {
         info () {
             if (!state.active) return null;
             const view = camera.view(1);
-            return Object.assign({x: view.x, y: view.y, zoom: view.zoom, follow: state.follow}, viewRect(view));
+            const [sw, sh] = stageSize();
+            return Object.assign({x: view.x, y: view.y, zoom: view.zoom, follow: state.follow}, viewRect(view, sw, sh));
         }
     };
     return camera;

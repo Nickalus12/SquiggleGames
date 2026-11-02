@@ -119,6 +119,134 @@ Framerate.propTypes = {
     onValue: PropTypes.func
 };
 
+const ACTION_KEY_SLOTS = [
+    {key: 'space', label: 'Space', placeholder: 'Jump'},
+    {key: 'e', label: 'E key', placeholder: 'Use'},
+    {key: 'f', label: 'F key', placeholder: 'Fire'},
+    {key: 'q', label: 'Q key', placeholder: 'Dash'}
+];
+
+const ControlsAndHud = ({
+    touchMode,
+    actionLabels,
+    hudSettings,
+    onTouchModeChange,
+    onActionLabelChange,
+    onHudToggle
+}) => {
+    const hud = hudSettings || {enabled: true, scores: true, teams: true, timer: true, health: true};
+    const labels = actionLabels || {};
+    return (
+        <React.Fragment>
+            <Header>
+                <FormattedMessage
+                    defaultMessage="Controls and HUD"
+                    description="Section of game settings for touch controls and HUD"
+                    id="sq.settings.controlsHud"
+                />
+            </Header>
+            <div
+                className={styles.presets}
+                role="group"
+                aria-label="Touch movement style"
+            >
+                <button
+                    type="button"
+                    data-touch-mode="thumbstick"
+                    className={classNames(styles.preset, {[styles.selected]: touchMode !== 'dpad'})}
+                    aria-pressed={touchMode !== 'dpad'}
+                    onClick={onTouchModeChange}
+                >
+                    {'Thumbstick'}
+                    <small>{'Smooth 360° pad'}</small>
+                </button>
+                <button
+                    type="button"
+                    data-touch-mode="dpad"
+                    className={classNames(styles.preset, {[styles.selected]: touchMode === 'dpad'})}
+                    aria-pressed={touchMode === 'dpad'}
+                    onClick={onTouchModeChange}
+                >
+                    {'D-Pad'}
+                    <small>{'Classic arrows'}</small>
+                </button>
+            </div>
+            <div className={styles.actionLabelsGrid}>
+                {ACTION_KEY_SLOTS.map(slot => (
+                    <label
+                        key={slot.key}
+                        className={styles.actionLabelItem}
+                    >
+                        <span>{slot.label}</span>
+                        <BufferedInput
+                            value={labels[slot.key] || ''}
+                            placeholder={slot.placeholder}
+                            onSubmit={val => onActionLabelChange && onActionLabelChange(slot.key, val)}
+                            className={styles.textInput}
+                            type="text"
+                        />
+                    </label>
+                ))}
+            </div>
+            <Setting
+                value={hud.enabled !== false}
+                onChange={e => onHudToggle && onHudToggle('enabled', e.target.checked)}
+                label={
+                    <FormattedMessage
+                        defaultMessage="Show game HUD bar"
+                        description="Toggle the automatic platform HUD for scores, teams, timer, and health"
+                        id="sq.settings.hudEnabled"
+                    />
+                }
+                detail={
+                    <FormattedMessage
+                        defaultMessage="Displays sleek scoreboards, team tallies, round timers, and health bars automatically."
+                        description="Help text for the automatic HUD setting"
+                        id="sq.settings.hudEnabledDetail"
+                    />
+                }
+            >
+                {hud.enabled !== false && (
+                    <div className={styles.hudPills}>
+                        {[
+                            {id: 'scores', text: 'Leaderboard'},
+                            {id: 'teams', text: 'Teams'},
+                            {id: 'timer', text: 'Timer'},
+                            {id: 'health', text: 'Health bar'}
+                        ].map(item => (
+                            <label
+                                key={item.id}
+                                className={styles.hudPill}
+                            >
+                                <FancyCheckbox
+                                    className={styles.checkbox}
+                                    checked={hud[item.id] !== false}
+                                    onChange={e => onHudToggle && onHudToggle(item.id, e.target.checked)}
+                                />
+                                <span>{item.text}</span>
+                            </label>
+                        ))}
+                    </div>
+                )}
+            </Setting>
+        </React.Fragment>
+    );
+};
+ControlsAndHud.propTypes = {
+    touchMode: PropTypes.string,
+    actionLabels: PropTypes.objectOf(PropTypes.string),
+    hudSettings: PropTypes.shape({
+        enabled: PropTypes.bool,
+        scores: PropTypes.bool,
+        teams: PropTypes.bool,
+        timer: PropTypes.bool,
+        health: PropTypes.bool
+    }),
+    onTouchModeChange: PropTypes.func,
+    onActionLabelChange: PropTypes.func,
+    onHudToggle: PropTypes.func
+};
+
 const StageShape = ({stageWidth, stageHeight, preset, onPreset, onStageWidthChange, onStageHeightChange, intl}) => (
     <React.Fragment>
         <div
@@ -359,6 +487,14 @@ const SettingsModalComponent = props => (
                         onStageWidthChange={props.onStageWidthChange}
                         onStageHeightChange={props.onStageHeightChange}
                     />
+                    <ControlsAndHud
+                        touchMode={props.touchMode}
+                        actionLabels={props.actionLabels}
+                        hudSettings={props.hudSettings}
+                        onTouchModeChange={props.onTouchModeChange}
+                        onActionLabelChange={props.onActionLabelChange}
+                        onHudToggle={props.onHudToggle}
+                    />
                 </React.Fragment>
             )}
 
@@ -448,7 +584,19 @@ SettingsModalComponent.propTypes = {
     stagePreset: PropTypes.string,
     onStagePreset: PropTypes.func,
     onStageWidthChange: PropTypes.func,
-    onStageHeightChange: PropTypes.func
+    onStageHeightChange: PropTypes.func,
+    touchMode: PropTypes.string,
+    actionLabels: PropTypes.objectOf(PropTypes.string),
+    hudSettings: PropTypes.shape({
+        enabled: PropTypes.bool,
+        scores: PropTypes.bool,
+        teams: PropTypes.bool,
+        timer: PropTypes.bool,
+        health: PropTypes.bool
+    }),
+    onTouchModeChange: PropTypes.func,
+    onActionLabelChange: PropTypes.func,
+    onHudToggle: PropTypes.func
 };
 
 export default injectIntl(SettingsModalComponent);

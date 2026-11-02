@@ -1,7 +1,7 @@
 import {FLAGS, MAX_LEVELS, addTexture, cellAt, cloneGrid, createGrid, flagsAt, levelRect, setCell,
     toRulesLevel} from './tilemap.js';
 import {moveBy, onGround, overlapFlags} from './collision.js';
-import {STAGE_WIDTH, createCamera, toWorld} from './camera.js';
+import {STAGE_WIDTH, STAGE_HEIGHT, createCamera, toWorld} from './camera.js';
 import {createTileRenderer} from './render.js';
 import {createTextureCache, browserCanvas, browserImageLoader} from './textures.js';
 import {SCENES_KEY, WORLD_KEY, readLevels, readScenes, removeLevel, writeLevel} from './storage.js';
@@ -51,7 +51,12 @@ const sameView = (a, b) => a && b && a.x === b.x && a.y === b.y && a.zoom === b.
 const createWorldState = (runtime, options) => {
     const opts = options || {};
     const emitter = createEmitter();
-    const camera = createCamera({random: opts.random});
+    const stageWidth = () => Math.max(120, Number(runtime && runtime.stageWidth) || STAGE_WIDTH);
+    const stageHeight = () => Math.max(90, Number(runtime && runtime.stageHeight) || STAGE_HEIGHT);
+    const camera = createCamera({
+        random: opts.random,
+        getStageSize: () => [stageWidth(), stageHeight()]
+    });
     const state = {
         runtime,
         seam: null,
@@ -129,9 +134,10 @@ const createWorldState = (runtime, options) => {
     };
 
     const parallaxShift = view => {
+        const sw = stageWidth();
         const speed = Math.max(0, Math.min(100, state.backdrop.speed)) / 100;
         const raw = -view.x * speed * view.zoom;
-        return (((raw % STAGE_WIDTH) + STAGE_WIDTH + (STAGE_WIDTH / 2)) % STAGE_WIDTH) - (STAGE_WIDTH / 2);
+        return (((raw % sw) + sw + (sw / 2)) % sw) - (sw / 2);
     };
 
     const backdropPosition = view => {
@@ -188,8 +194,9 @@ const createWorldState = (runtime, options) => {
             renderer.updateDrawableSkinId(state.echo, skin);
         }
         if (!moved) return;
+        const sw = stageWidth();
         const shift = parallaxShift(view);
-        const other = shift < 0 ? shift + STAGE_WIDTH : shift - STAGE_WIDTH;
+        const other = shift < 0 ? shift + sw : shift - sw;
         renderer.updateDrawablePosition(state.echo, [view.x + (other / view.zoom), view.y]);
         renderer.updateDrawableDirectionScale(state.echo, 90, [100 / view.zoom, 100 / view.zoom]);
         renderer.updateDrawableVisible(state.echo, true);
@@ -246,7 +253,7 @@ const createWorldState = (runtime, options) => {
             const dt = (runtime.currentStepTime || (1000 / 30)) / 1000;
             camera.step(dt, followPosition());
         }
-        if (state.tiles) state.tiles.update(currentView(1));
+        if (state.tiles) state.tiles.update(currentView(1), stageWidth(), stageHeight());
     };
 
     const ensureTiles = () => {
@@ -470,7 +477,7 @@ const createWorldState = (runtime, options) => {
             if (sameView(next, state.edit) || (!next && !state.edit)) return;
             state.edit = next;
             state.applied = null;
-            if (state.tiles) state.tiles.update(currentView(1));
+            if (state.tiles) state.tiles.update(currentView(1), stageWidth(), stageHeight());
         },
         editView: () => state.edit,
         addDrawables (provider) {

@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
-import {touchLayoutFor} from '../../lib/touch-keys';
+import {thumbstickDirections, touchLayoutFor} from '../../lib/touch-keys';
 
 import styles from './touch-game-controls.css';
 
@@ -91,7 +91,7 @@ class TouchGameControls extends React.Component {
         ]);
         this.pointers = new Map();
         this.held = new Map();
-        this.state = {down: {}};
+        this.state = {down: {}, knobX: 0, knobY: 0, padActive: false};
     }
     componentDidMount () {
         window.addEventListener('blur', this.releaseAll);
@@ -132,12 +132,15 @@ class TouchGameControls extends React.Component {
         if (!previous) return;
         this.pointers.delete(pointerId);
         previous.forEach(name => this.release(name));
+        if (this.pointers.size === 0) {
+            this.setState({knobX: 0, knobY: 0, padActive: false});
+        }
     }
     releaseAll () {
         for (const name of this.held.keys()) this.props.onKey(name, false);
         this.held.clear();
         this.pointers.clear();
-        this.setState({down: {}});
+        this.setState({down: {}, knobX: 0, knobY: 0, padActive: false});
     }
     capture (e) {
         e.preventDefault();
@@ -148,14 +151,49 @@ class TouchGameControls extends React.Component {
         const el = hit && hit.closest && hit.closest('[data-touch-cell]');
         return el && this.pad && this.pad.contains(el) ? el : null;
     }
+    stickNamesAt (clientX, clientY) {
+        if (!this.pad) return [];
+        const rect = this.pad.getBoundingClientRect();
+        if (!rect || !rect.width) return [];
+        const cx = rect.left + (rect.width / 2);
+        const cy = rect.top + (rect.height / 2);
+        const radius = Math.min(rect.width, rect.height) / 2;
+        const stick = thumbstickDirections(clientX - cx, clientY - cy, radius);
+        this.setState({knobX: stick.knobX, knobY: stick.knobY, padActive: true});
+        const {pad} = touchLayoutFor(this.props.keys);
+        const out = [];
+        stick.directions.forEach(dir => {
+            const found = pad.find(c => c.direction === dir);
+            if (found) found.names.forEach(n => out.push(n));
+        });
+        return out;
+    }
     handlePadDown (e) {
         if (this.pointers.has(e.pointerId)) return;
-        const cell = e.target.closest ? e.target.closest('[data-touch-cell]') : null;
         this.capture(e);
+        if (this.props.touchMode === 'thumbstick' && this.pad && this.pad.getBoundingClientRect) {
+            const rect = this.pad.getBoundingClientRect();
+            if (rect && rect.width > 0) {
+                const names = this.stickNamesAt(e.clientX, e.clientY);
+                if (names.length > 0) {
+                    this.hold(e.pointerId, names);
+                    return;
+                }
+            }
+        }
+        const cell = e.target.closest ? e.target.closest('[data-touch-cell]') : null;
+        this.setState({padActive: true});
         this.hold(e.pointerId, namesOf(cell));
     }
     handlePadMove (e) {
         if (!this.pointers.has(e.pointerId)) return;
+        if (this.props.touchMode === 'thumbstick' && this.pad && this.pad.getBoundingClientRect) {
+            const rect = this.pad.getBoundingClientRect();
+            if (rect && rect.width > 0) {
+                this.hold(e.pointerId, this.stickNamesAt(e.clientX, e.clientY));
+                return;
+            }
+        }
         this.hold(e.pointerId, namesOf(this.cellAt(e.clientX, e.clientY)));
     }
     handleActionDown (e) {
@@ -204,10 +242,12 @@ class TouchGameControls extends React.Component {
     }
     renderAction (name) {
         const down = this.isDown([name]);
-        const {intl} = this.props;
+        const {intl, actionLabels} = this.props;
+        const custom = actionLabels && actionLabels[name] ? String(actionLabels[name]).trim() : '';
         const named = messages[name];
-        const text = named ? intl.formatMessage(named) : name.toUpperCase();
-        const label = named ? text : intl.formatMessage(messages.letter, {key: text});
+        const defaultText = named ? intl.formatMessage(named) : name.toUpperCase();
+        const text = custom || defaultText;
+        const label = custom || (named ? defaultText : intl.formatMessage(messages.letter, {key: defaultText}));
         return (
             <button
                 aria-label={label}
@@ -228,17 +268,22 @@ class TouchGameControls extends React.Component {
         );
     }
     render () {
-        const {className, keys, layout} = this.props;
+        const {className, keys, layout, touchMode} = this.props;
         const {pad, actions} = touchLayoutFor(keys);
+        const isStick = touchMode === 'thumbstick';
         return (
             <div
                 className={classNames(styles.controls, styles[layout], className)}
                 data-touch-controls={layout}
+                data-touch-mode={touchMode}
                 onContextMenu={this.handleContextMenu}
             >
                 {pad.length ? (
                     <div
-                        className={styles.pad}
+                        className={classNames(styles.pad, {
+                            [styles.padThumbstick]: isStick,
+                            [styles.padActive]: this.state.padActive
+                        })}
                         data-touch-pad
                         ref={this.setPad}
                         onLostPointerCapture={this.handlePointerEnd}
@@ -248,11 +293,23 @@ class TouchGameControls extends React.Component {
                         onPointerUp={this.handlePointerEnd}
                     >
                         {pad.map(cell => this.renderCell(cell))}
+                        {isStick ? (
+                            <div
+                                aria-hidden="true"
+                                className={styles.thumbstickKnob}
+                                style={{
+                                    transform: `translate(${this.state.knobX}px, ${this.state.knobY}px)`
+                                }}
+                            />
+                        ) : null}
                     </div>
                 ) : null}
                 {actions.length ? (
                     <div
-                        className={classNames(styles.actions, {[styles.multi]: actions.length > 1})}
+                        className={classNames(styles.actions, {
+                            [styles.multi]: actions.length > 1,
+                            [styles.padActive]: Object.keys(this.state.down).some(k => this.state.down[k])
+                        })}
                         data-touch-actions={actions.length}
                     >
                         {actions.map(name => this.renderAction(name))}
@@ -264,15 +321,18 @@ class TouchGameControls extends React.Component {
 }
 
 TouchGameControls.propTypes = {
+    actionLabels: PropTypes.objectOf(PropTypes.string),
     className: PropTypes.string,
     intl: intlShape.isRequired,
     keys: PropTypes.arrayOf(PropTypes.string),
     layout: PropTypes.oneOf(['bottom', 'sides', 'overlay', 'stage']),
-    onKey: PropTypes.func.isRequired
+    onKey: PropTypes.func.isRequired,
+    touchMode: PropTypes.oneOf(['thumbstick', 'dpad'])
 };
 
 TouchGameControls.defaultProps = {
-    layout: 'bottom'
+    layout: 'bottom',
+    touchMode: 'dpad'
 };
 
 export default injectIntl(TouchGameControls);
