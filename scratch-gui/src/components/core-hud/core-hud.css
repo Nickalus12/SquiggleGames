@@ -555,13 +555,15 @@
         gap: 6px;
     }
 
-    .slotLabelText {
-        display: none;
+    .slotLabel {
+        font-size: 12px;
+        gap: 2px;
+        line-height: 1;
     }
 
-    .slotWeapon .slotLabel,
-    .slotItems .slotLabel {
-        display: none;
+    .slotLabelText {
+        font-size: 12px;
+        line-height: 1;
     }
 
     .ammoKinds {
@@ -622,9 +624,14 @@
     }
 
     .slot {
-        min-width: 36px;
-        padding: 2px 4px;
+        min-width: min-content;
+        flex-shrink: 0;
+        padding: 2px;
         border-radius: 9px;
+    }
+
+    .slotLabel .icon {
+        display: none;
     }
 
     .keycaps {
@@ -632,18 +639,21 @@
     }
 
     .keycap {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
     }
 
     .band {
-        gap: 4px;
-        padding: 4px 6px 5px;
+        grid-template-columns: max-content auto max-content;
+        justify-content: center;
+        gap: 2px;
+        padding: 4px 2px 5px;
         border-radius: 14px 14px 0 0;
     }
 
     .bandSide {
-        gap: 4px;
+        gap: 2px;
+        flex: none;
     }
 }
 

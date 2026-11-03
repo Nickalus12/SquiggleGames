@@ -28,8 +28,8 @@ The HUD root is a CSS container, so the band sizes itself to the stage, not the 
 | Stage width | What changes |
 |---|---|
 | Over 620px | Everything shows, with icons and words |
-| 620px and under | Words under the numbers hide and the icons stay. The weapon and key captions hide. Extra ammo kinds hide |
-| 400px and under | The face shrinks to 44px and the keys slot hides |
+| 620px and under | The word under each number stays at 12px. Weapon and key words stay. Extra ammo kinds hide |
+| 420px and under | The face shrinks to 44px, the icon beside the word hides, and each slot stays as wide as its word. The keys slot hides |
 
 The band does not take pointer events, so a click anywhere on it still reaches the stage and can start mouse look. Only the score board toggle is clickable.
 

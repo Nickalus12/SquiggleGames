@@ -221,7 +221,21 @@ const sub14 = fontSizes.filter(val => {
     const px = [...val.matchAll(/(\d+(?:\.\d+)?)px/g)].map(m => Number(m[1]));
     return px.some(n => n < 14);
 });
-ok('every HUD font-size rule stays 14px or larger', sub14.length === 0, sub14);
+ok('HUD font sizes stay at 14px, with the phone slot word at 12px',
+    sub14.length === 2 && sub14.every(val => val === '12px'), sub14);
+const phoneStart = cssSource.indexOf('@container sqhud (max-width: 620px)');
+const phoneEnd = cssSource.indexOf('@container sqhud (max-width: 420px)');
+const phoneRules = cssSource.slice(phoneStart, phoneEnd);
+const phoneLabelRule = phoneRules.match(/\.slotLabelText\s*\{[^}]*\}/);
+ok('phone width keeps a 12px slot word instead of hiding it',
+    phoneLabelRule !== null &&
+    /font-size:\s*12px/.test(phoneLabelRule[0]) &&
+    !/display:\s*none/.test(phoneLabelRule[0]) &&
+    !/\.slotWeapon \.slotLabel/.test(phoneRules));
+const tightRules = cssSource.slice(phoneEnd);
+const tightIconRule = tightRules.match(/\.slotLabel \.icon\s*\{[^}]*\}/);
+ok('the narrow phone band hides the slot icon so the 12px word fits',
+    tightIconRule !== null && /display:\s*none/.test(tightIconRule[0]));
 ok('face porthole locks a 1:1 aspect ratio so it stays round on phones',
     /\.faceSlot\s*\{[^}]*aspect-ratio:\s*1\s*\/\s*1/.test(cssSource));
 
