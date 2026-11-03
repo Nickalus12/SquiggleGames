@@ -99,3 +99,8 @@ other keys the game uses. In portrait they sit under the stage, and in
 landscape along the sides of it. On a computer with a mouse they stay hidden.
 In the editor, **Game buttons** on the Stage tab shows or hides the on-screen
 arrow and space buttons.
+
+Escape pauses a game you are playing alone. The card says "Paused. Press
+Escape or tap to keep playing". Escape or a tap continues, and the green flag
+starts the round over. In a room with other players the same card also says
+"The game keeps going for your friends", and their game does not stop.

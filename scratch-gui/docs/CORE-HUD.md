@@ -33,6 +33,8 @@ The HUD root is a CSS container, so the band sizes itself to the stage, not the 
 
 The band does not take pointer events, so a click anywhere on it still reaches the stage and can start mouse look. Only the score board toggle is clickable.
 
+Escape in the player opens a pause card over the stage (`sq.playerPause.*`). Alone, that stops the VM and the project timer, so the band stops drawing under the card. In a room with other players the VM keeps running, and the card adds that the game keeps going for your friends. The band stays where it is either way.
+
 ## Data contract
 
 `extractHudState(vm, net)` is pure. It reads four sources and the first one that has a value wins:
