@@ -328,5 +328,42 @@ ok('StatusBand renders derived and overridden slot labels for ammo, health, shie
     customBand.includes('>Relics<'),
     customBand);
 
+const {extractHudState} = await import('../../lib/core-hud-state.js');
+const boardVm = {
+    runtime: {
+        targets: [
+            {isStage: true, isOriginal: true, variables: {}, comments: {}}
+        ]
+    }
+};
+const postedRows = (top, slot) => {
+    const boardState = extractHudState(boardVm, {
+        slot,
+        game: {
+            names: {1: 'Ada', 2: 'Bo'},
+            boards: [{n: 'score', top}]
+        }
+    });
+    return boardState.leaderboard ? boardState.leaderboard.rows : [];
+};
+const onePost = postedRows([[1, 4]], 1);
+ok('a two player names map keeps the player who has not posted at 0',
+    onePost.length === 2 &&
+    onePost[0].name === 'Ada' && onePost[0].score === 4 && onePost[0].rank === 1 &&
+    onePost[1].name === 'Bo' && onePost[1].score === 0 && onePost[1].rank === 2,
+    onePost);
+const laterPost = postedRows([[2, 9]], 1);
+ok('a higher score from the later player sorts ahead of join order',
+    laterPost.length === 2 &&
+    laterPost[0].name === 'Bo' && laterPost[0].score === 9 &&
+    laterPost[1].name === 'Ada' && laterPost[1].score === 0,
+    laterPost);
+const tiedPost = postedRows([[2, 0]], 2);
+ok('equal scores after one post stay in join order',
+    tiedPost.length === 2 &&
+    tiedPost[0].name === 'Ada' && tiedPost[0].score === 0 &&
+    tiedPost[1].name === 'Bo' && tiedPost[1].score === 0 && tiedPost[1].isMe === true,
+    tiedPost);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

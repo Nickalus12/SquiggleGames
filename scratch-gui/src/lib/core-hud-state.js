@@ -457,27 +457,59 @@ export const extractHudState = (vm, netOverride) => {
         if (gameBoards.length > 0 && Array.isArray(gameBoards[0].top) && gameBoards[0].top.length > 0) {
             const first = gameBoards[0];
             const declaredTeams = Array.isArray(mark && mark.teams) ? mark.teams : [];
-            const rows = first.top.slice(0, 6).map((entry, idx) => {
-                const slot = entry[0];
-                const score = Number.isFinite(Number(entry[1])) ? Number(entry[1]) : 0;
-                const pName = (game.names && playerName(game, slot)) || `Player ${slot}`;
-                const tName = game.teams ? teamName(game, slot, declaredTeams) : '';
-                return {
-                    rank: idx + 1,
-                    slot,
+            const posted = new Map();
+            first.top.forEach(entry => {
+                if (!Array.isArray(entry)) return;
+                const slot = Number(entry[0]);
+                if (!Number.isFinite(slot)) return;
+                posted.set(slot, Number.isFinite(Number(entry[1])) ? Number(entry[1]) : 0);
+            });
+            const nameSlots = game && game.names ? Object.keys(game.names) : [];
+            const joinAt = new Map();
+            nameSlots.forEach((slot, idx) => {
+                const n = Number(slot);
+                if (Number.isFinite(n)) joinAt.set(n, idx);
+            });
+            const seen = new Set();
+            const rows = [];
+            const addSlot = (slot, fallbackJoin) => {
+                const n = Number(slot);
+                if (!Number.isFinite(n) || seen.has(n)) return;
+                seen.add(n);
+                const score = posted.has(n) ? posted.get(n) : 0;
+                const pName = (game && game.names && playerName(game, n)) || `Player ${n}`;
+                const tName = game && game.teams ? teamName(game, n, declaredTeams) : '';
+                rows.push({
+                    slot: n,
                     name: pName,
                     score,
-                    isMe: Number(slot) === Number(mySlot),
-                    tone: tName ? teamTone(tName) : ''
-                };
+                    isMe: n === Number(mySlot),
+                    tone: tName ? teamTone(tName) : '',
+                    join: joinAt.has(n) ? joinAt.get(n) : fallbackJoin
+                });
+            };
+            nameSlots.forEach(slot => addSlot(slot, nameSlots.length));
+            let extra = nameSlots.length;
+            Array.from(posted.keys()).forEach(slot => {
+                addSlot(slot, extra);
+                extra += 1;
             });
+            rows.sort((a, b) => (b.score - a.score) || (a.join - b.join));
+            const ranked = rows.slice(0, 6).map((row, idx) => ({
+                rank: idx + 1,
+                slot: row.slot,
+                name: row.name,
+                score: row.score,
+                isMe: row.isMe,
+                tone: row.tone
+            }));
             const rawBoardName = first.n || first.name || 'Score';
             leaderboard = {
                 boardName: pickHudLabel(
                     [rawBoardName, boardKey, 'frags', 'scores', 'score', 'board'],
                     humanLabel(rawBoardName, 'Score')
                 ),
-                rows
+                rows: ranked
             };
         } else {
             const primaryBoard = declaredBoards[0] ?
