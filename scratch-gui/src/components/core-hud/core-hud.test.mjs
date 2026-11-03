@@ -148,6 +148,35 @@ ok('no timer means TimerHUD and other sprites stay visible', timerSprite.visible
 ok('the board folds into the band in solo play', !render(hud.render()).includes('core-hud-leaderboard') &&
     render(hud.render()).includes('core-hud-band'));
 
+const handleBoardToggle = () => null;
+const paintBoard = (rows, collapsed) => render(React.createElement(CoreHud.Leaderboard, {
+    leaderboard: {boardName: 'Frags', rows},
+    collapsed,
+    onToggle: handleBoardToggle
+}));
+const oneRowBoard = paintBoard(
+    [{rank: 1, slot: 1, name: 'Red', score: 0, isMe: true}],
+    false
+);
+ok('solo play with one row draws the score and no header',
+    oneRowBoard.includes('>Red<') && oneRowBoard.includes('>0<') &&
+    !oneRowBoard.includes('boardToggle') && !oneRowBoard.includes('Hide'),
+    oneRowBoard);
+const openRows = [
+    {rank: 1, slot: 1, name: 'Ada', score: 7, isMe: true},
+    {rank: 2, slot: 2, name: 'Bo', score: 1, isMe: false}
+];
+const openBoard = paintBoard(openRows, false);
+ok('an open board draws names and scores and no Hide header',
+    openBoard.includes('>Frags<') && openBoard.includes('>Ada<') && openBoard.includes('>Bo<') &&
+    openBoard.includes('>7<') && !openBoard.includes('Hide') && !openBoard.includes('boardHint'),
+    openBoard);
+const shutBoard = paintBoard(openRows, true);
+ok('a folded board shows the top score and no empty header',
+    shutBoard.includes('boardHint') && shutBoard.includes('>7<') &&
+    !shutBoard.includes('Hide') && !shutBoard.includes('>Ada<'),
+    shutBoard);
+
 const before = extracts;
 for (let i = 0; i < 30; i++) runtime.emit('AFTER_EXECUTE');
 ok('thirty ticks inside 100 ms read the game at most once', extracts - before <= 1, extracts - before);

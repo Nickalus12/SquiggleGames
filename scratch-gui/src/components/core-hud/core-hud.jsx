@@ -71,11 +71,6 @@ const messages = defineMessages({
         id: 'sq.coreHud.face',
         defaultMessage: 'Squiggle is feeling {mood}',
         description: 'Accessible name of the mascot face in the game status bar, mood is a word like great or ouch'
-    },
-    hideBoard: {
-        id: 'sq.coreHud.hideBoard',
-        defaultMessage: 'Hide',
-        description: 'Button that collapses the score board in a game'
     }
 });
 
@@ -224,28 +219,32 @@ TopCenter.propTypes = {
 const Leaderboard = ({leaderboard, collapsed, onToggle}) => {
     if (!leaderboard || !Array.isArray(leaderboard.rows) || leaderboard.rows.length === 0) return null;
     const topScore = leaderboard.rows[0] ? leaderboard.rows[0].score : 0;
+    const soloRow = leaderboard.rows.length === 1;
+    const showRows = soloRow || !collapsed;
     return (
         <div
             className={styles.topRight}
             data-testid="core-hud-leaderboard"
         >
             <div className={styles.boardCard}>
-                <button
-                    type="button"
-                    className={styles.boardToggle}
-                    aria-expanded={!collapsed}
-                    onClick={onToggle}
-                >
-                    <span className={styles.boardTitle}>
-                        <Icon kind="frags" />
-                        <span>{leaderboard.boardName}</span>
-                    </span>
-                    <span className={styles.boardHint}>
-                        {collapsed ? `${topScore}` : <FormattedMessage {...messages.hideBoard} />}
-                    </span>
-                </button>
-                {!collapsed && (
-                    <ol className={styles.boardList}>
+                {soloRow ? null : (
+                    <button
+                        type="button"
+                        className={styles.boardToggle}
+                        aria-expanded={!collapsed}
+                        onClick={onToggle}
+                    >
+                        <span className={styles.boardTitle}>
+                            <Icon kind="frags" />
+                            <span>{leaderboard.boardName}</span>
+                        </span>
+                        {collapsed ? (
+                            <span className={styles.boardHint}>{`${topScore}`}</span>
+                        ) : null}
+                    </button>
+                )}
+                {showRows && (
+                    <ol className={classNames(styles.boardList, {[styles.boardListSolo]: soloRow})}>
                         {leaderboard.rows.map(row => (
                             <li
                                 key={`${row.slot}-${row.rank}`}
