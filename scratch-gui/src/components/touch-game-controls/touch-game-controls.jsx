@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
-import {thumbstickDirections, touchLayoutFor} from '../../lib/touch-keys';
+import {actionButtonCopy, thumbstickDirections, touchLayoutFor} from '../../lib/touch-keys';
 
 import styles from './touch-game-controls.css';
 
@@ -48,8 +48,38 @@ const messages = defineMessages({
         id: 'sq.touchKeys.letter',
         defaultMessage: '{key} key',
         description: 'On-screen game button that acts like a letter or digit key, for example "E key"'
+    },
+    jump: {
+        id: 'sq.touchKeys.jump',
+        defaultMessage: 'Jump',
+        description: 'On-screen button for the space bar when the game has a jump'
+    },
+    action: {
+        id: 'sq.touchKeys.action',
+        defaultMessage: 'Action',
+        description: 'On-screen button for the space bar when the game has no jump'
+    },
+    use: {
+        id: 'sq.touchKeys.use',
+        defaultMessage: 'Use',
+        description: 'On-screen button for the E key'
+    },
+    dash: {
+        id: 'sq.touchKeys.dash',
+        defaultMessage: 'Dash',
+        description: 'On-screen button for the Shift key'
     }
 });
+
+const WORD_MESSAGES = {
+    Jump: messages.jump,
+    Action: messages.action,
+    Use: messages.use,
+    Dash: messages.dash,
+    Space: messages.space,
+    Shift: messages.shift,
+    Enter: messages.enter
+};
 
 const ARROW_PATHS = {
     up: 'M5 15l7-7 7 7',
@@ -242,12 +272,15 @@ class TouchGameControls extends React.Component {
     }
     renderAction (name) {
         const down = this.isDown([name]);
-        const {intl, actionLabels} = this.props;
+        const {intl, actionLabels, hasJump} = this.props;
         const custom = actionLabels && actionLabels[name] ? String(actionLabels[name]).trim() : '';
+        const copy = actionButtonCopy(name, custom, hasJump);
+        const say = value => (WORD_MESSAGES[value] ? intl.formatMessage(WORD_MESSAGES[value]) : value);
+        const text = say(copy.word);
+        const tag = copy.tag ? say(copy.tag) : '';
         const named = messages[name];
-        const defaultText = named ? intl.formatMessage(named) : name.toUpperCase();
-        const text = custom || defaultText;
-        const label = custom || (named ? defaultText : intl.formatMessage(messages.letter, {key: defaultText}));
+        const label = tag ? `${text}, ${tag}` :
+            (custom || (named ? text : intl.formatMessage(messages.letter, {key: text})));
         return (
             <button
                 aria-label={label}
@@ -264,6 +297,7 @@ class TouchGameControls extends React.Component {
                 onPointerUp={this.handlePointerEnd}
             >
                 <span className={styles.keyLabel}>{text}</span>
+                {tag ? <span className={styles.keyTag}>{tag}</span> : null}
             </button>
         );
     }
@@ -323,6 +357,7 @@ class TouchGameControls extends React.Component {
 TouchGameControls.propTypes = {
     actionLabels: PropTypes.objectOf(PropTypes.string),
     className: PropTypes.string,
+    hasJump: PropTypes.bool,
     intl: intlShape.isRequired,
     keys: PropTypes.arrayOf(PropTypes.string),
     layout: PropTypes.oneOf(['bottom', 'sides', 'overlay', 'stage']),
@@ -331,6 +366,7 @@ TouchGameControls.propTypes = {
 };
 
 TouchGameControls.defaultProps = {
+    hasJump: false,
     layout: 'bottom',
     touchMode: 'dpad'
 };

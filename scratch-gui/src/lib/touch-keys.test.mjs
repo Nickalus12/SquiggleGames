@@ -3,8 +3,11 @@ process.removeAllListeners('warning');
 const {
     MAX_ACTIONS,
     TOUCH_KEYS,
+    actionButtonCopy,
+    derivedActionWord,
     keyboardData,
     listenedTouchKeys,
+    projectHasJump,
     projectWantsTouchKeys,
     thumbstickDirections,
     touchKeyByName,
@@ -39,9 +42,11 @@ const names = TOUCH_KEYS.map(k => k.name);
 ok('one table, names unique', new Set(names).size === names.length);
 ok('the table holds arrows, wasd, space, shift, enter, letters and digits',
     ['ArrowUp', 'w', 'a', 's', 'd', 'space', 'shift', 'enter', 'e', 'z', '0', '9'].every(n => names.includes(n)));
-ok('letters post their key and upper-case key code', same(keyboardData('w', true), {key: 'w', keyCode: 87, isDown: true}));
+ok('letters post their key and upper-case key code',
+    same(keyboardData('w', true), {key: 'w', keyCode: 87, isDown: true}));
 ok('digits post their key code', same(keyboardData('7', false), {key: '7', keyCode: 55, isDown: false}));
-ok('shift and enter post DOM key names', keyboardData('shift', true).key === 'Shift' && keyboardData('enter', true).key === 'Enter');
+ok('shift and enter post DOM key names',
+    keyboardData('shift', true).key === 'Shift' && keyboardData('enter', true).key === 'Enter');
 ok('unknown names post nothing', keyboardData('nope', true) === null);
 ok('wasd sit on the pad', ['w', 'a', 's', 'd'].map(n => touchKeyByName(n).pad).join() === 'up,left,down,right');
 
@@ -54,14 +59,17 @@ ok('the scan finds arrows, w, space and e', same(Array.from(doom).sort(),
 ok('the scan ignores keys the table does not hold', listenedTouchKeys([target(hat('a', 'escape'))]).size === 0);
 ok('clones are skipped', listenedTouchKeys([{isOriginal: false, blocks: {_blocks: hat('a', 'w')}}]).size === 0);
 ok('a reporter in the key input counts as arrows plus space',
-    same(Array.from(listenedTouchKeys([target({x: {opcode: 'sensing_keypressed', fields: {},
-        inputs: {KEY_OPTION: {block: 'r'}}}, r: {opcode: 'operator_join', fields: {}, inputs: {}}})])).sort(),
+    same(Array.from(listenedTouchKeys([target({
+        x: {opcode: 'sensing_keypressed', fields: {}, inputs: {KEY_OPTION: {block: 'r'}}},
+        r: {opcode: 'operator_join', fields: {}, inputs: {}}
+    })])).sort(),
     ['down arrow', 'left arrow', 'right arrow', 'space', 'up arrow']));
 ok('projectWantsTouchKeys', projectWantsTouchKeys([target(hat('a', 'q'))]) && !projectWantsTouchKeys([target()]));
 
 const both = touchLayoutFor(doom);
 ok('arrows plus w: the up cell posts both', same(cell(both, 'up'), ['ArrowUp', 'w']));
-ok('arrows only on the other cells', same(cell(both, 'left'), ['ArrowLeft']) && same(cell(both, 'down'), ['ArrowDown']));
+ok('arrows only on the other cells',
+    same(cell(both, 'left'), ['ArrowLeft']) && same(cell(both, 'down'), ['ArrowDown']));
 ok('pad order is up, left, right, down', same(both.pad.map(c => c.direction), ['up', 'left', 'right', 'down']));
 ok('actions are space then e', same(both.actions, ['space', 'e']));
 
@@ -91,6 +99,39 @@ const rightStick = thumbstickDirections(40, 0, 60);
 ok('thumbstick right activates right direction', rightStick.active && same(rightStick.directions, ['right']));
 const diagStick = thumbstickDirections(35, -35, 60);
 ok('thumbstick up-right activates up and right', diagStick.active && same(diagStick.directions, ['up', 'right']));
+
+const jumpProc = {
+    isOriginal: true,
+    blocks: {_blocks: {p: {opcode: 'procedures_definition', mutation: {proccode: 'jump'}, fields: {}}}}
+};
+const plain = {
+    isOriginal: true,
+    blocks: {_blocks: {m: {opcode: 'motion_movesteps', fields: {STEPS: {value: '10'}}}}}
+};
+const broadcast = {
+    isOriginal: true,
+    blocks: {_blocks: {b: {opcode: 'event_whenbroadcastreceived', fields: {BROADCAST_OPTION: {value: 'Jump'}}}}}
+};
+const clone = {
+    isOriginal: false,
+    blocks: {_blocks: {p: {opcode: 'procedures_definition', mutation: {proccode: 'jump'}, fields: {}}}}
+};
+ok('a jump procedure marks the project', projectHasJump([jumpProc]) === true);
+ok('a jump broadcast marks the project', projectHasJump([broadcast]) === true);
+ok('motion steps are not a jump script', projectHasJump([plain]) === false);
+ok('a clone jump script does not count', projectHasJump([clone]) === false);
+ok('space is Jump only when the project jumps',
+    derivedActionWord('space', true) === 'Jump' && derivedActionWord('space', false) === 'Action');
+ok('e is Use and shift is Dash',
+    derivedActionWord('e', false) === 'Use' && derivedActionWord('shift', true) === 'Dash');
+ok('other keys have no derived word', derivedActionWord('f', true) === '' && derivedActionWord('1', false) === '');
+ok('a derived word keeps the key as the tag',
+    same(actionButtonCopy('space', '', true), {word: 'Jump', tag: 'Space'}) &&
+    same(actionButtonCopy('e', '', false), {word: 'Use', tag: 'E'}) &&
+    same(actionButtonCopy('shift', '', false), {word: 'Dash', tag: 'Shift'}) &&
+    same(actionButtonCopy('f', '', false), {word: 'F', tag: ''}));
+ok('a custom label wins and still tags the key',
+    same(actionButtonCopy('space', 'Fire', true), {word: 'Fire', tag: 'Space'}));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

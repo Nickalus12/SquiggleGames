@@ -6,7 +6,7 @@ import VM from 'scratch-vm';
 
 import TouchGameControlsComponent from '../components/touch-game-controls/touch-game-controls.jsx';
 import styles from '../components/touch-game-controls/touch-game-controls.css';
-import {keyboardData, listenedTouchKeys, touchLayoutFor} from '../lib/touch-keys';
+import {actionButtonCopy, keyboardData, listenedTouchKeys, projectHasJump, touchLayoutFor} from '../lib/touch-keys';
 import {readGameSettings} from '../lib/game-settings';
 import {playerTouchControlsVisible, setProjectUsesKeys, touchControlsVisible} from '../reducers/layout-mode';
 
@@ -27,19 +27,21 @@ class TouchGameControls extends React.Component {
         this.scanTimer = null;
         this.hintTimer = null;
         const squiggle = readGameSettings(props.vm);
+        const targets = props.vm && props.vm.runtime ? props.vm.runtime.targets : [];
         this.state = {
             keys: [],
             touchMode: squiggle.touchMode,
             actionLabels: squiggle.actionLabels,
+            hasJump: projectHasJump(targets),
             showHint: false
         };
     }
     componentDidMount () {
         const {vm} = this.props;
-        vm.on('PROJECT_LOADED', this.scheduleScan);
         vm.on('PROJECT_CHANGED', this.scheduleScan);
         vm.on('workspaceUpdate', this.scheduleScan);
         if (vm.runtime && typeof vm.runtime.on === 'function') {
+            vm.runtime.on('PROJECT_LOADED', this.scheduleScan);
             vm.runtime.on('PROJECT_START', this.handleProjectStart);
             vm.runtime.on('SQUIGGLE_SETTINGS_CHANGED', this.handleSettingsChanged);
         }
@@ -50,10 +52,10 @@ class TouchGameControls extends React.Component {
     }
     componentWillUnmount () {
         const {vm} = this.props;
-        vm.off('PROJECT_LOADED', this.scheduleScan);
         vm.off('PROJECT_CHANGED', this.scheduleScan);
         vm.off('workspaceUpdate', this.scheduleScan);
         if (vm.runtime && typeof vm.runtime.removeListener === 'function') {
+            vm.runtime.removeListener('PROJECT_LOADED', this.scheduleScan);
             vm.runtime.removeListener('PROJECT_START', this.handleProjectStart);
             vm.runtime.removeListener('SQUIGGLE_SETTINGS_CHANGED', this.handleSettingsChanged);
         }
@@ -88,12 +90,14 @@ class TouchGameControls extends React.Component {
     }
     scan () {
         this.scanTimer = null;
-        const keys = Array.from(listenedTouchKeys(this.props.vm.runtime.targets)).sort();
+        const targets = this.props.vm.runtime.targets;
+        const keys = Array.from(listenedTouchKeys(targets)).sort();
         const squiggle = readGameSettings(this.props.vm);
         this.setState({
             keys,
             touchMode: squiggle.touchMode,
-            actionLabels: squiggle.actionLabels
+            actionLabels: squiggle.actionLabels,
+            hasJump: projectHasJump(targets)
         });
         this.props.onSetProjectUsesKeys(keys.length > 0);
     }
@@ -106,9 +110,9 @@ class TouchGameControls extends React.Component {
         const parts = [];
         if (pad.length) parts.push('Move: WASD / Arrows');
         actions.forEach(act => {
-            const label = (this.state.actionLabels && this.state.actionLabels[act]) || '';
-            const keyName = act === 'space' ? 'Space' : act.toUpperCase();
-            parts.push(label ? `${keyName}: ${label}` : keyName);
+            const custom = (this.state.actionLabels && this.state.actionLabels[act]) || '';
+            const copy = actionButtonCopy(act, custom, this.state.hasJump);
+            parts.push(copy.tag ? `${copy.tag}: ${copy.word}` : copy.word);
         });
         if (!parts.length) return null;
         return (
@@ -129,6 +133,7 @@ class TouchGameControls extends React.Component {
             <TouchGameControlsComponent
                 actionLabels={this.state.actionLabels}
                 className={this.props.className}
+                hasJump={this.state.hasJump}
                 keys={this.state.keys}
                 layout={this.props.layout}
                 touchMode={this.state.touchMode}

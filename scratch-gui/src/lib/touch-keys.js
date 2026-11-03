@@ -71,6 +71,61 @@ const listenedTouchKeys = targets => {
 
 const projectWantsTouchKeys = targets => listenedTouchKeys(targets).size > 0;
 
+const blockTextHasJump = value => typeof value === 'string' && /jump/i.test(value);
+
+const blockMentionsJump = block => {
+    if (!block || typeof block !== 'object') return false;
+    if (blockTextHasJump(block.opcode)) return true;
+    const mutation = block.mutation;
+    if (mutation && typeof mutation === 'object') {
+        if (blockTextHasJump(mutation.proccode)) return true;
+        const args = mutation.argumentnames;
+        if (Array.isArray(args) && args.some(blockTextHasJump)) return true;
+    }
+    const fields = block.fields;
+    if (!fields || typeof fields !== 'object') return false;
+    return Object.keys(fields).some(key => {
+        const field = fields[key];
+        if (typeof field === 'string') return blockTextHasJump(field);
+        return !!(field && (blockTextHasJump(field.value) || blockTextHasJump(field.name)));
+    });
+};
+
+const projectHasJump = targets => {
+    for (const target of targets || []) {
+        if (!target || target.isOriginal === false) continue;
+        const blocks = target.blocks && target.blocks._blocks;
+        if (!blocks) continue;
+        for (const id of Object.keys(blocks)) {
+            if (blockMentionsJump(blocks[id])) return true;
+        }
+    }
+    return false;
+};
+
+const derivedActionWord = (name, hasJump) => {
+    if (name === 'space') return hasJump ? 'Jump' : 'Action';
+    if (name === 'e') return 'Use';
+    if (name === 'shift') return 'Dash';
+    return '';
+};
+
+const keyTextFor = name => {
+    if (name === 'space') return 'Space';
+    if (name === 'shift') return 'Shift';
+    if (name === 'enter') return 'Enter';
+    if (name && name.length === 1) return name.toUpperCase();
+    return name || '';
+};
+
+const actionButtonCopy = (name, custom, hasJump) => {
+    const keyText = keyTextFor(name);
+    const trimmed = custom ? String(custom).trim() : '';
+    const word = trimmed || derivedActionWord(name, hasJump) || keyText;
+    const tag = word.toLowerCase() === keyText.toLowerCase() ? '' : keyText;
+    return {word, tag};
+};
+
 const touchLayoutFor = scratchKeys => {
     const given = Array.from(scratchKeys || []);
     const listened = new Set(given.length ? given : ANY_SCRATCH_KEYS);
@@ -378,7 +433,9 @@ export {
     TOUCH_LOOK_MIN_SENSITIVITY,
     TOUCH_LOOK_SENSITIVITY,
     TOUCH_LOOK_SLOP,
+    actionButtonCopy,
     createTouchLookState,
+    derivedActionWord,
     endTouchLook,
     gamepadLookDelta,
     gamepadMoveKeys,
@@ -388,6 +445,7 @@ export {
     keyboardData,
     listenedTouchKeys,
     moveTouchLook,
+    projectHasJump,
     projectWantsTouchKeys,
     startTouchLook,
     syncGamepadKeys,
