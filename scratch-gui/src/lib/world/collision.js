@@ -5,6 +5,7 @@ const EPS = 1e-7;
 const GROUND = 0.01;
 const STEP_FREE = 0.25;
 const STEP_JUMP = 0.5;
+const EYE_OFFSET = 0.15;
 
 const gridHasFloorHeights = grid => {
     const bytes = grid && grid.floorHeights;
@@ -146,20 +147,20 @@ const rowBlocked = (grid, row, cols, mask, left, right, stepState) => {
     return false;
 };
 
-const sweep = (grid, edge, delta, count, blocked) => {
+const sweep = (grid, edge, delta, count, blocked, pad = 0) => {
     const ts = grid.tileSize;
     if (delta > 0) {
         const first = Math.max(0, Math.ceil((edge / ts) - EPS));
-        const last = Math.min(count - 1, Math.ceil(((edge + delta) / ts) - EPS) - 1);
+        const last = Math.min(count - 1, Math.ceil(((edge + delta + pad) / ts) - EPS) - 1);
         for (let i = first; i <= last; i++) {
-            if (blocked(i)) return {moved: (i * ts) - edge, hit: true};
+            if (blocked(i)) return {moved: Math.max(0, (i * ts) - pad - edge), hit: true};
         }
         return {moved: delta, hit: false};
     }
     const first = Math.min(count - 1, Math.floor((edge / ts) + EPS) - 1);
-    const last = Math.max(0, Math.floor(((edge + delta) / ts) + EPS));
+    const last = Math.max(0, Math.floor(((edge + delta - pad) / ts) + EPS));
     for (let i = first; i >= last; i--) {
-        if (blocked(i)) return {moved: ((i + 1) * ts) - edge, hit: true};
+        if (blocked(i)) return {moved: Math.min(0, ((i + 1) * ts) + pad - edge), hit: true};
     }
     return {moved: delta, hit: false};
 };
@@ -169,10 +170,17 @@ const moveBy = (grid, box, axis, delta, options) => {
     const d = Number(delta);
     if (!grid || !Number.isFinite(d) || d === 0) return result;
     const p = toPixels(grid, box);
+    const ts = grid.tileSize;
+    const half = (axis === 'x' ? box.w : box.h) / 2;
+    const useEye = Boolean((options && (options.eye || typeof options.eyeOffset === 'number')) ||
+        box.eye || half < (2 * EYE_OFFSET * ts));
+    const eyeFrac = options && typeof options.eyeOffset === 'number' ?
+        Math.max(0, options.eyeOffset) :
+        (useEye ? EYE_OFFSET : 0);
+    const eyePad = eyeFrac * ts;
     const hasFh = gridHasFloorHeights(grid);
     let stepState = null;
     if (hasFh) {
-        const ts = grid.tileSize;
         const cCol = Math.max(0, Math.min(grid.cols - 1, Math.floor((box.x - grid.origin[0]) / ts)));
         const cRow = Math.max(0, Math.min(grid.rows - 1, Math.floor((grid.origin[1] - box.y) / ts)));
         const cellZ = floorHeightAt(grid, cCol, cRow);
@@ -192,7 +200,7 @@ const moveBy = (grid, box, axis, delta, options) => {
         const rows = span(grid, p.top, p.bottom, grid.rows);
         const blocked = col => columnBlocked(grid, col, rows, FLAGS.solid, p.top, p.bottom, stepState);
         const edge = d > 0 ? p.right : p.left;
-        const step = sweep(grid, edge, d, grid.cols, blocked);
+        const step = sweep(grid, edge, d, grid.cols, blocked, eyePad);
         result.x = box.x + step.moved;
         if (step.hit) result.hit = d > 0 ? 'right' : 'left';
         return result;
@@ -202,7 +210,7 @@ const moveBy = (grid, box, axis, delta, options) => {
     const mask = down ? FLAGS.solid | FLAGS.oneway : FLAGS.solid;
     const blocked = row => rowBlocked(grid, row, cols, mask, p.left, p.right, stepState);
     const edge = down ? p.bottom : p.top;
-    const step = sweep(grid, edge, -d, grid.rows, blocked);
+    const step = sweep(grid, edge, -d, grid.rows, blocked, eyePad);
     result.y = box.y - step.moved;
     if (step.hit) result.hit = down ? 'bottom' : 'top';
     return result;
@@ -278,6 +286,7 @@ const castRay = (grid, x, y, dx, dy, maxDistance) => {
 };
 
 export {
+    EYE_OFFSET,
     moveBy,
     overlapFlags,
     onGround,

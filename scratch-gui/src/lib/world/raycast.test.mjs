@@ -4,12 +4,13 @@ const {FLAGS, HEIGHT_ANIM_MS, addTexture, animateHeightAt, createGrid, flagsAt, 
     renderedHeightAt, setCell, setFloorHeight, setHeight} = await import('./tilemap.js');
 const {OPEN_MS, HOLD_MS, MAX_DOORS, openDoorAt, closeDoorAt, stepDoors, doorOpenAt, setDoorProgress,
     isDoorOpenAt, encodeDoorValues, applyDoorValues} = await import('./doors.js');
+const {EYE_OFFSET, moveBy, overlapFlags} = await import('./collision.js');
 const ray = await import('./raycast.js');
 const {facingCostume} = await import('./view3d.js');
 
-const {WIDTH, HEIGHT, MAX_LIGHTS, MAX_SEETHROUGH, DEFAULT_DOOR_TEXTURE, basis, castRay, castRayMulti,
-    createFrame, markCellDirty, createLightBuffer, updateLightBuffer, drawSurfaces, drawFloorElevations, drawWalls,
-    facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
+const {WIDTH, HEIGHT, MAX_LIGHTS, MAX_SEETHROUGH, DEFAULT_DOOR_TEXTURE, NEAR, projectDistance, basis, castRay,
+    castRayMulti, createFrame, markCellDirty, createLightBuffer, updateLightBuffer, drawSurfaces, drawFloorElevations,
+    drawWalls, facingIndex, gridMap, parseColor, pickCrosshair, pixel, mixColors,
     fogEnd, render, toCell, fromCell, clampFov, clampEye, clampFog, clampFalloff,
     lightFalloffFactor, horizonOf, wrapDegrees} = ray;
 
@@ -1369,6 +1370,95 @@ section('floor elevation sectors, stairs, pits, and Fast rung cost');
     const ratio = elevMed / flatMed;
     ok('Fast rung cost with floor elevations stays under 1.3x flat floor',
         ratio < 1.3 || (elevMed - flatMed) < 0.05, {flatMed, elevMed, ratio});
+}
+
+section('wall near plane clamp and Hangar touching-wall golden');
+{
+    ok('NEAR constant is 0.3 tile and EYE_OFFSET is 0.15 tile', NEAR === 0.3 && EYE_OFFSET === 0.15);
+    const origin = [-512, 512];
+    const tile = 32;
+    const cols = 32;
+    const rows = 32;
+    const grid = createGrid({cols, rows, tileSize: tile, origin});
+    const wall = addTexture(grid, 'wall', FLAGS.solid);
+    for (let r = 23; r <= 30; r++) setCell(grid, 'main', 14, r, wall);
+    for (let c = 1; c <= 14; c++) setCell(grid, 'main', c, 30, wall);
+
+    const solidAt = (col, row) => {
+        if (col < 0 || row < 0 || col >= cols || row >= rows) return true;
+        if (col === 14 && row >= 23 && row <= 30) return true;
+        if (row === 30 && col >= 1 && col <= 14) return true;
+        return false;
+    };
+
+    const published = {x: -70, y: -442, w: 12, h: 12, d: 114};
+    const flags = overlapFlags(grid, published);
+    const bodyOutside = (flags & FLAGS.solid) === 0;
+    const fromWalk = {x: -176.5, y: -442, w: 12, h: 12};
+    const slide = moveBy(grid, fromWalk, 'x', 220);
+    const slidBox = {x: slide.x, y: slide.y, w: 12, h: 12};
+    const slideOutside = (overlapFlags(grid, slidBox) & FLAGS.solid) === 0;
+
+    const u = (published.x - origin[0]) / tile;
+    const v = (origin[1] - published.y) / tile;
+    const viewW = 640;
+    const viewH = 360;
+    const fov = 68;
+    const view = basis(published.d, fov, null, viewW);
+    const hit = castRay({solid: solidAt}, u, v, view.dir.x, view.dir.y);
+    const frame = createFrame(viewW, viewH);
+    const marbleTex = {width: 64, height: 64, data: new Uint32Array(64 * 64)};
+    for (let ty = 0; ty < 64; ty++) {
+        for (let tx = 0; tx < 64; tx++) {
+            const mortar = (ty % 16 === 0) || (((tx + ((ty >> 4) * 8)) % 16) === 0);
+            marbleTex.data[(ty * 64) + tx] = mortar ?
+                pixel(48, 36, 38) :
+                pixel(140 + ((tx * 3) & 31), 38 + ((ty * 5) & 31), 44 + ((tx ^ ty) & 15));
+        }
+    }
+    const hangarScene = {
+        map: mapOf(grid),
+        player: {u, v, direction: published.d},
+        fov,
+        fog: 35,
+        eye: 50,
+        floor: pixel(0x28, 0x2c, 0x34),
+        ceiling: pixel(0x16, 0x18, 0x20),
+        texture: val => (val === wall ? marbleTex : null)
+    };
+    const renderRes = render(frame, hangarScene);
+    const centerX = viewW >> 1;
+    const lineH = frame.heights[centerX];
+    const readable = Boolean(hit && lineH <= viewH);
+    ok('Hangar touching-wall body and slide stay outside solid cells with 0.15 tile eye setback',
+        bodyOutside && slideOutside && slide.hit === 'right' &&
+        near(slide.x + 6 + (EYE_OFFSET * tile), -64),
+        {bodyOutside, slideOutside, slide});
+    ok('castRay and zbuffer keep raw hit distance for sprites, doors and crosshair while projection clamps at NEAR',
+        hit && near(hit.dist, 0.205244, 1e-4) &&
+        near(frame.zbuffer[centerX], hit.dist, 1e-3) &&
+        near(renderRes.ahead, frame.zbuffer[centerX], 1e-6) &&
+        projectDistance(hit.dist, view.focal, viewH) > 1 &&
+        readable,
+        {dist: hit && hit.dist, z: frame.zbuffer[centerX], lineH, viewH});
+
+    let ceilRows = 0;
+    let floorRows = 0;
+    const wallColors = new Set();
+    for (let y = 0; y < viewH; y++) {
+        const c = frame.pixels[(y * viewW) + centerX];
+        if (y < (viewH >> 1) && c === frame.rowColors[y]) ceilRows++;
+        else if (y >= (viewH >> 1) && c === frame.rowColors[y]) floorRows++;
+        else wallColors.add(c);
+    }
+    ok('touching wall draws tall textured face with visible ceiling and floor rows and never a single texel',
+        ceilRows === 18 && floorRows === 18 && wallColors.size >= 16,
+        {ceilRows, floorRows, uniqueWallColors: wallColors.size});
+
+    const hangarGolden = hashPixels(frame.pixels);
+    ok('Hangar touching-wall pose (-70, -442) dir 114 matches golden hash 0x8bb60245',
+        hangarGolden === 0x8bb60245,
+        `0x${hangarGolden.toString(16)}`);
 }
 
 done();

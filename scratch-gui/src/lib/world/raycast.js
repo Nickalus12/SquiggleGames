@@ -25,6 +25,21 @@ const OPAQUE = 0xff000000;
 const FACINGS = 8;
 const FOG_FAR = 40;
 const FOG_SLOPE = 0.37;
+const NEAR = 0.3;
+const NEAR_FILL = 0.9;
+const NEAR_START = 1.48;
+
+const projectDistance = (dist, focal, height) => {
+    const d = Math.max(NEAR, dist);
+    if (!(focal > 0)) return d;
+    const h = height > 0 ? height : focal * 0.75;
+    const minProj = Math.max(NEAR, focal / (h * NEAR_FILL));
+    const nearStart = Math.max(minProj, NEAR_START);
+    if (d >= nearStart) return d;
+    if (nearStart <= NEAR) return Math.max(d, minProj);
+    const t = (d - NEAR) / (nearStart - NEAR);
+    return minProj + (t * (nearStart - minProj));
+};
 
 const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
 
@@ -1715,7 +1730,8 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                 continue;
             }
             const dist = Math.max(1e-4, colDist[x]);
-            const lineH = focal / dist;
+            const projDist = projectDistance(dist, focal, h);
+            const lineH = focal / projDist;
             const tileH = colHeight[x];
             const wallH = tileH === 1 ? lineH : lineH * tileH;
             zbuffer[x] = dist;
@@ -1829,8 +1845,9 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         for (let i = 0; i < count; i++) {
             const idx = base + i;
             const dist = Math.max(1e-4, hitDist[idx]);
+            const projDist = projectDistance(dist, focal, h);
             const tileH = hitHeight[idx];
-            const lineH = focal / dist;
+            const lineH = focal / projDist;
             const wallH = tileH * lineH;
             const bottom = half + (eye * lineH);
             const top = bottom - wallH;
@@ -1849,15 +1866,16 @@ const sampleWalls = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
         }
         const firstDist = Math.max(1e-4, hitDist[base]);
         zbuffer[x] = fullZ;
-        heights[x] = (focal * hitHeight[base]) / firstDist;
+        heights[x] = (focal * hitHeight[base]) / projectDistance(firstDist, focal, h);
         for (let i = count - 1; i >= 0; i--) {
             const idx = base + i;
             const visY0 = hitY0[idx];
             const visY1 = hitY1[idx];
             if (visY0 >= visY1) continue;
             const dist = Math.max(1e-4, hitDist[idx]);
+            const projDist = projectDistance(dist, focal, h);
             const tileH = hitHeight[idx];
-            const lineH = focal / dist;
+            const lineH = focal / projDist;
             const wallH = tileH * lineH;
             const top = (half + (eye * lineH)) - wallH;
             const fl = hitFlags[idx];
@@ -2313,7 +2331,7 @@ const drawSprites = (frame, scene, view, eye, fog, fogColor, lightBuf) => {
                     const sy1 = Math.min(colY1, hitY1[idx]);
                     if (sy0 >= sy1) continue;
                     const hDist = Math.max(1e-4, hitDist[idx]);
-                    const lineH = focal / hDist;
+                    const lineH = focal / projectDistance(hDist, focal, fh);
                     const wallH = hitHeight[idx] * lineH;
                     const wTop = (half + (eye * lineH)) - wallH;
                     sampleColumnSlice(
@@ -2626,7 +2644,9 @@ export {
     MAX_LIGHTS,
     MAX_SEETHROUGH,
     FACINGS,
+    NEAR,
     DEFAULT_DOOR_TEXTURE,
+    projectDistance,
     pixel,
     shade,
     tint,

@@ -572,6 +572,7 @@ const createWorldState = (runtime, options) => {
                 typeof view3d.viewer === 'function' && view3d.viewer() === target
             );
             const moveOpts = isViewer ? {
+                eye: true,
                 z: typeof view3d.playerZ === 'function' ? view3d.playerZ() : 0,
                 jumping: typeof view3d.isJumping === 'function' ? view3d.isJumping() : false
             } : null;

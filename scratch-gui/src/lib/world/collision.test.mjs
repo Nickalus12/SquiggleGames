@@ -1,6 +1,6 @@
 import {ok, near, section, done} from './harness.mjs';
 import {FLAGS, createGrid, setCell, setFloorHeight, addTexture} from './tilemap.js';
-import {moveBy, overlapFlags, onGround, castRay} from './collision.js';
+import {EYE_OFFSET, moveBy, overlapFlags, onGround, castRay} from './collision.js';
 import {openDoorAt, closeDoorAt, stepDoors, doorOpenAt} from './doors.js';
 
 const level = tileSize => {
@@ -183,6 +183,44 @@ section('walkable floor elevation, stairs, jump step, and pits');
     ok('jumping out of a -0.5 pit succeeds', jumpOutOfPit.hit === null);
     const jumpOutOfDeepPit = moveBy(pitGrid, cellBox(pitGrid, 3, 3, 20, 20), 'x', 32, {jumping: true});
     ok('a -1.0 deep pit blocks jumping directly to 0 without stairs', jumpOutOfDeepPit.hit === 'right');
+}
+
+section('eye offset behind hitbox front edge');
+{
+    ok('EYE_OFFSET is 0.15 tile', EYE_OFFSET === 0.15);
+    const origin = [-512, 512];
+    const tile = 32;
+    const hGrid = createGrid({cols: 32, rows: 32, tileSize: tile, origin});
+    const wall = addTexture(hGrid, 'wall', FLAGS.solid);
+    for (let r = 23; r <= 30; r++) setCell(hGrid, 'main', 14, r, wall);
+    for (let c = 1; c <= 14; c++) setCell(hGrid, 'main', c, 30, wall);
+
+    const published = {x: -70, y: -442, w: 12, h: 12};
+    ok('published Hangar pose (-70, -442) is outside solid cells',
+        (overlapFlags(hGrid, published) & FLAGS.solid) === 0);
+
+    const fromWalk = {x: -176.5, y: -442, w: 12, h: 12};
+    const slide = moveBy(hGrid, fromWalk, 'x', 220);
+    const slidBox = {x: slide.x, y: slide.y, w: 12, h: 12};
+    ok('sliding Hangar 12x12 hitbox into east wall stops with eye 0.15 tile behind hitbox front edge',
+        slide.hit === 'right' &&
+        (overlapFlags(hGrid, slidBox) & FLAGS.solid) === 0 &&
+        near(slide.x + (fromWalk.w / 2) + (EYE_OFFSET * tile), -64),
+        slide);
+
+    const viewerBox = {x: -176.5, y: -400, w: 24, h: 24};
+    const viewerSlide = moveBy(hGrid, viewerBox, 'x', 220, {eye: true});
+    ok('3D viewer move stops with eye 0.15 tile behind hitbox front edge',
+        viewerSlide.hit === 'right' &&
+        near(viewerSlide.x + (viewerBox.w / 2) + (EYE_OFFSET * tile), -64),
+        viewerSlide);
+
+    const pushFlush = moveBy(hGrid, published, 'x', 10);
+    ok('a box already closer than eye offset to a wall is not pushed backwards',
+        pushFlush.hit === 'right' && near(pushFlush.x, published.x), pushFlush);
+    const backAway = moveBy(hGrid, published, 'x', -10);
+    ok('a box touching a wall can move away freely',
+        backAway.hit === null && near(backAway.x, published.x - 10), backAway);
 }
 
 done();
